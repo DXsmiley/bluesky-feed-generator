@@ -22,7 +22,7 @@ def operations_callback(ops: dict) -> None:
         inlined_text = record.text.replace('\n', ' ')
         logger.info(f'New post (with images: {post_with_images}): {inlined_text}')
 
-        lowertext = inlined_text.text.lower()
+        lowertext = inlined_text.lower()
 
         # only fox-related posts, but nothing about fox news
         if re.search(r'\bfox\b', lowertext) and not re.search(r'\bnews\b', lowertext):
