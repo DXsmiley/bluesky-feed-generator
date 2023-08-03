@@ -10,6 +10,9 @@ from flask import Flask, jsonify, request
 from server.algos import algos
 from server.data_filter import operations_callback
 
+from typing import Any
+from typing_extensions import Never
+
 app = Flask(__name__)
 
 stream_stop_event = threading.Event()
@@ -19,7 +22,7 @@ stream_thread = threading.Thread(
 stream_thread.start()
 
 
-def sigint_handler(*_):
+def sigint_handler(*_: Any) -> Never:
     print('Stopping data stream...')
     stream_stop_event.set()
     sys.exit(0)
@@ -66,7 +69,7 @@ def describe_feed_generator():
 
 @app.route('/xrpc/app.bsky.feed.getFeedSkeleton', methods=['GET'])
 def get_feed_skeleton():
-    feed = request.args.get('feed', default=None, type=str)
+    feed = request.args.get('feed', default='', type=str)
     algo = algos.get(feed)
     if not algo:
         return 'Unsupported algorithm', 400

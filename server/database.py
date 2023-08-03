@@ -1,29 +1,38 @@
-from datetime import datetime
+import prisma
 
-import peewee
+db = prisma.Prisma()
+db.connect()
 
+print('Connected to DB')
 
-db = peewee.SqliteDatabase('feed_database.db')
+prisma.register(db)
 
+print('Registered DB')
 
-class BaseModel(peewee.Model):
-    class Meta:
-        database = db
+Post = prisma.models.Post
+SubscriptionState = prisma.models.SubscriptionState
 
-
-class Post(BaseModel):
-    uri = peewee.CharField(index=True)
-    cid = peewee.CharField()
-    reply_parent = peewee.CharField(null=True, default=None)
-    reply_root = peewee.CharField(null=True, default=None)
-    indexed_at = peewee.DateTimeField(default=datetime.now)
+# db = peewee.SqliteDatabase('feed_database.db')
 
 
-class SubscriptionState(BaseModel):
-    service = peewee.CharField(unique=True)
-    cursor = peewee.IntegerField()
+# class BaseModel(peewee.Model):
+#     class Meta:
+#         database = db
 
 
-if db.is_closed():
-    db.connect()
-    db.create_tables([Post, SubscriptionState])
+# class Post(BaseModel):
+#     uri = peewee.CharField(index=True)
+#     cid = peewee.CharField()
+#     reply_parent = peewee.CharField(null=True, default=None)
+#     reply_root = peewee.CharField(null=True, default=None)
+#     indexed_at = peewee.DateTimeField(default=datetime.now)
+
+
+# class SubscriptionState(BaseModel):
+#     service = peewee.CharField(unique=True)
+#     cursor = peewee.IntegerField()
+
+
+# if db.is_closed():
+#     db.connect()
+#     db.create_tables([Post, SubscriptionState])

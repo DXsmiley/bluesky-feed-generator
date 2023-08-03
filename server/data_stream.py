@@ -1,10 +1,15 @@
+import threading
 import typing as t
+from typing import Callable, List, Optional, TypeVar, Generic
+from typing_extensions import Never, TypedDict
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
 from atproto.firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto.xrpc_client.models import get_or_create, is_record_type
+from atproto.xrpc_client.models.base import ModelBase #, DotDict
 from atproto.xrpc_client.models.common import XrpcError
+# from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
 from server.logger import logger
 from server.database import SubscriptionState
@@ -13,13 +18,41 @@ if t.TYPE_CHECKING:
     from atproto.firehose import MessageFrame
 
 
-def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> dict:  # noqa: C901
-    operation_by_type = {
+T = TypeVar('T')
+
+
+class CreateOp(TypedDict, Generic[T]):
+    uri: str
+    cid: str
+    author: str
+    record: T
+
+
+class DeleteOp(TypedDict):
+    uri: str
+
+
+class OpsPosts(TypedDict, Generic[T]):
+    created: List[CreateOp[T]]
+    deleted: List[DeleteOp]
+
+
+class OpsByType(TypedDict):
+    posts: OpsPosts[models.AppBskyFeedPost.Main]
+    reposts: OpsPosts[None]
+    likes: OpsPosts[models.AppBskyFeedLike.Main]
+    follows: OpsPosts[models.AppBskyGraphFollow.Main]
+
+
+def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsByType:
+    operation_by_type: OpsByType = {
         'posts': {'created': [], 'deleted': []},
         'reposts': {'created': [], 'deleted': []},
         'likes': {'created': [], 'deleted': []},
         'follows': {'created': [], 'deleted': []},
     }
+
+    assert isinstance(commit.blocks, bytes)
 
     car = CAR.from_bytes(commit.blocks)
     for op in commit.ops:
@@ -33,19 +66,22 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> dict
             if not op.cid:
                 continue
 
-            create_info = {'uri': str(uri), 'cid': str(op.cid), 'author': commit.repo}
-
             record_raw_data = car.blocks.get(op.cid)
             if not record_raw_data:
                 continue
 
             record = get_or_create(record_raw_data, strict=False)
+            # assert isinstance(record, ModelBase)
+
             if uri.collection == models.ids.AppBskyFeedLike and is_record_type(record, models.AppBskyFeedLike):
-                operation_by_type['likes']['created'].append({'record': record, **create_info})
+                # assert isinstance(record, models.AppBskyFeedLike.Main)
+                operation_by_type['likes']['created'].append({'uri': str(uri), 'cid': str(op.cid), 'author': commit.repo, 'record': record})
             elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(record, models.AppBskyFeedPost):
-                operation_by_type['posts']['created'].append({'record': record, **create_info})
+                # assert isinstance(record, models.AppBskyFeedPost.Main)
+                operation_by_type['posts']['created'].append({'uri': str(uri), 'cid': str(op.cid), 'author': commit.repo, 'record': record})
             elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(record, models.AppBskyGraphFollow):
-                operation_by_type['follows']['created'].append({'record': record, **create_info})
+                # assert isinstance(record, models.AppBskyGraphFollow.Main)
+                operation_by_type['follows']['created'].append({'uri': str(uri), 'cid': str(op.cid), 'author': commit.repo, 'record': record})
 
         if op.action == 'delete':
             if uri.collection == models.ids.AppBskyFeedLike:
@@ -58,7 +94,7 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> dict
     return operation_by_type
 
 
-def run(name, operations_callback, stream_stop_event=None):
+def run(name: str, operations_callback: Callable[[OpsByType], None], stream_stop_event: Optional[threading.Event] = None) -> Never:
     while True:
         try:
             _run(name, operations_callback, stream_stop_event)
@@ -72,8 +108,10 @@ def run(name, operations_callback, stream_stop_event=None):
             raise e
 
 
-def _run(name, operations_callback, stream_stop_event=None):
-    state = SubscriptionState.select(SubscriptionState.service == name).first()
+def _run(name: str, operations_callback: Callable[[OpsByType], None], stream_stop_event: Optional[threading.Event] = None) -> None:
+    state = SubscriptionState.prisma().find_first(
+        where={'service': {'equals': name}}
+    )
 
     params = None
     if state:
@@ -82,11 +120,12 @@ def _run(name, operations_callback, stream_stop_event=None):
     client = FirehoseSubscribeReposClient(params)
 
     if not state:
-        SubscriptionState.create(service=name, cursor=0)
+        SubscriptionState.prisma().create(data={'service': name, 'cursor': 0})
 
     def on_message_handler(message: 'MessageFrame') -> None:
+
         # stop on next message if requested
-        if stream_stop_event and stream_stop_event.is_set():
+        if stream_stop_event is not None and stream_stop_event.is_set():
             client.stop()
             return
 
@@ -96,8 +135,18 @@ def _run(name, operations_callback, stream_stop_event=None):
 
         # update stored state every ~20 events
         if commit.seq % 20 == 0:
-            SubscriptionState.update(cursor=commit.seq).where(SubscriptionState.service == name).execute()
+            # ok so I think name should probably be unique or something????
+            SubscriptionState.prisma().update_many(
+                data={
+                    'cursor': commit.seq
+                },
+                where={
+                    'service': name
+                }
+            )
+            # SubscriptionState.update(cursor=commit.seq).where(SubscriptionState.service == name).execute()
 
-        operations_callback(_get_ops_by_type(commit))
+        ops = _get_ops_by_type(commit)
+        operations_callback(ops)
 
     client.start(on_message_handler)

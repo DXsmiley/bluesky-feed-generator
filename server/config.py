@@ -1,16 +1,19 @@
 import os
 
-SERVICE_DID = os.environ.get('SERVICE_DID', None)
-HOSTNAME = os.environ.get('HOSTNAME', None)
+_service_did = os.environ.get('SERVICE_DID', None)
+_hostname = os.environ.get('HOSTNAME', None)
 
-if HOSTNAME is None:
+if _hostname is None:
     raise RuntimeError('You should set "HOSTNAME" environment variable first.')
 
-if SERVICE_DID is None:
-    SERVICE_DID = f'did:web:{HOSTNAME}'
+HOSTNAME: str = _hostname
+
+SERVICE_DID: str = f'did:web:{HOSTNAME}' if _service_did is None else _service_did
 
 
-WHATS_ALF_URI = os.environ.get('WHATS_ALF_URI')
-if WHATS_ALF_URI is None:
+_whats_alf_uri = os.environ.get('WHATS_ALF_URI')
+if _whats_alf_uri is None:
     raise RuntimeError('Publish your feed first (run publish_feed.py) to obtain Feed URI. '
                        'Set this URI to "WHATS_ALF_URI" environment variable.')
+
+WHATS_ALF_URI: str = _whats_alf_uri
