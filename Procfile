@@ -1,1 +1,1 @@
-web: flask run --port=$PORT
+web: prisma db push && flask run --port=$PORT
