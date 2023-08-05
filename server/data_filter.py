@@ -60,7 +60,9 @@ def operations_callback(ops: OpsByType) -> None:
         logger.info(f'Deleted from feed: {len(posts_to_delete)}')
 
     if posts_to_create:
-        Post.prisma().create_many(posts_to_create)
+        for post in posts_to_create:
+            Post.prisma().create(post)
+        # Post.prisma().create_many(posts_to_create) # create_many not supported by SQLite
         # with db.atomic():
         #     for post_dict in posts_to_create:
         #         Post.create(**post_dict)
