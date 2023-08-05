@@ -1,13 +1,15 @@
 import prisma
+from prisma.types import HttpConfig
 
-db = prisma.Prisma()
+db = prisma.Prisma(
+    connect_timeout=5,
+    auto_register=True,
+    http=HttpConfig(
+        timeout=0.1
+    )
+)
+
 db.connect()
-
-print('Connected to DB')
-
-prisma.register(db)
-
-print('Registered DB')
 
 Post = prisma.models.Post
 SubscriptionState = prisma.models.SubscriptionState

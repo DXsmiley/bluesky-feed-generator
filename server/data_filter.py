@@ -1,7 +1,7 @@
 from atproto import models
 
 from server.logger import logger
-from server.database import db, Post
+from server.database import Post
 from server.data_stream import OpsByType
 
 from typing import List
