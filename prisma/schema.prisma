@@ -21,7 +21,6 @@ model Post {
 }
 
 model SubscriptionState {
-  id Int @id @default(autoincrement())
-  service String
+  service String @id
   cursor Int
 }

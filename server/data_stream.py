@@ -125,8 +125,8 @@ def _run(name: str, operations_callback: Callable[[OpsByType], None], stream_sto
 
     client = FirehoseSubscribeReposClient(params)
 
-    if not state:
-        SubscriptionState.prisma().create(data={'service': name, 'cursor': 0})
+    # if not state:
+    #     SubscriptionState.prisma().create(data={'service': name, 'cursor': 0})
 
     def on_message_handler(message: 'MessageFrame') -> None:
 
@@ -142,13 +142,9 @@ def _run(name: str, operations_callback: Callable[[OpsByType], None], stream_sto
         # update stored state every ~20 events
         if commit.seq % 20 == 0:
             # ok so I think name should probably be unique or something????
-            SubscriptionState.prisma().update_many(
-                data={
-                    'cursor': commit.seq
-                },
-                where={
-                    'service': name
-                }
+            SubscriptionState.prisma().update(
+                data={'cursor': commit.seq},
+                where={'service': name}
             )
             # SubscriptionState.update(cursor=commit.seq).where(SubscriptionState.service == name).execute()
 
