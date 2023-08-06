@@ -75,12 +75,13 @@ def operations_callback(ops: OpsByType) -> None:
         logger.info(f'Added to feed: {len(posts_to_create)}')
 
     for like in ops['likes']['created']:
-        liked_post = Post.prisma().find_unique({'uri': like['record']['subject']['uri']})
+        uri = like['record']['subject']['uri']
+        liked_post = Post.prisma().find_unique({'uri': uri})
         if liked_post is not None:
-            logger.info('Someone liked a furry post!!')
+            logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
             Post.prisma().update(
                 data={'like_count': liked_post.like_count + 1},
-                where={'uri': like['record']['uri']}
+                where={'uri': uri}
             )
 
     # TODO: Handle deleted likes lmao
