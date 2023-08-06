@@ -5,7 +5,7 @@ db = prisma.Prisma(
     connect_timeout=5,
     auto_register=True,
     http=HttpConfig(
-        timeout=0.1
+        timeout=5
     )
 )
 
