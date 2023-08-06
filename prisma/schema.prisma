@@ -18,6 +18,7 @@ model Post {
   reply_parent String?
   reply_root String?
   indexed_at DateTime @default(now())
+  like_count Int @default(0)
 }
 
 model SubscriptionState {

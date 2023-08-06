@@ -8,6 +8,16 @@ from typing import List
 from prisma.types import PostCreateWithoutRelationsInput
 
 import re
+import json
+
+
+KNOWN_FURRIES = set()
+
+with open('known_furries.json') as f:
+    blob = json.load(f)
+    for i in blob['furries']:
+        KNOWN_FURRIES.add(i['did'])
+
 
 
 def operations_callback(ops: OpsByType) -> None:
@@ -27,13 +37,9 @@ def operations_callback(ops: OpsByType) -> None:
 
         lowertext = inlined_text.lower()
 
-        numlikes = len(ops['likes']['created'])
-        if numlikes:
-            logger.info(f'<3 x {numlikes}')
-
-        # only fox-related posts, but nothing about fox news
-        if re.search(r'\bfox(es)?\b', lowertext) and not re.search(r'\bnews\b', lowertext):
-            logger.info(f'New fox post (with images: {post_with_images}): {inlined_text}')
+        # Only posts made by furries
+        if created_post['author'] in KNOWN_FURRIES:
+            logger.info(f'New furry post (with images: {post_with_images}): {inlined_text}')
 
             reply_parent = None
             if record.reply and record.reply.parent.uri:
@@ -67,3 +73,15 @@ def operations_callback(ops: OpsByType) -> None:
         #     for post_dict in posts_to_create:
         #         Post.create(**post_dict)
         logger.info(f'Added to feed: {len(posts_to_create)}')
+
+    for like in ops['likes']['created']:
+        liked_post = Post.prisma().find_unique({'uri': like['record']['subject']['uri']})
+        if liked_post is not None:
+            logger.info('Someone liked a furry post!!')
+            Post.prisma().update(
+                data={'like_count': liked_post.like_count + 1},
+                where={'uri': like['record']['uri']}
+            )
+
+    # TODO: Handle deleted likes lmao
+

@@ -60,6 +60,8 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
     for op in commit.ops:
         uri = AtUri.from_str(f'at://{commit.repo}/{op.path}')
 
+        # print(uri.collection, op.action)
+
         if op.action == 'update':
             # not supported yet
             continue
