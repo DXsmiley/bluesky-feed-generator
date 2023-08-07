@@ -49,7 +49,6 @@ def operations_callback(ops: OpsByType) -> None:
         Post.prisma().delete_many(
             where={'uri': {'in': posts_to_delete}}
         )
-        # Post.delete().where(Post.uri.in_(posts_to_delete))
         logger.info(f'Deleted from feed: {len(posts_to_delete)}')
 
     if posts_to_create:
