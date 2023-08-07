@@ -1,23 +1,13 @@
 from atproto import models
 
 from server.logger import logger
-from server.database import Post
+from server.database import Post, Actor
 from server.data_stream import OpsByType
 
 from typing import List
-from prisma.types import PostCreateWithoutRelationsInput
+from prisma.types import PostCreateInput
 
-import re
 import json
-
-
-KNOWN_FURRIES = set()
-
-with open('known_furries.json') as f:
-    blob = json.load(f)
-    for i in blob['furries']:
-        KNOWN_FURRIES.add(i['did'])
-
 
 
 def operations_callback(ops: OpsByType) -> None:
@@ -27,7 +17,7 @@ def operations_callback(ops: OpsByType) -> None:
 
     # for example, let's create our custom feed that will contain all posts that contains fox related text
 
-    posts_to_create: List[PostCreateWithoutRelationsInput] = []
+    posts_to_create: List[PostCreateInput] = []
     for created_post in ops['posts']['created']:
         record = created_post['record']
 
@@ -35,25 +25,22 @@ def operations_callback(ops: OpsByType) -> None:
         post_with_images = isinstance(record.embed, models.AppBskyEmbedImages.Main)
         inlined_text = record.text.replace('\n', ' ')
 
-        lowertext = inlined_text.lower()
+        reply_parent = None
+        if record.reply and record.reply.parent.uri:
+            reply_parent = record.reply.parent.uri
 
-        # Only posts made by furries
-        if created_post['author'] in KNOWN_FURRIES:
+        reply_root = None
+        if record.reply and record.reply.root.uri:
+            reply_root = record.reply.root.uri
+
+        if Actor.prisma().find_unique({'did': created_post['author']}) is not None:
             logger.info(f'New furry post (with images: {post_with_images}): {inlined_text}')
-
-            reply_parent = None
-            if record.reply and record.reply.parent.uri:
-                reply_parent = record.reply.parent.uri
-
-            reply_root = None
-            if record.reply and record.reply.root.uri:
-                reply_root = record.reply.root.uri
-
-            post_dict: PostCreateWithoutRelationsInput = {
+            post_dict: PostCreateInput = {
                 'uri': created_post['uri'],
                 'cid': created_post['cid'],
                 'reply_parent': reply_parent,
                 'reply_root': reply_root,
+                'authorId': created_post['author'],
             }
             posts_to_create.append(post_dict)
 

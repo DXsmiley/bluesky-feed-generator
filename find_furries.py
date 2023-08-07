@@ -8,6 +8,7 @@ from typing import Iterable, List
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 
+import re
 import json
 
 
@@ -60,8 +61,8 @@ def main() -> None:
 
     print('Grabbing known furries...')
 
-    known_furries: List[ProfileViewDetailed] = [
-        client.bsky.actor.get_profile({'actor': handle})
+    known_furries: List[ProfileView] = [
+        simplify_profile_view(client.bsky.actor.get_profile({'actor': handle}))
         for handle in known_furries_handles
     ]
 
@@ -73,18 +74,20 @@ def main() -> None:
         for user in get_followers(client, source.did)
     ]
 
-    everyone = {
-        **{user.did: user.handle for user in probably_furries},
-        **{user.did: user.handle for user in known_furries}
+    deduped = {
+        user.did: user
+        for user in known_furries + probably_furries
     }
 
     blob = {
         'furries': [
             {
                 'did': did,
-                'handle': handle
+                'handle': user.handle,
+                'description': user.description,
+                'displayName': user.displayName,
             }
-            for did, handle in everyone.items()
+            for did, user in deduped.items()
         ]
     }
 

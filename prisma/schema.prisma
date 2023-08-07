@@ -4,12 +4,27 @@
 generator client {
   provider = "prisma-client-py"
   interface = "sync"
-  recursive_type_depth = 5
+  recursive_type_depth = -1
 }
 
 datasource db {
   provider = "sqlite"
   url      = "file:./dev.db"
+}
+
+model SubscriptionState {
+  service String @id
+  cursor Int
+}
+
+model Actor {
+  did String @id
+  handle String
+  description String?
+  displayName String?
+  in_fox_feed Boolean
+  in_vix_feed Boolean
+  posts Post[]
 }
 
 model Post {
@@ -19,9 +34,6 @@ model Post {
   reply_root String?
   indexed_at DateTime @default(now())
   like_count Int @default(0)
-}
-
-model SubscriptionState {
-  service String @id
-  cursor Int
+  authorId String
+  author Actor @relation(fields: [authorId], references: [did])
 }

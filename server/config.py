@@ -9,11 +9,3 @@ if _hostname is None:
 HOSTNAME: str = _hostname
 
 SERVICE_DID: str = f'did:web:{HOSTNAME}' if _service_did is None else _service_did
-
-
-_whats_alf_uri = os.environ.get('WHATS_ALF_URI')
-if _whats_alf_uri is None:
-    raise RuntimeError('Publish your feed first (run publish_feed.py) to obtain Feed URI. '
-                       'Set this URI to "WHATS_ALF_URI" environment variable.')
-
-WHATS_ALF_URI: str = _whats_alf_uri
