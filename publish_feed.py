@@ -65,7 +65,8 @@ def main():
     ]
 
     for record_name, display_name, description, avatar_path in feeds:
-        register(client, record_name, display_name, description, avatar_path)
+        uri = register(client, record_name, display_name, description, avatar_path)
+        print('FEED_URI_' + record_name.upper().replace('-', '_') + '=' + uri)
 
 
 if __name__ == '__main__':
