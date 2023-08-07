@@ -31,8 +31,6 @@ SERVICE_DID: Optional[str] = None
 def register(client: Client, record_name: str, display_name: str, description: str, avatar_path: Optional[str]):
     feed_did = SERVICE_DID if SERVICE_DID is not None else f'did:web:{HOSTNAME}'
 
-    avatar_path = None
-
     avatar_blob = None
     if avatar_path:
         with open(avatar_path, 'rb') as f:
@@ -60,8 +58,8 @@ def main():
     client.login(HANDLE, PASSWORD)
     
     feeds = [
-        ('fox-feed', '🦊 Main', 'Custom algorithmic feed for furry posts (in development)', './fox.png'),
-        ('vix-feed', '🦊 Vix', 'Further personalised version of 🦊 Main', './fox.png'),
+        ('fox-feed', '🦊 Furry', 'Custom algorithmic feed for furry posts (in development)', './fox.png'),
+        ('vix-feed', '🦊 Vix', 'Further personalised version of 🦊 Furry', './fox.png'),
     ]
 
     for record_name, display_name, description, avatar_path in feeds:
