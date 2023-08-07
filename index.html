@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fox Feed - Custom Furry Feeds for BlueSky</title>
+    <style>
+        body {
+            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            text-align: justify;
+            line-height: 1.8em;
+            margin: 0px;
+        }
+        .top {
+            background-color: rgb(39, 176, 255);
+            color: white;
+        }
+        .top div {
+            max-width: 600px;
+            margin: 0px auto;
+            padding: 40px 40px 20px 40px;
+        }
+        .circle {
+            background-color: white;
+            border-radius: 50%;
+            text-align: center;
+            padding: 8px;
+        }
+        .main {
+            max-width: 600px;
+            margin: 0px auto;
+            padding: 20px 40px 80px 40px;
+        }
+        .center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        math {
+            font-size: 1.5em;
+        }
+    </style>
+</head>
+<body>
+    <div class="top">
+        <div>
+            <h1><span class="circle">🦊</span> Fox Feed</h1>
+            <p>Custom Furry Feeds for BlueSky, made by <a href="https://bsky.app/profile/puppyfox.bsky.social">Paf</a></p>
+        </div>
+    </div>
+    <div class="main">
+        <h2>Available Feeds</h2>
+        <h3><a href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fox-feed">Main Feed</a></h3>
+        <p>Top posts made in the last 48 hours, by all furries, replies not included.</p>
+        <h3><a href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/vix-feed">Vixen Feed</a></h3>
+        <p>Top posts made in the last 48 hours by all furry women, replies not included.</p>
+        <p>I created this because I noticed other furry feeds (both chronological and algorithmic) on bluesky were overwhelmingly dominated by men.</p>
+        <h2>Who Is Included On The Feed?</h2>
+        <p>Currently, "furries" constitutes anybody who follows one of a short list of major furry accounts. It does not dynamically update, and ends up including some people who are not furries. This is a temporary solution before something better is built.</p>
+        <p>The algorithm defines "woman" as anyone with whose bio contains fem-aligned pronouns (she/her, she/they, ...), a female (♀️) or sapphic (⚢) emoji, or an age-gender indicator (e.g. 25F). Presently, those who mix fem and masc pronouns (e.g. she/they/he) are excluded.</p>
+        <h2>How is the feed ranked?</h2>
+        <p>Each post is scored individually, depending on its age, and the amount of <i>positive-sentiment</i> interaction its getting</p>
+        <div class="center">
+            <!-- MathML is so shit for humans lmao -->
+            <math xmlns="http://www.w3.org/1998/Math/MathML">
+                <mi>y</mi><mo>=</mo><mfrac><mrow><mi>L</mi><mo>+</mo><mi>b</mi></mrow><msup><mrow><mo>(</mo><mi>T</mi><mo>+</mo><mi>t</mi><mo>)</mo></mrow><mi>g</mi></msup></mfrac>
+            </math>
+        </div>
+        <p>Where <i>L</i> is the number of likes and <i>T</i> is the age of the post.</p>
+        <p><i>b</i> is presently 5, <i>t</i> is "two hours" and <i>g</i> is 1.85</p>
+        <p>Remember that posts older than 48 hours will not show up on the feed</p>
+    </div>
+</body>
+</html>
