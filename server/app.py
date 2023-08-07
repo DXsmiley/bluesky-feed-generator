@@ -10,6 +10,8 @@ from flask import Flask, jsonify, request
 from server.algos import algos
 from server.data_filter import operations_callback
 
+import server.load_known_furries
+
 from typing import Any
 from typing_extensions import Never
 
@@ -20,6 +22,11 @@ stream_thread = threading.Thread(
     target=data_stream.run, args=(config.SERVICE_DID, operations_callback, stream_stop_event,)
 )
 stream_thread.start()
+
+load_furries_thread = threading.Thread(
+    target=server.load_known_furries.load, args=()
+)
+load_furries_thread.start()
 
 
 def sigint_handler(*_: Any) -> Never:

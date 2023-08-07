@@ -1,4 +1,4 @@
-from server.database import Actor
+from server.database import Actor, db
 import json
 import re
 from typing import Any, Optional
@@ -29,28 +29,30 @@ def is_girl(description: Optional[str]) -> bool:
     return False
 
 
-if __name__ == '__main__':
-
-    print('loading known furries into db')
-
+def load():
     with open('known_furries.json') as f:
         blob = json.load(f)
 
+    db.post.delete_many()
+    db.actor.delete_many()
+
     for x, i in enumerate(blob['furries']):
         if x % 100 == 0:
-            print(f'{x + 1} / {len(blob["furries"])}\r', end='', flush=True)
-        data: Any = {
-            'did': i['did'],
-            'handle': i['handle'],
-            'description': i['description'],
-            'displayName': i['displayName'],
-            'in_fox_feed': True,
-            'in_vix_feed': is_girl(i['description']),
-        }
-        Actor.prisma().upsert(
-            where={'did': i['did']},
-            data={'create': data, 'update': data}
+            print(f'Loading furries into DB: {x} / {len(blob["furries"])}')
+        db.actor.create(
+            data={
+                'did': i['did'],
+                'handle': i['handle'],
+                'description': i['description'],
+                'displayName': i['displayName'],
+                'in_fox_feed': True,
+                'in_vix_feed': is_girl(i['description']),
+            }
         )
 
-    print('\ndone')
+    print('\ndone loading furries')
+
+
+if __name__ == '__main__':
+    load()
     
