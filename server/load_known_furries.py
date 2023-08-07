@@ -163,8 +163,8 @@ def load() -> None:
                             'uri': p.uri,
                             'cid': p.cid,
                             # TODO: Fix these
-                            'reply_parent': None, # None if post.reply is None else post.reply.parent,
-                            'reply_root': None, # None if post.reply is None else post.reply.root,
+                            'reply_parent': None if post.reply is None else post.reply.parent.uri,
+                            'reply_root': None if post.reply is None else post.reply.root.uri,
                             'indexed_at': parse_datetime(p.record['createdAt']),
                             'like_count': p.likeCount or 0,
                             'authorId': p.author.did,
