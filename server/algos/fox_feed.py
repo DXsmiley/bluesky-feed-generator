@@ -1,5 +1,6 @@
 from datetime import datetime
 from datetime import timedelta
+from datetime import timezone
 from typing import Optional, List, Callable
 
 from server.database import Post
@@ -73,11 +74,11 @@ def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[st
     def handler(cursor: Optional[str], limit: int) -> HandlerResult:
 
         if cursor is None:
-            cursor_starttime = datetime.now()
+            cursor_starttime = datetime.now(tz=timezone.utc)
             lowest_score = 1_000_000_000
         else:
             cursor_starttime_str, lowest_score_str = cursor.split('::')
-            cursor_starttime = datetime.fromtimestamp(int(cursor_starttime_str) / 1000)
+            cursor_starttime = datetime.fromtimestamp(int(cursor_starttime_str) / 1000, tz=timezone.utc)
             lowest_score = float(lowest_score_str)
 
         posts = Post.prisma().find_many(
