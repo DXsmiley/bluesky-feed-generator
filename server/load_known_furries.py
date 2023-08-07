@@ -71,16 +71,20 @@ def get_follows(client: Client, did: str) -> Iterable[ProfileView]:
         yield from r.follows
 
 
+def parse_datetime(s: str) -> datetime:
+    return datetime.strptime(s.strip('Z'), r'%Y-%m-%dT%H:%M:%S.%f')
+
+
 def get_posts(client: Client, did: str, after: datetime) -> Iterable[FeedViewPost]:
     r = client.bsky.feed.get_author_feed({'actor': did})
     for i in r.feed:
-        if datetime.strptime(i.post.record['createdAt'], r'%Y-%m-%dT%H:%M:%S.%fZ') < after:
+        if parse_datetime(i.post.record['createdAt']) < after:
             return
         yield i
     while r.cursor:
         r = client.bsky.feed.get_author_feed({'actor': did, 'cursor': r.cursor})
         for i in r.feed:
-            if datetime.strptime(i.post.record['createdAt'], r'%Y-%m-%dT%H:%M:%S.%fZ') < after:
+            if parse_datetime(i.post.record['createdAt']) < after:
                 return
             yield i
 
@@ -161,7 +165,7 @@ def load() -> None:
                             # TODO: Fix these
                             'reply_parent': None, # None if post.reply is None else post.reply.parent,
                             'reply_root': None, # None if post.reply is None else post.reply.root,
-                            'indexed_at': datetime.strptime(p.record['createdAt'], r'%Y-%m-%dT%H:%M:%S.%fZ'),
+                            'indexed_at': parse_datetime(p.record['createdAt']),
                             'like_count': p.likeCount or 0,
                             'authorId': p.author.did,
                         },
