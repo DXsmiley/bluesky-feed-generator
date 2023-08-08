@@ -18,6 +18,9 @@ import re
 import json
 
 
+import server.algos.fox_feed
+
+
 def is_girl(description: Optional[str]) -> bool:
     if description is None:
         return False
@@ -78,6 +81,7 @@ def parse_datetime(s: str) -> datetime:
         r'%Y-%m-%dT%H:%M:%S.%f',
         r'%Y-%m-%dT%H:%M:%SZ',
         r'%Y-%m-%dT%H:%M:%S',
+        r'%Y-%m-%dT%H:%M:%S.%f+00:00',
     ]
     for fmt in formats:
         try:
@@ -123,7 +127,7 @@ def load() -> None:
     client = Client()
     client.login(HANDLE, PASSWORD)
 
-    only_posts_after = datetime.now() - timedelta(hours=50)
+    only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
 
     # Accounts picked because they're large and the people following them are most likely furries
     known_furries_handles = [
