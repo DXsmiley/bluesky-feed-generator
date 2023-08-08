@@ -32,12 +32,17 @@
             padding: 20px 40px 80px 40px;
         }
         .center {
+            flex-direction: column;
+            flex-wrap: nowrap;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         math {
-            font-size: 1.5em;
+            font-size: 1.3em;
+        }
+        div > math + math {
+            margin-top: 15px;
         }
     </style>
 </head>
@@ -51,24 +56,23 @@
     <div class="main">
         <h2>Available Feeds</h2>
         <h3><a href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fox-feed">Main Feed</a></h3>
-        <p>Top posts made in the last 48 hours, by all furries, replies not included.</p>
+        <p>Top recent posts by all furries, replies not included.</p>
         <h3><a href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/vix-feed">Vixen Feed</a></h3>
-        <p>Top posts made in the last 48 hours by all furry women, replies not included.</p>
+        <p>Top recent posts by all furry women, replies not included.</p>
         <p>I created this because I noticed other furry feeds (both chronological and algorithmic) on bluesky were overwhelmingly dominated by men.</p>
-        <h2>Who Is Included On The Feed?</h2>
-        <p>Currently, "furries" constitutes anybody who follows one of a short list of major furry accounts. It does not dynamically update, and ends up including some people who are not furries. This is a temporary solution before something better is built.</p>
-        <p>The algorithm defines "woman" as anyone with whose bio contains fem-aligned pronouns (she/her, she/they, ...), a female (♀️) or sapphic (⚢) emoji, or an age-gender indicator (e.g. 25F). Presently, those who mix fem and masc pronouns (e.g. she/they/he) are excluded.</p>
+        <h2>What Is Included On The Feed?</h2>
+        <p>Only posts from the last 96 hours (~4 days) are shown.</p>
+        <p>Currently, "furries" constitutes anybody who follows one of a short list of major furry accounts. It does not dynamically update, and ends up including some people who are not furries. Additionally, small number of mutelists is used to exclude accounts from the feeds. This is a temporary solution before something better is built.</p>
+        <p>We define "woman" as anyone with whose bio contains fem-aligned pronouns (she/her, she/they, ...), a female (♀️) or sapphic (⚢) emoji, or an age-gender indicator (e.g. 25F). Presently, those who mix fem and masc pronouns (e.g. she/they/he) are excluded.</p>
         <h2>How is the feed ranked?</h2>
         <p>Each post is scored individually, depending on its age, and the amount of <i>positive-sentiment</i> interaction its getting</p>
         <div class="center">
             <!-- MathML is so shit for humans lmao -->
-            <math xmlns="http://www.w3.org/1998/Math/MathML">
-                <mi>y</mi><mo>=</mo><mfrac><mrow><mi>L</mi><mo>+</mo><mi>b</mi></mrow><msup><mrow><mo>(</mo><mi>T</mi><mo>+</mo><mi>t</mi><mo>)</mo></mrow><mi>g</mi></msup></mfrac>
-            </math>
+            <math><mi>x</mi><mo>=</mo><mfrac><mi>T</mi><mi>β</mi></mfrac></math>
+            <math><mi>score</mi><mo>=</mo><mrow><mo>(</mo><mrow><mi>L</mi><mo>+</mo><mn>5</mn></mrow><mo>)</mo></mrow><mo>∙</mo><mrow><mo>&#123;</mo><mrow><mtable><mtr><mtd><mfrac><mn>1</mn><msup><mi>x</mi><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext> <mi>x</mi><mo>&geq;</mo><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn><mo>-</mo><mfrac><mn>1</mn><msup><mrow><mo>(</mo><mrow><mn>2</mn><mo>-</mo><mi>x</mi></mrow><mo>)</mo></mrow><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext> <mi>x</mi><mo>&lt;</mo><mn>1</mn></mtd></mtr></mtable></mrow></mrow></math>
         </div>
-        <p>Where <i>L</i> is the number of likes and <i>T</i> is the age of the post.</p>
-        <p><i>b</i> is presently 5, <i>t</i> is "two hours" and <i>g</i> is 1.85</p>
-        <p>Remember that posts older than 48 hours will not show up on the feed</p>
+        <p>Where <i>L</i> is the number of likes and <i>T</i> is the age of the post. Tweakable parameters, <math><mi>α</mi></math> is currently 1.5, and <math><mi>β</mi></math> is "24 hours".</p>
+        <p>Multiple posts by the same author will occur a penalty. An author's highest-scoring post will receive a multiplier of 1, the second highest-scoring a multiplier of &half;, the third a multiplier of &frac14;, and so on.</p>
     </div>
 </body>
 </html>
