@@ -36,4 +36,5 @@ model Post {
   like_count Int @default(0)
   authorId String
   author Actor @relation(fields: [authorId], references: [did])
+  @@index([indexed_at])
 }
