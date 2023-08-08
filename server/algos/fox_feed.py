@@ -21,6 +21,10 @@ class HandlerResult(TypedDict):
     feed: List[FeedItem]
 
 
+LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
+SCORING_CURVE_INFLECTION_POINT = timedelta(hours=24)
+
+
 def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[str], int], HandlerResult]:
 
     def handler(cursor: Optional[str], limit: int) -> HandlerResult:
@@ -76,35 +80,38 @@ def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[st
 
     def handler(cursor: Optional[str], limit: int) -> HandlerResult:
 
-        DECAY_TIME = timedelta(hours=48)
-
         if cursor is None:
             cursor_starttime = datetime.now(tz=timezone.utc)
-            lowest_score = 1_000_000_000
+            lowest_score = 1_000_000_000.0
         else:
             cursor_starttime_str, lowest_score_str = cursor.split('::')
             cursor_starttime = datetime.fromtimestamp(int(cursor_starttime_str) / 1000, tz=timezone.utc)
             lowest_score = float(lowest_score_str)
 
+        def score_decay_value(x: float) -> float:
+            ALPHA = 1.5
+            return (
+                1 / (x ** ALPHA) if x > 1
+                else (2 - (1 / ((2 - x) ** ALPHA)))
+            )
+
+        def raw_score(p: Post) -> float:
+            # Number of likes, decaying over time
+            # initial decay is much slower than the hacker news algo, but also decays to zero
+            x = (cursor_starttime - p.indexed_at) / SCORING_CURVE_INFLECTION_POINT
+            return (p.like_count + 5) * score_decay_value(x)
+
         posts = Post.prisma().find_many(
-            take=2000,
+            take=2500,
             order=[{'indexed_at': 'desc'}, {'cid': 'desc'}],
             where={
                 'AND': [
                     post_query_filter,
                     {'reply_root': None},
-                    {'indexed_at': {'lt': cursor_starttime, 'gt': cursor_starttime - DECAY_TIME}},
+                    {'indexed_at': {'lt': cursor_starttime, 'gt': cursor_starttime - LOOKBACK_HARD_LIMIT}},
                 ]
             },
         )
-
-        def raw_score(p: Post) -> float:
-            # Number of likes, decaying over time
-            # initial decay is much slower than the hacker news algo, but also decays to zero
-            # https://easings.net/#easeInOutSine
-            amt_decayed: float = min(max((cursor_starttime - p.indexed_at) / DECAY_TIME, 0), 1)
-            multiplier = (math.cos(math.pi * amt_decayed) + 1) / 2
-            return (p.like_count + 5) * multiplier
 
         # def score(p: Post):
         #     # hacker news ranking algo, same as furryli.st is currently utilising
