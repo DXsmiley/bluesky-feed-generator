@@ -1,4 +1,5 @@
 import math
+from collections import defaultdict
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
@@ -71,24 +72,6 @@ def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[
     return handler
 
 
-def space_out_same_users(posts: List[Post]) -> List[Post]:
-    # Some of you people skeet way too much, this makes sure your posts don't hog the feed
-    results: List[Optional[Post]] = [None for _ in posts]
-    result_index = 0
-    next_index_for_author: Dict[str, int] = {}
-    for p in posts:
-        # Find next slot in the results list
-        while result_index < len(results) and results[result_index] is not None:
-            result_index += 1
-        if result_index >= len(results):
-            break
-        target_index = next_index_for_author.get(p.authorId, result_index)
-        if target_index < len(results):
-            results[target_index] = p
-        next_index_for_author[p.authorId] = target_index + 20
-    return [i for i in results if i is not None]
-
-
 def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[str], int], HandlerResult]:
 
     def handler(cursor: Optional[str], limit: int) -> HandlerResult:
@@ -115,7 +98,7 @@ def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[st
             },
         )
 
-        def score(p: Post) -> float:
+        def raw_score(p: Post) -> float:
             # Number of likes, decaying over time
             # initial decay is much slower than the hacker news algo, but also decays to zero
             # https://easings.net/#easeInOutSine
@@ -131,14 +114,26 @@ def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[st
         #     # also give a flat boost to like count to actually help newer posts get off the ground ?
         #     return (5 + p.like_count) / denom
 
-        posts.sort(key=score, reverse=True)
+        posts_by_author: Dict[str, List[Post]] = defaultdict(list)
 
-        posts = space_out_same_users(posts)
+        for post in posts:
+            posts_by_author[post.authorId].append(post)
 
-        next_up = [i for i in posts if score(i) < lowest_score][:limit]
+        # Decay posts by the same author to avoid clogging the feed
+        scored_posts = sorted(
+            [
+            (raw_score(post) / (2 ** index), post)
+            for just_by_author in posts_by_author.values()
+            for index, post in enumerate(sorted(just_by_author, key=raw_score, reverse=True))
+            ],
+            key=lambda x: x[0],
+            reverse=True
+        )
 
-        cursor = f'{int(cursor_starttime.timestamp() * 1000)}::{min(map(score, next_up), default=0)}'
-        feed: List[FeedItem] = [{'post': post.uri} for post in next_up]
+        next_up = [(score, post) for score, post in scored_posts if score < lowest_score][:limit]
+
+        cursor = f'{int(cursor_starttime.timestamp() * 1000)}::{min([score for score, _ in next_up], default=0)}'
+        feed: List[FeedItem] = [{'post': post.uri} for _, post in next_up]
 
         return {'cursor': cursor, 'feed': feed}
 
