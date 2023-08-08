@@ -73,7 +73,17 @@ def get_follows(client: Client, did: str) -> Iterable[ProfileView]:
 
 
 def parse_datetime(s: str) -> datetime:
-    return datetime.strptime(s.strip('Z'), r'%Y-%m-%dT%H:%M:%S.%f')
+    formats = [
+        r'%Y-%m-%dT%H:%M:%S.%fZ',
+        r'%Y-%m-%dT%H:%M:%S.%f',
+        r'%Y-%m-%dT%H:%M:%S',
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            pass
+    raise ValueError(f'failed to parse datetime string "{s}"')
 
 
 def get_posts(client: Client, did: str, after: datetime) -> Iterable[FeedViewPost]:
