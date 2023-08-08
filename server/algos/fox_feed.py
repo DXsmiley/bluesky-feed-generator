@@ -120,7 +120,7 @@ def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[st
             # initial decay is much slower than the hacker news algo, but also decays to zero
             # https://easings.net/#easeInOutSine
             amt_decayed: float = min(max((cursor_starttime - p.indexed_at) / DECAY_TIME, 0), 1)
-            multiplier = -(math.cos(math.pi * amt_decayed) - 1) / 2
+            multiplier = (math.cos(math.pi * amt_decayed) + 1) / 2
             return (p.like_count + 5) * multiplier
 
         # def score(p: Post):
