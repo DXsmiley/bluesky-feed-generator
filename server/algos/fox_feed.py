@@ -1,13 +1,15 @@
+import math
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
-from typing import Optional, List, Callable
+from typing import Optional, List, Dict, Callable
 
 from server.database import Post
 
 from typing_extensions import TypedDict
 
 from prisma.types import PostWhereInput
+
 
 class FeedItem(TypedDict):
     post: str # ???
@@ -69,9 +71,29 @@ def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[
     return handler
 
 
+def space_out_same_users(posts: List[Post]) -> List[Post]:
+    # Some of you people skeet way too much, this makes sure your posts don't hog the feed
+    results: List[Optional[Post]] = [None for _ in posts]
+    result_index = 0
+    next_index_for_author: Dict[str, int] = {}
+    for p in posts:
+        # Find next slot in the results list
+        while result_index < len(results) and results[result_index] is not None:
+            result_index += 1
+        if result_index >= len(results):
+            break
+        target_index = next_index_for_author.get(p.authorId, result_index)
+        if target_index < len(results):
+            results[target_index] = p
+        next_index_for_author[p.authorId] = target_index + 20
+    return [i for i in results if i is not None]
+
+
 def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[str], int], HandlerResult]:
 
     def handler(cursor: Optional[str], limit: int) -> HandlerResult:
+
+        DECAY_TIME = timedelta(hours=48)
 
         if cursor is None:
             cursor_starttime = datetime.now(tz=timezone.utc)
@@ -88,24 +110,34 @@ def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[st
                 'AND': [
                     post_query_filter,
                     {'reply_root': None},
-                    {'indexed_at': {'lt': cursor_starttime, 'gt': cursor_starttime - timedelta(days=2)}},
+                    {'indexed_at': {'lt': cursor_starttime, 'gt': cursor_starttime - DECAY_TIME}},
                 ]
             },
         )
 
-        def score(p: Post):
-            # hacker news ranking algo, same as furryli.st is currently utilising
-            gravity = 1.85
-            time_offset = timedelta(hours=2)
-            denom: float = ((cursor_starttime - p.indexed_at + time_offset).total_seconds() / 3600.0) ** gravity
-            # also give a flat boost to like count to actually help newer posts get off the ground ?
-            return (5 + p.like_count) / denom
+        def score(p: Post) -> float:
+            # Number of likes, decaying over time
+            # initial decay is much slower than the hacker news algo, but also decays to zero
+            # https://easings.net/#easeInOutSine
+            amt_decayed: float = min(max((cursor_starttime - p.indexed_at) / DECAY_TIME, 0), 1)
+            multiplier = -(math.cos(math.pi * amt_decayed) - 1) / 2
+            return (p.like_count + 5) * multiplier
+
+        # def score(p: Post):
+        #     # hacker news ranking algo, same as furryli.st is currently utilising
+        #     gravity = 1.85
+        #     time_offset = timedelta(hours=2)
+        #     denom: float = ((cursor_starttime - p.indexed_at + time_offset).total_seconds() / 3600.0) ** gravity
+        #     # also give a flat boost to like count to actually help newer posts get off the ground ?
+        #     return (5 + p.like_count) / denom
 
         posts.sort(key=score, reverse=True)
 
+        posts = space_out_same_users(posts)
+
         next_up = [i for i in posts if score(i) < lowest_score][:limit]
 
-        cursor = f'{int(cursor_starttime.timestamp() * 1000)}::{min(map(score, next_up))}'
+        cursor = f'{int(cursor_starttime.timestamp() * 1000)}::{min(map(score, next_up), default=0)}'
         feed: List[FeedItem] = [{'post': post.uri} for post in next_up]
 
         return {'cursor': cursor, 'feed': feed}
