@@ -8,10 +8,11 @@ from atproto import Client
 
 from publish_feed import HANDLE, PASSWORD
 
-from typing import Iterable, List, Optional, Dict
+from typing import Iterable, List, Optional, Dict, Tuple
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost
+from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
 
 import re
 import json
@@ -89,14 +90,31 @@ def get_posts(client: Client, did: str, after: datetime) -> Iterable[FeedViewPos
             yield i
 
 
+def get_mute_lists(client: Client) -> Iterable[ListView]:
+    r = client.bsky.graph.get_list_mutes({})
+    yield from r.lists
+    while r.cursor:
+        r = client.bsky.graph.get_list_mutes({'cursor': r.cursor})
+        yield from r.lists
+
+
+def get_all_mutes(client: Client) -> Iterable[Tuple[ListView, ListItemView]]:
+    lists = get_mute_lists(client)
+    for lst in lists:
+        r = client.bsky.graph.get_list({'list': lst.uri})
+        yield from ((lst, i) for i in r.items)
+        while r.cursor:
+            r = client.bsky.graph.get_list({'list': lst.uri, 'cursor': r.cursor})
+            yield from ((lst, i) for i in r.items)
+
+
 def load() -> None:
     client = Client()
     client.login(HANDLE, PASSWORD)
 
     only_posts_after = datetime.now() - timedelta(hours=50)
 
-    # Accounts picked because they're large and the people following them
-    # are most likely furries. Doesn't matter 
+    # Accounts picked because they're large and the people following them are most likely furries
     known_furries_handles = [
         'puppyfox.bsky.social',
         'furryli.st',
@@ -109,22 +127,35 @@ def load() -> None:
         'zoeydogy.bsky.social'
     ]
 
+    # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
+    print("Grabbing everyone that's on a mute list that I'm subscribed to")
+
+    mutes = get_all_mutes(client)
+
+    # Make a set for fast lookup, also make a cutout for the known furries in case someone adds me to a mutelist
+    # without my knowledge or something lmao
+    muted_dids = {i.subject.did for _, i in mutes if i.subject.handle not in known_furries_handles}
+
+    # for lst, m in mutes:
+    #     print(lst.name, m.subject.handle, m.subject.displayName, ':', (m.subject.description or '').replace('\n', ' ')[:100])
+
     print('Grabbing known furries...')
 
     furries: Dict[str, ProfileView] = {}
 
     for handle in known_furries_handles:
         print('Known furry:', handle)
-        profile = simplify_profile_view(client.bsky.actor.get_profile({'actor': handle}))
-        furries[profile.did] = profile
+        profile = client.bsky.actor.get_profile({'actor': handle})
+        print(f'({profile.followsCount} followers)')
+        furries[profile.did] = simplify_profile_view(profile)
         for follower in get_followers(client, profile.did):
-            print('Follower:', follower.handle, flush=False)
+            # print('Follower:', follower.handle, flussh=False)
             furries[follower.did] = follower
 
-    print('Adding furries to database')
+    print(f'Adding {len(furries)} furries to database')
 
     for user in furries.values():
-        print(user.handle, flush=False)
+        muted = user.did in muted_dids
         db.actor.upsert(
             where={'did': user.did},
             data={
@@ -133,16 +164,16 @@ def load() -> None:
                     'handle': user.handle,
                     'description': user.description,
                     'displayName': user.displayName,
-                    'in_fox_feed': True,
-                    'in_vix_feed': is_girl(user.description),
+                    'in_fox_feed': True and not muted,
+                    'in_vix_feed': is_girl(user.description) and not muted,
                 },
                 'update': {
                     'did': user.did,
                     'handle': user.handle,
                     'description': user.description,
                     'displayName': user.displayName,
-                    'in_fox_feed': True,
-                    'in_vix_feed': is_girl(user.description),
+                    'in_fox_feed': True and not muted,
+                    'in_vix_feed': is_girl(user.description) and not muted,
                 }
             }
         )
@@ -150,7 +181,6 @@ def load() -> None:
     print('Grabbing posts for database')
 
     for user in sorted(furries.values(), key=lambda i: is_girl(i.description), reverse=True):
-        print(user.handle, flush=False)
         for post in get_posts(client, user.did, only_posts_after):
             p = post.post
             # this filters out furry reposts from non-furry accounts
