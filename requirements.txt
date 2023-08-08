@@ -4,3 +4,4 @@ Flask~=2.3.2
 python-dotenv~=1.0.0
 prisma==0.9.1
 typing_extensions==4.5.0
+termcolor==2.3.0

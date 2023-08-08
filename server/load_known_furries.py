@@ -16,6 +16,8 @@ from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemVie
 
 import re
 import json
+import traceback
+from termcolor import cprint
 
 
 import server.algos.fox_feed
@@ -197,31 +199,36 @@ def load() -> None:
     print('Grabbing posts for database')
 
     for user in sorted(furries.values(), key=lambda i: is_girl(i.description), reverse=True):
-        for post in get_posts(client, user.did, only_posts_after):
-            p = post.post
-            # this filters out furry reposts from non-furry accounts
-            # not an intentional choice but we violate the foreign key otherwise lmao
-            if db.actor.find_unique({'did': p.author.did}) is not None:
-                db.post.upsert(
-                    where={'uri': p.uri},
-                    data={
-                        'create': {
-                            'uri': p.uri,
-                            'cid': p.cid,
-                            # TODO: Fix these
-                            'reply_parent': None if post.reply is None else post.reply.parent.uri,
-                            'reply_root': None if post.reply is None else post.reply.root.uri,
-                            'indexed_at': parse_datetime(p.record['createdAt']),
-                            'like_count': p.likeCount or 0,
-                            'authorId': p.author.did,
-                        },
-                        'update': {
-                            'like_count': p.likeCount or 0,
+        try:
+            print('Getting posts for', user.handle)
+            for post in get_posts(client, user.did, only_posts_after):
+                p = post.post
+                # this filters out furry reposts from non-furry accounts
+                # not an intentional choice but we violate the foreign key otherwise lmao
+                if db.actor.find_unique({'did': p.author.did}) is not None:
+                    db.post.upsert(
+                        where={'uri': p.uri},
+                        data={
+                            'create': {
+                                'uri': p.uri,
+                                'cid': p.cid,
+                                # TODO: Fix these
+                                'reply_parent': None if post.reply is None else post.reply.parent.uri,
+                                'reply_root': None if post.reply is None else post.reply.root.uri,
+                                'indexed_at': parse_datetime(p.record['createdAt']),
+                                'like_count': p.likeCount or 0,
+                                'authorId': p.author.did,
+                            },
+                            'update': {
+                                'like_count': p.likeCount or 0,
+                            }
                         }
-                    }
-                )
+                    )
+        except Exception:
+            cprint(f'error while getting posts for user {user.handle}', color='red')
+            traceback.print_exc()
 
-    print('Done')
+    cprint('Done scraping website :)', color='green')
 
 if __name__ == '__main__':
     load()
