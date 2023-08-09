@@ -37,7 +37,7 @@ def p_(s: NodeType) -> Node:
 
 def if_(cs: List[Tuple[NodeType, NodeType]]) -> Node:
     rs = ''.join(
-        f'<mtr><mtd>{Node(expr)}</mtd><mtd><mtext>if</mtext> {Node(cond)}</mtd></mtr>'
+        f'<mtr><mtd>{Node(expr)}</mtd><mtd><mtext>if</mtext><mo> </mo>{Node(cond)}</mtd></mtr>'
         for expr, cond in cs
     )
     return Node(f'<mrow><mo>&#123;</mo><mrow><mtable>{rs}</mtable></mrow></mrow>')
@@ -51,8 +51,6 @@ T = i_('T')
 L = i_('L')
 x = i_('x')
 y = i_('y')
-
-m_(alpha == 1.5)
 
 m_(x == T / beta)
 
