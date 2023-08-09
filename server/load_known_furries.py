@@ -8,14 +8,13 @@ from atproto import Client
 
 from publish_feed import HANDLE, PASSWORD
 
-from typing import Iterable, List, Optional, Dict, Tuple
+from typing import Iterable, Optional, Dict, Tuple
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
-from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost
+from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
 
 import re
-import json
 import traceback
 from termcolor import cprint
 
@@ -94,18 +93,20 @@ def parse_datetime(s: str) -> datetime:
     raise ValueError(f'failed to parse datetime string "{s}"')
 
 
-def get_posts(client: Client, did: str, after: datetime) -> Iterable[FeedViewPost]:
-    r = client.bsky.feed.get_author_feed({'actor': did})
-    for i in r.feed:
-        if parse_datetime(i.post.record['createdAt']) < after:
-            return
-        yield i
-    while r.cursor:
-        r = client.bsky.feed.get_author_feed({'actor': did, 'cursor': r.cursor})
+def get_posts(client: Client, did: str, *, after: Optional[datetime]=None, include_reposts: bool=False) -> Iterable[FeedViewPost]:
+    r = None
+    while r is None or r.cursor:
+        r = client.bsky.feed.get_author_feed({'actor': did, 'cursor': r and r.cursor})
         for i in r.feed:
-            if parse_datetime(i.post.record['createdAt']) < after:
-                return
-            yield i
+            if isinstance(i.reason, ReasonRepost):
+                if after is not None and parse_datetime(i.reason.indexedAt) < after:
+                    return
+                if include_reposts:
+                    yield i
+            else:
+                if after is not None and parse_datetime(i.post.indexedAt) < after:
+                    return
+                yield i
 
 
 def get_mute_lists(client: Client) -> Iterable[ListView]:
@@ -201,29 +202,26 @@ def load() -> None:
     for user in sorted(furries.values(), key=lambda i: is_girl(i.description), reverse=True):
         try:
             print('Getting posts for', user.handle)
-            for post in get_posts(client, user.did, only_posts_after):
+            for post in get_posts(client, user.did, after=only_posts_after):
                 p = post.post
-                # this filters out furry reposts from non-furry accounts
-                # not an intentional choice but we violate the foreign key otherwise lmao
-                if db.actor.find_unique({'did': p.author.did}) is not None:
-                    db.post.upsert(
-                        where={'uri': p.uri},
-                        data={
-                            'create': {
-                                'uri': p.uri,
-                                'cid': p.cid,
-                                # TODO: Fix these
-                                'reply_parent': None if post.reply is None else post.reply.parent.uri,
-                                'reply_root': None if post.reply is None else post.reply.root.uri,
-                                'indexed_at': parse_datetime(p.record['createdAt']),
-                                'like_count': p.likeCount or 0,
-                                'authorId': p.author.did,
-                            },
-                            'update': {
-                                'like_count': p.likeCount or 0,
-                            }
+                db.post.upsert(
+                    where={'uri': p.uri},
+                    data={
+                        'create': {
+                            'uri': p.uri,
+                            'cid': p.cid,
+                            # TODO: Fix these
+                            'reply_parent': None if post.reply is None else post.reply.parent.uri,
+                            'reply_root': None if post.reply is None else post.reply.root.uri,
+                            'indexed_at': parse_datetime(p.record['createdAt']),
+                            'like_count': p.likeCount or 0,
+                            'authorId': p.author.did,
+                        },
+                        'update': {
+                            'like_count': p.likeCount or 0,
                         }
-                    )
+                    }
+                )
         except Exception:
             cprint(f'error while getting posts for user {user.handle}', color='red')
             traceback.print_exc()
