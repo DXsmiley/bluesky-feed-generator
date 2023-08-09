@@ -14,6 +14,7 @@ from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileV
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
 
+import unicodedata
 import re
 import traceback
 from termcolor import cprint
@@ -25,7 +26,7 @@ import server.algos.fox_feed
 def is_girl(description: Optional[str]) -> bool:
     if description is None:
         return False
-    desc = description.replace('\n', ' ').lower()
+    desc = unicodedata.normalize('NFKC', description).replace('\n', ' ').lower()
     # he/him results in False (to catch cases of he/she/they)
     if re.search(r'\bhe\b', desc):
         return False
