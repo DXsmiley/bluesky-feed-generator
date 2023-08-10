@@ -62,11 +62,7 @@ def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[
         )
 
         feed: List[FeedItem] = [{'post': post.uri} for post in posts]
-
-        cursor = None
-        last_post = posts[-1] if posts else None
-        if last_post:
-            cursor = f'{int(last_post.indexed_at.timestamp() * 1000)}::{last_post.cid}'
+        cursor = f'{int(posts[-1].indexed_at.timestamp() * 1000)}::{posts[-1].cid}' if posts else None
 
         return {
             'cursor': cursor,
@@ -158,5 +154,4 @@ fursuit_feed = chronological_feed(
             {'mentions_fursuit': True},
         ]
     }
-    
 )

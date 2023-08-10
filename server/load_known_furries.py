@@ -13,6 +13,7 @@ from typing import Iterable, Optional, Dict, Tuple
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
+from atproto.xrpc_client.models.app.bsky.embed import images
 
 import unicodedata
 import re
@@ -95,19 +96,27 @@ def parse_datetime(s: str) -> datetime:
     raise ValueError(f'failed to parse datetime string "{s}"')
 
 
-def get_posts(client: Client, did: str, *, after: Optional[datetime]=None, include_reposts: bool=False) -> Iterable[FeedViewPost]:
+def get_posts(
+    client: Client,
+    did: str,
+    *,
+    after: Optional[datetime]=None,
+    include_reposts: bool=False,
+    return_data_if_we_have_it_anyway: bool=False
+) -> Iterable[FeedViewPost]:
     r = None
     while r is None or r.cursor:
         r = client.bsky.feed.get_author_feed({'actor': did, 'cursor': r and r.cursor})
         for i in r.feed:
-            if isinstance(i.reason, ReasonRepost):
-                if after is not None and parse_datetime(i.reason.indexedAt) < after:
+            is_repost, indexed_at = (
+                (True, i.reason.indexedAt) if isinstance(i.reason, ReasonRepost)
+                else (False, i.post.indexedAt)
+            )
+            if after is not None and parse_datetime(indexed_at) < after:
+                r.cursor = None
+                if not return_data_if_we_have_it_anyway:
                     return
-                if include_reposts:
-                    yield i
-            else:
-                if after is not None and parse_datetime(i.post.indexedAt) < after:
-                    return
+            if include_reposts or not is_repost:
                 yield i
 
 
@@ -170,7 +179,6 @@ def load() -> None:
         print(f'({profile.followsCount} followers)')
         furries[profile.did] = simplify_profile_view(profile)
         for follower in get_followers(client, profile.did):
-            # print('Follower:', follower.handle, flussh=False)
             furries[follower.did] = follower
 
     print(f'Adding {len(furries)} furries to database')
@@ -204,10 +212,10 @@ def load() -> None:
     for user in sorted(furries.values(), key=lambda i: is_girl(i.description), reverse=True):
         try:
             print('Getting posts for', user.handle)
-            for post in get_posts(client, user.did, after=only_posts_after):
+            for post in get_posts(client, user.did, after=only_posts_after, return_data_if_we_have_it_anyway=True):
                 p = post.post
                 media_count = (
-                    0 if not isinstance(p.embed, models.AppBskyEmbedImages.Main)
+                    0 if not isinstance(p.embed, images.View)
                     else len(p.embed.images)
                 )
                 db.post.upsert(
@@ -228,6 +236,8 @@ def load() -> None:
                         },
                         'update': {
                             'like_count': p.likeCount or 0,
+                            'media_count': media_count,
+                            # 'text': p.record['text'],
                         }
                     }
                 )
