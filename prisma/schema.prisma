@@ -34,6 +34,9 @@ model Post {
   reply_root String?
   indexed_at DateTime @default(now())
   like_count Int @default(0)
+  text String
+  mentions_fursuit Boolean
+  media_count Int
   authorId String
   author Actor @relation(fields: [authorId], references: [did])
   @@index([indexed_at])

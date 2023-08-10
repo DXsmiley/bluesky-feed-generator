@@ -4,7 +4,7 @@ import server.monkeypatch
 
 from server.database import db
 
-from atproto import Client
+from atproto import Client, models
 
 from publish_feed import HANDLE, PASSWORD
 
@@ -21,6 +21,7 @@ from termcolor import cprint
 
 
 import server.algos.fox_feed
+from server.data_filter import mentions_fursuit
 
 
 def is_girl(description: Optional[str]) -> bool:
@@ -205,6 +206,10 @@ def load() -> None:
             print('Getting posts for', user.handle)
             for post in get_posts(client, user.did, after=only_posts_after):
                 p = post.post
+                media_count = (
+                    0 if not isinstance(p.embed, models.AppBskyEmbedImages.Main)
+                    else len(p.embed.images)
+                )
                 db.post.upsert(
                     where={'uri': p.uri},
                     data={
@@ -217,6 +222,9 @@ def load() -> None:
                             'indexed_at': parse_datetime(p.record['createdAt']),
                             'like_count': p.likeCount or 0,
                             'authorId': p.author.did,
+                            'mentions_fursuit': mentions_fursuit(p.record['text']),
+                            'media_count': media_count,
+                            'text': p.record['text'],
                         },
                         'update': {
                             'like_count': p.likeCount or 0,

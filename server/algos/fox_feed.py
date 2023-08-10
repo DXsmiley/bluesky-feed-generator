@@ -149,3 +149,14 @@ def algorithmic_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[st
 
 fox_feed = algorithmic_feed({'author': {'is': {'in_fox_feed': {'equals': True}}}})
 vix_feed = algorithmic_feed({'author': {'is': {'in_vix_feed': {'equals': True}}}})
+
+fursuit_feed = chronological_feed(
+    {
+        'AND': [
+            {'author': {'is': {'in_vix_feed': {'equals': True}}}},
+            {'media_count': {'gt': 0}},
+            {'mentions_fursuit': True},
+        ]
+    }
+    
+)

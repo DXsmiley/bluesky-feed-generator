@@ -1,4 +1,5 @@
 import sys
+import os
 import signal
 import threading
 
@@ -7,7 +8,7 @@ from server import data_stream
 
 from flask import Flask, jsonify, request
 
-from server.algos import algos
+import server.algos
 from server.data_filter import operations_callback
 
 import server.load_known_furries
@@ -27,6 +28,12 @@ load_furries_thread = threading.Thread(
     target=server.load_known_furries.load, args=()
 )
 load_furries_thread.start()
+
+
+algos = {
+    (os.environ[server.algos.environment_variable_name_for(i['record_name'])]): i['handler']
+    for i in server.algos.algo_details
+}
 
 
 def sigint_handler(*_: Any) -> Never:

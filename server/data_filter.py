@@ -7,7 +7,10 @@ from server.data_stream import OpsByType
 from typing import List
 from prisma.types import PostCreateInput
 
-import json
+
+def mentions_fursuit(text: str) -> bool:
+    text = text.replace('\n', ' ').lower()
+    return 'fursuit' in text or 'murrsuit' in text
 
 
 def operations_callback(ops: OpsByType) -> None:
@@ -21,8 +24,10 @@ def operations_callback(ops: OpsByType) -> None:
     for created_post in ops['posts']['created']:
         record = created_post['record']
 
-        # print all texts just as demo that data stream works
-        post_with_images = isinstance(record.embed, models.AppBskyEmbedImages.Main)
+        num_images = (
+            0 if not isinstance(record.embed, models.AppBskyEmbedImages.Main)
+            else len(record.embed.images)
+        )
         inlined_text = record.text.replace('\n', ' ')
 
         reply_parent = None
@@ -34,13 +39,16 @@ def operations_callback(ops: OpsByType) -> None:
             reply_root = record.reply.root.uri
 
         if Actor.prisma().find_unique({'did': created_post['author']}) is not None:
-            logger.info(f'New furry post (with images: {post_with_images}): {inlined_text}')
+            logger.info(f'New furry post (with images: {num_images}): {inlined_text}')
             post_dict: PostCreateInput = {
                 'uri': created_post['uri'],
                 'cid': created_post['cid'],
                 'reply_parent': reply_parent,
                 'reply_root': reply_root,
                 'authorId': created_post['author'],
+                'text': record.text,
+                'mentions_fursuit': mentions_fursuit(record.text),
+                'media_count': num_images,
             }
             posts_to_create.append(post_dict)
 

@@ -8,6 +8,7 @@ from datetime import datetime
 from atproto.xrpc_client.models import ids
 from atproto import Client, models
 from typing import Optional
+from server.algos import algo_details, environment_variable_name_for
 
 dotenv.load_dotenv()
 
@@ -56,15 +57,11 @@ def register(client: Client, record_name: str, display_name: str, description: s
 def main():
     client = Client()
     client.login(HANDLE, PASSWORD)
-    
-    feeds = [
-        ('fox-feed', '🦊 Furry', 'Custom algorithmic feed for furry posts (in development)', './fox.png'),
-        ('vix-feed', '🦊 Vix', 'Further personalised version of 🦊 Furry', './fox.png'),
-    ]
 
-    for record_name, display_name, description, avatar_path in feeds:
-        uri = register(client, record_name, display_name, description, avatar_path)
-        print('FEED_URI_' + record_name.upper().replace('-', '_') + '=' + uri)
+    for i in algo_details:
+        uri = register(client, i['record_name'], i['display_name'], i['description'], None)
+        env_variable_name = environment_variable_name_for(i['record_name'])
+        print(f'{env_variable_name}="{uri}"')
 
 
 if __name__ == '__main__':
