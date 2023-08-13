@@ -34,19 +34,31 @@ def is_girl(description: Optional[str]) -> bool:
         return False
     if re.search(r'\bhim\b', desc):
         return False
-    # she/her pronouns
-    if re.search(r'\bshe\b', desc):
-        return True
-    if re.search(r'\bher\b', desc):
-        return True
     # Emoji
     if '♀️' in desc or '⚢' in desc:
         return True
     # look for cases of "25F" or something similar
-    if re.search(r'\b(\d\d)?f\b', desc):
+    if re.search(r'\b\d\df\b', desc):
         return True
-    # they/them intentionally not considered,
-    # but if we've seen nothing by now we bail
+    # singular words
+    words = [
+        'she',
+        'her',
+        'f',
+        'woman',
+        'female',
+        'girl',
+        'transgirl',
+        'tgirl',
+        'transwoman',
+        'puppygirl',
+        'doggirl',
+    ]
+    for w in words:
+        if re.search(r'\b' + w + r'\b', desc):
+            return True
+    # they/them intentionally not considered
+    # if we've seen nothing by now we bail
     return False
 
 
