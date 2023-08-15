@@ -193,6 +193,12 @@ def load() -> None:
         for follower in get_followers(client, profile.did):
             furries[follower.did] = follower
 
+    # Slightly stronger filtering for the vix feed since it's picking up a lot of non-furry women
+    print('Getting furryli.st verified furries')
+    furrylist = client.bsky.actor.get_profile({'actor': 'furryli.st'})
+    furrylist_verified = get_follows(client, furrylist.did)
+    furrylist_verified_did = {i.did for i in furrylist_verified}
+
     print(f'Adding {len(furries)} furries to database')
 
     for user in furries.values():
@@ -206,7 +212,7 @@ def load() -> None:
                     'description': user.description,
                     'displayName': user.displayName,
                     'in_fox_feed': True and not muted,
-                    'in_vix_feed': is_girl(user.description) and not muted,
+                    'in_vix_feed': user.did in furrylist_verified_did and is_girl(user.description) and not muted,
                 },
                 'update': {
                     'did': user.did,
@@ -214,7 +220,7 @@ def load() -> None:
                     'description': user.description,
                     'displayName': user.displayName,
                     'in_fox_feed': True and not muted,
-                    'in_vix_feed': is_girl(user.description) and not muted,
+                    'in_vix_feed': user.did in furrylist_verified_did and is_girl(user.description) and not muted,
                 }
             }
         )
@@ -249,7 +255,8 @@ def load() -> None:
                         'update': {
                             'like_count': p.likeCount or 0,
                             'media_count': media_count,
-                            # 'text': p.record['text'],
+                            'mentions_fursuit': mentions_fursuit(p.record['text']),
+                            'text': p.record['text'],
                         }
                     }
                 )
