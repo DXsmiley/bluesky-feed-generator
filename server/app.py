@@ -13,6 +13,8 @@ from server.data_filter import operations_callback
 
 import server.load_known_furries
 
+from server.database import db
+
 from typing import Any
 from typing_extensions import Never
 
@@ -48,6 +50,17 @@ signal.signal(signal.SIGINT, sigint_handler)
 @app.route('/')
 def index():
     return open('index.html').read()
+
+
+@app.route('/stats')
+def stats():
+    users = db.actor.count()
+    posts = db.post.count()
+    return f'''
+        DB stats:<br>
+        {users} users<br>
+        {posts} posts
+    '''
 
 
 @app.route('/.well-known/did.json', methods=['GET'])

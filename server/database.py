@@ -2,11 +2,12 @@ import prisma
 from prisma.types import HttpConfig
 
 db = prisma.Prisma(
-    connect_timeout=5,
+    connect_timeout=10,
     auto_register=True,
     http=HttpConfig(
-        timeout=5
-    )
+        timeout=10,
+    ),
+    # log_queries=True
 )
 
 db.connect()

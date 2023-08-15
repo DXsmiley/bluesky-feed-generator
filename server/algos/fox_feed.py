@@ -1,4 +1,3 @@
-import math
 from collections import defaultdict
 from datetime import datetime
 from datetime import timedelta
@@ -58,7 +57,6 @@ def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[
             take=limit,
             where=where,
             order=[{'indexed_at': 'desc'}, {'cid': 'desc'}],
-            include={'author': True}
         )
 
         feed: List[FeedItem] = [{'post': post.uri} for post in posts]
