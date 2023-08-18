@@ -25,10 +25,11 @@ import server.algos.fox_feed
 from server.data_filter import mentions_fursuit
 
 
-def is_girl(description: Optional[str]) -> bool:
-    if description is None:
+def is_girl(user: ProfileView) -> bool:
+    text = ((user.displayName or '') + ' ' + (user.description or '')).strip()
+    if text == '':
         return False
-    desc = unicodedata.normalize('NFKC', description).replace('\n', ' ').lower()
+    desc = unicodedata.normalize('NFKC', text).replace('\n', ' ').lower()
     # he/him results in False (to catch cases of he/she/they)
     if re.search(r'\bhe\b', desc):
         return False
@@ -89,6 +90,13 @@ def get_follows(client: Client, did: str) -> Iterable[ProfileView]:
     while r.cursor:
         r = client.bsky.graph.get_follows({'actor': did, 'cursor': r.cursor})
         yield from r.follows
+
+
+def get_mutuals(client: Client, did: str) -> Iterable[ProfileView]:
+    following_dids = {i.did for i in get_follows(client, did)}
+    for i in get_followers(client, did):
+        if i.did in following_dids:
+            yield i
 
 
 def parse_datetime(s: str) -> datetime:
@@ -157,17 +165,19 @@ def load() -> None:
     only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
 
     # Accounts picked because they're large and the people following them are most likely furries
-    known_furries_handles = [
-        'puppyfox.bsky.social',
-        'furryli.st',
-        'braeburned.com',
-        '100racs.bsky.social',
-        'glitzyfox.bsky.social',
-        'itswolven.bsky.social',
-        'coolkoinu.bsky.social',
-        'gutterbunny.bsky.social',
-        'zoeydogy.bsky.social'
+    known_furries = [
+        (get_follows, 'puppyfox.bsky.social'),
+        (get_follows, 'furryli.st'),
+        (get_mutuals, 'braeburned.com'),
+        (get_mutuals, '100racs.bsky.social'),
+        (get_mutuals, 'glitzyfox.bsky.social'),
+        (get_mutuals, 'itswolven.bsky.social'),
+        (get_mutuals, 'coolkoinu.bsky.social'),
+        (get_mutuals, 'gutterbunny.bsky.social'),
+        (get_mutuals, 'zoeydogy.bsky.social')
     ]
+
+    known_furries_handles = {i for _, i in known_furries}
 
     # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
     print("Grabbing everyone that's on a mute list that I'm subscribed to")
@@ -185,19 +195,13 @@ def load() -> None:
 
     furries: Dict[str, ProfileView] = {}
 
-    for handle in known_furries_handles:
+    for get_associations, handle in known_furries:
         print('Known furry:', handle)
         profile = client.bsky.actor.get_profile({'actor': handle})
         print(f'({profile.followsCount} followers)')
         furries[profile.did] = simplify_profile_view(profile)
-        for follower in get_followers(client, profile.did):
-            furries[follower.did] = follower
-
-    # Slightly stronger filtering for the vix feed since it's picking up a lot of non-furry women
-    print('Getting furryli.st verified furries')
-    furrylist = client.bsky.actor.get_profile({'actor': 'furryli.st'})
-    furrylist_verified = get_follows(client, furrylist.did)
-    furrylist_verified_did = {i.did for i in furrylist_verified}
+        for other in get_associations(client, profile.did):
+            furries[other.did] = other
 
     print(f'Adding {len(furries)} furries to database')
 
@@ -212,7 +216,7 @@ def load() -> None:
                     'description': user.description,
                     'displayName': user.displayName,
                     'in_fox_feed': True and not muted,
-                    'in_vix_feed': user.did in furrylist_verified_did and is_girl(user.description) and not muted,
+                    'in_vix_feed': is_girl(user) and not muted,
                 },
                 'update': {
                     'did': user.did,
@@ -220,14 +224,14 @@ def load() -> None:
                     'description': user.description,
                     'displayName': user.displayName,
                     'in_fox_feed': True and not muted,
-                    'in_vix_feed': user.did in furrylist_verified_did and is_girl(user.description) and not muted,
+                    'in_vix_feed': is_girl(user) and not muted,
                 }
             }
         )
 
     print('Grabbing posts for database')
 
-    for user in sorted(furries.values(), key=lambda i: is_girl(i.description), reverse=True):
+    for user in sorted(furries.values(), key=lambda i: is_girl(i), reverse=True):
         try:
             print('Getting posts for', user.handle)
             for post in get_posts(client, user.did, after=only_posts_after, return_data_if_we_have_it_anyway=True):
