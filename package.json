@@ -1,0 +1,6 @@
+
+{
+    "name": "dummy-package-so-heroku-doesnt-complain",
+    "version": "0.0.0",
+    "author": "nobody"
+}
