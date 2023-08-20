@@ -41,3 +41,14 @@ model Post {
   author Actor @relation(fields: [authorId], references: [did])
   @@index([indexed_at])
 }
+
+model PostScore {
+  uri String
+  version Int
+  score Float
+  created_at DateTime
+  in_fox_feed Boolean // Always true for now
+  in_vix_feed Boolean // Might not be true
+  @@id([version, uri])
+  @@index([version, score(sort: Desc)])
+}

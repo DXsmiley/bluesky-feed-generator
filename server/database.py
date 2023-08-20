@@ -15,6 +15,7 @@ db.connect()
 Post = prisma.models.Post
 SubscriptionState = prisma.models.SubscriptionState
 Actor = prisma.models.Actor
+PostScore = prisma.models.PostScore
 
 # db = peewee.SqliteDatabase('feed_database.db')
 

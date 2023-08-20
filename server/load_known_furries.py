@@ -234,8 +234,13 @@ def load() -> None:
     for user in sorted(furries.values(), key=lambda i: is_girl(i), reverse=True):
         try:
             print('Getting posts for', user.handle)
-            for post in get_posts(client, user.did, after=only_posts_after, return_data_if_we_have_it_anyway=True):
+            for post in get_posts(client, user.did, after=only_posts_after):
                 p = post.post
+                reply_parent = None if post.reply is None else post.reply.parent.uri
+                reply_root = None if post.reply is None else post.reply.root.uri
+                # TODO: Probably remove this later!!! But for now we don't care about replies.
+                if reply_parent is not None or reply_root is not None:
+                    continue
                 media_count = (
                     0 if not isinstance(p.embed, images.View)
                     else len(p.embed.images)
@@ -247,8 +252,8 @@ def load() -> None:
                             'uri': p.uri,
                             'cid': p.cid,
                             # TODO: Fix these
-                            'reply_parent': None if post.reply is None else post.reply.parent.uri,
-                            'reply_root': None if post.reply is None else post.reply.root.uri,
+                            'reply_parent': reply_parent,
+                            'reply_root': reply_root,
                             'indexed_at': parse_datetime(p.record['createdAt']),
                             'like_count': p.likeCount or 0,
                             'authorId': p.author.did,

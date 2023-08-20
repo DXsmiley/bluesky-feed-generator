@@ -10,6 +10,7 @@ from flask import Flask, jsonify, request
 
 import server.algos
 from server.data_filter import operations_callback
+from server.algos.score_task import score_posts_forever
 
 import server.load_known_furries
 
@@ -30,6 +31,11 @@ load_furries_thread = threading.Thread(
     target=server.load_known_furries.load, args=()
 )
 load_furries_thread.start()
+
+score_posts_thread = threading.Thread(
+    target=score_posts_forever, args=()
+)
+score_posts_thread.start()
 
 
 algos = {
