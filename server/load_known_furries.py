@@ -168,7 +168,7 @@ def load() -> None:
     known_furries = [
         (get_follows, 'puppyfox.bsky.social'),
         (get_follows, 'furryli.st'),
-        (get_mutuals, 'braeburned.com'),
+        (get_mutuals, 'brae.gay'),
         (get_mutuals, '100racs.bsky.social'),
         (get_mutuals, 'glitzyfox.bsky.social'),
         (get_mutuals, 'itswolven.bsky.social'),
