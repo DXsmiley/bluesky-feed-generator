@@ -78,9 +78,9 @@ def operations_callback(ops: OpsByType) -> None:
     for like in ops['likes']['created']:
         uri = like['record']['subject']['uri']
         liked_post = Post.prisma().find_unique({'uri': uri})
-        # if liked_post is not None:
-        #     logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
-        Post.prisma().update(
+        if liked_post is not None:
+            # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
+            Post.prisma().update(
                 data={'like_count': liked_post.like_count + 1},
                 where={'uri': uri}
             )
