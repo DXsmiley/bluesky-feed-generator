@@ -1,4 +1,5 @@
 import sys
+import traceback
 from collections import defaultdict
 from datetime import datetime
 from datetime import timezone
@@ -133,7 +134,11 @@ def score_posts(highlight_handles: List[str]) -> None:
 
 def score_posts_forever():
     while True:
-        score_posts([])
+        try:
+            score_posts([])
+        except Exception:
+            cprint(f'Error during score_posts', color='red', force=True)
+            traceback.print_exc()
         sleep(30)
 
 
