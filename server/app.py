@@ -16,7 +16,10 @@ import server.load_known_furries
 
 from server.database import Database, make_database_connection
 
-from typing import AsyncIterator, Callable
+from typing import AsyncIterator, Callable, Coroutine, Any
+
+import traceback
+import termcolor
 
 
 algos = {
@@ -58,10 +61,19 @@ def create_web_application(db: Database) -> web.Application:
 
 
 def background_tasks(db: Database) -> Callable[[web.Application], AsyncIterator[None]]:
+    async def catch(name: str, c: Coroutine[Any, Any, None]) -> None:
+        try:
+            await c
+        except:
+            termcolor.cprint(f'--------[ Failure in {name} ]--------', 'red', force_color=True)
+            termcolor.cprint( 'Critical exception in background task', 'red', force_color=True)
+            termcolor.cprint('-------------------------------------', 'red', force_color=True)
+            traceback.print_exc()
+            termcolor.cprint('-------------------------------------', 'red', force_color=True)
     async def f(_: web.Application) -> AsyncIterator[None]:
-        asyncio.create_task(server.load_known_furries.load(db))
-        asyncio.create_task(score_posts_forever(db))
-        asyncio.create_task(data_stream.run(db, config.SERVICE_DID, operations_callback, None))
+        asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
+        asyncio.create_task(catch('SCORES', score_posts_forever(db)))
+        asyncio.create_task(catch('FIREHS', data_stream.run(db, config.SERVICE_DID, operations_callback, None)))
         yield
     return f
 
