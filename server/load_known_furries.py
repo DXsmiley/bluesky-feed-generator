@@ -9,7 +9,7 @@ from atproto import AsyncClient, models
 
 from publish_feed import HANDLE, PASSWORD
 
-from typing import Iterable, AsyncIterable, Optional, Dict, Tuple, List, Callable, Set
+from typing import Iterable, AsyncIterable, Optional, Dict, Tuple, List, Callable, Set, Union
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost
@@ -21,6 +21,7 @@ import unicodedata
 import re
 import traceback
 from termcolor import cprint
+from dataclasses import dataclass
 
 
 import server.algos.fox_feed
@@ -175,93 +176,48 @@ async def no_connections(_client: AsyncClient, _did: str) -> AsyncIterable[Profi
 KNOWN_FURRIES_AND_CONNECTIONS = List[Tuple[Callable[[AsyncClient, str], AsyncIterable[ProfileView]], str]]
 
 
-async def load(db: Database, given_known_furries: List[str] = []) -> None:
-    client = AsyncClient()
+@dataclass
+class StoreUser:
+    user: ProfileView
 
-    await client.login(HANDLE, PASSWORD)
 
-    only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
+@dataclass
+class StorePost:
+    post: FeedViewPost
 
-    verbose = bool(given_known_furries)
 
-    # Accounts picked because they're large and the people following them are most likely furries
-    default_known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
-        (get_follows, 'puppyfox.bsky.social'),
-        (get_follows, 'furryli.st'),
-        (get_mutuals, 'brae.gay'),
-        (get_mutuals, '100racs.bsky.social'),
-        (get_mutuals, 'glitzyfox.bsky.social'),
-        (get_mutuals, 'itswolven.bsky.social'),
-        (get_mutuals, 'coolkoinu.bsky.social'),
-        (get_mutuals, 'gutterbunny.bsky.social'),
-        (get_mutuals, 'zoeydogy.bsky.social')
-    ]
-
-    known_furries = [(no_connections, i) for i in given_known_furries] or default_known_furries
-
-    known_furries_handles = {i for _, i in known_furries}
-
-    # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
-    if not given_known_furries:
-        print("Grabbing everyone that's on a mute list that I'm subscribed to")
-        mutes = [i async for i in get_all_mutes(client)]
-    else:
-        mutes = []
-
-    # Make a set for fast lookup, also make a cutout for the known furries in case someone adds me to a mutelist
-    # without my knowledge or something lmao
-    muted_dids = {i.subject.did for _, i in mutes if i.subject.handle not in known_furries_handles}
-
-    # for lst, m in mutes:
-    #     print(lst.name, m.subject.handle, m.subject.displayName, ':', (m.subject.description or '').replace('\n', ' ')[:100])
-
-    print('Grabbing known furries...')
-
-    furries: Dict[str, ProfileView] = {}
-
-    for get_associations, handle in known_furries:
-        print('Known furry:', handle)
-        profile = await client.bsky.actor.get_profile({'actor': handle})
-        print(f'({profile.followsCount} followers)')
-        furries[profile.did] = simplify_profile_view(profile)
-        async for other in get_associations(client, profile.did):
-            furries[other.did] = other
-
-    print(f'Adding {len(furries)} furries to database')
-
-    for user in furries.values():
-        if verbose:
-            print('-', user.handle, user.displayName or '')
-        muted = user.did in muted_dids
-        await db.actor.upsert(
-            where={'did': user.did},
-            data={
-                'create': {
-                    'did': user.did,
-                    'handle': user.handle,
-                    'description': user.description,
-                    'displayName': user.displayName,
-                    'in_fox_feed': True and not muted,
-                    'in_vix_feed': is_girl(user) and not muted,
-                },
-                'update': {
-                    'did': user.did,
-                    'handle': user.handle,
-                    'description': user.description,
-                    'displayName': user.displayName,
-                    'in_fox_feed': True and not muted,
-                    'in_vix_feed': is_girl(user) and not muted,
-                }
-            }
-        )
-
-    print('Grabbing posts for database')
-
-    for user in sorted(furries.values(), key=lambda i: is_girl(i), reverse=True):
+async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Union[StoreUser, StorePost]]'):
+    while True:
+        item = await q.get()
         try:
-            if verbose:
-                print('Getting posts for', user.handle)
-            async for post in get_posts(client, user.did, after=only_posts_after):
+            if isinstance(item, StoreUser):
+                # print('Storing user', item.user.handle, '/', q.qsize())
+                user = item.user
+                muted = user.did in muted_dids
+                await db.actor.upsert(
+                    where={'did': user.did},
+                    data={
+                        'create': {
+                            'did': user.did,
+                            'handle': user.handle,
+                            'description': user.description,
+                            'displayName': user.displayName,
+                            'in_fox_feed': True and not muted,
+                            'in_vix_feed': is_girl(user) and not muted,
+                        },
+                        'update': {
+                            'did': user.did,
+                            'handle': user.handle,
+                            'description': user.description,
+                            'displayName': user.displayName,
+                            'in_fox_feed': True and not muted,
+                            'in_vix_feed': is_girl(user) and not muted,
+                        }
+                    }
+                )
+            elif isinstance(item, StorePost):
+                # print('Storing post', item.post.post.uri, '/', q.qsize())
+                post = item.post
                 p = post.post
                 reply_parent = None if post.reply is None else post.reply.parent.uri
                 reply_root = None if post.reply is None else post.reply.root.uri
@@ -272,8 +228,8 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
                     0 if not isinstance(p.embed, images.View)
                     else len(p.embed.images)
                 )
-                if verbose:
-                    print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
+                # if verbose:
+                #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
                 await db.post.upsert(
                     where={'uri': p.uri},
                     data={
@@ -298,11 +254,88 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
                         }
                     }
                 )
+            else:
+                pass
+        finally:
+            q.task_done()
+
+
+async def load(db: Database, given_known_furries: List[str] = []) -> None:
+    client = AsyncClient()
+
+    await client.login(HANDLE, PASSWORD)
+
+    only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
+
+    # verbose = bool(given_known_furries)
+
+    # Accounts picked because they're large and the people following them are most likely furries
+    default_known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
+        (get_follows, 'puppyfox.bsky.social'),
+        (get_follows, 'furryli.st'),
+        (get_mutuals, 'brae.gay'),
+        (get_mutuals, '100racs.bsky.social'),
+        (get_mutuals, 'glitzyfox.bsky.social'),
+        (get_mutuals, 'itswolven.bsky.social'),
+        (get_mutuals, 'coolkoinu.bsky.social'),
+        (get_mutuals, 'gutterbunny.bsky.social'),
+        (get_mutuals, 'zoeydogy.bsky.social')
+    ]
+
+    known_furries = [(no_connections, i) for i in given_known_furries] or default_known_furries
+
+    known_furries_handles = {i for _, i in known_furries}
+
+    # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
+    if not given_known_furries:
+        cprint("Grabbing everyone that's on a mute list that I'm subscribed to", 'blue', force_color=True)
+        mutes = [i async for i in get_all_mutes(client)]
+    else:
+        mutes = []
+
+    # Make a set for fast lookup, also make a cutout for the known furries in case someone adds me to a mutelist
+    # without my knowledge or something lmao
+    muted_dids = {i.subject.did for _, i in mutes if i.subject.handle not in known_furries_handles}
+
+    # for lst, m in mutes:
+    #     print(lst.name, m.subject.handle, m.subject.displayName, ':', (m.subject.description or '').replace('\n', ' ')[:100])
+
+    cprint('Grabbing known furries...', 'blue', force_color=True)
+
+    furries: Dict[str, ProfileView] = {}
+
+    q: 'asyncio.Queue[Union[StorePost, StoreUser]]' = asyncio.Queue()
+
+    worker = asyncio.create_task(store_to_db(muted_dids, db, q))
+
+    for get_associations, handle in known_furries:
+        # cprint(f'Known furry {handle}', 'blue', force_color=True)
+        profile = simplify_profile_view(await client.bsky.actor.get_profile({'actor': handle}))
+        if profile.did not in furries:
+            furries[profile.did] = profile
+            await q.put(StoreUser(profile))
+        async for other in get_associations(client, profile.did):
+            if other.did not in furries:
+                furries[other.did] = other
+                await q.put(StoreUser(other))
+
+    cprint('Grabbing posts for furries...', 'blue', force_color=True)
+
+    for user in sorted(furries.values(), key=lambda i: is_girl(i), reverse=True):
+        try:
+            # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
+            async for post in get_posts(client, user.did, after=only_posts_after):
+                await q.put(StorePost(post))
         except Exception:
             cprint(f'error while getting posts for user {user.handle}', color='red')
             traceback.print_exc()
 
-    cprint('Done scraping website :)', color='green')
+    await q.join()
+    worker.cancel()
+    await asyncio.gather(worker, return_exceptions=True)
+
+    cprint('Ok! Yeah! Woooo!', 'blue', force_color=True)
+    cprint('Done scraping website :)', 'green', force_color=True)
 
 async def main():
     db = await make_database_connection()
