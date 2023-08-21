@@ -71,6 +71,34 @@ def stats():
     '''
 
 
+# TODO: double check this
+def htmlescape(s: str) -> str:
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '')
+
+
+@app.route('/user-deets')
+def user_deets():
+    handle = request.args.get('handle')
+    if not isinstance(handle, str):
+        return 'requires parameter "handle"'
+    user = db.actor.find_first(where={'handle': handle})
+    if user is None:
+        return 'user not found'
+    posts = db.post.find_many(where={'authorId': user.did})
+    posts_html = ''.join([
+        f"<code>{i.uri}</code><br>{i.media_count}M {i.like_count}L // {htmlescape(i.text)}<br><br>"
+        for i in posts
+    ])
+    return f'''
+        {handle} {htmlescape(user.displayName or '')}<br>
+        Fox feed: {user.in_fox_feed}<br>
+        Vix feed: {user.in_vix_feed}<br>
+        <br>
+        {len(posts)} posts in db<br><br>
+        {posts_html}<br>
+    '''
+
+
 @app.route('/.well-known/did.json', methods=['GET'])
 def did_json():
     if not config.SERVICE_DID.endswith(config.HOSTNAME):
