@@ -137,7 +137,7 @@ def score_posts_forever():
         try:
             score_posts([])
         except Exception:
-            cprint(f'Error during score_posts', color='red', force=True)
+            cprint(f'Error during score_posts', color='red', force_color=True)
             traceback.print_exc()
         sleep(30)
 
