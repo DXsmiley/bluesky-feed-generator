@@ -1,9 +1,6 @@
 from . import fox_feed
 
-import os
-from typing import Dict, Callable, Optional, TypedDict, List
-
-Handler = Callable[[Optional[str], int], fox_feed.HandlerResult]
+from typing import TypedDict, List
 
 
 def environment_variable_name_for(record_name: str) -> str:
@@ -14,7 +11,7 @@ class AlgorithmDetails(TypedDict):
     record_name: str
     display_name: str
     description: str
-    handler: Handler
+    handler: fox_feed.HandlerType
 
 
 algo_details: List[AlgorithmDetails] = [

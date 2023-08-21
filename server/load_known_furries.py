@@ -1,14 +1,15 @@
+import asyncio
 from datetime import datetime, timezone, timedelta
 
 import server.monkeypatch
 
-from server.database import db
+from server.database import Database, make_database_connection
 
-from atproto import Client, models
+from atproto import AsyncClient, models
 
 from publish_feed import HANDLE, PASSWORD
 
-from typing import Iterable, Optional, Dict, Tuple, List, Callable, Set
+from typing import Iterable, AsyncIterable, Optional, Dict, Tuple, List, Callable, Set
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost
@@ -77,25 +78,29 @@ def simplify_profile_view(p: ProfileViewDetailed) -> ProfileView:
     )
 
 
-def get_followers(client: Client, did: str) -> Iterable[ProfileView]:
-    r = client.bsky.graph.get_followers({'actor': did})
-    yield from r.followers
+async def get_followers(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
+    r = await client.bsky.graph.get_followers({'actor': did})
+    for i in r.followers:
+        yield i
     while r.cursor:
-        r = client.bsky.graph.get_followers({'actor': did, 'cursor': r.cursor})
-        yield from r.followers
+        r = await client.bsky.graph.get_followers({'actor': did, 'cursor': r.cursor})
+        for i in r.followers:
+            yield i
 
 
-def get_follows(client: Client, did: str) -> Iterable[ProfileView]:
-    r = client.bsky.graph.get_follows({'actor': did})
-    yield from r.follows
+async def get_follows(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
+    r = await client.bsky.graph.get_follows({'actor': did})
+    for i in r.follows:
+        yield i
     while r.cursor:
-        r = client.bsky.graph.get_follows({'actor': did, 'cursor': r.cursor})
-        yield from r.follows
+        r = await client.bsky.graph.get_follows({'actor': did, 'cursor': r.cursor})
+        for i in r.follows:
+            yield i
 
 
-def get_mutuals(client: Client, did: str) -> Iterable[ProfileView]:
-    following_dids = {i.did for i in get_follows(client, did)}
-    for i in get_followers(client, did):
+async def get_mutuals(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
+    following_dids = {i.did async for i in get_follows(client, did)}
+    async for i in get_followers(client, did):
         if i.did in following_dids:
             yield i
 
@@ -117,17 +122,17 @@ def parse_datetime(s: str) -> datetime:
     raise ValueError(f'failed to parse datetime string "{s}"')
 
 
-def get_posts(
-    client: Client,
+async def get_posts(
+    client: AsyncClient,
     did: str,
     *,
     after: Optional[datetime]=None,
     include_reposts: bool=False,
     return_data_if_we_have_it_anyway: bool=False
-) -> Iterable[FeedViewPost]:
+) -> AsyncIterable[FeedViewPost]:
     r = None
     while r is None or r.cursor:
-        r = client.bsky.feed.get_author_feed({'actor': did, 'cursor': r and r.cursor})
+        r = await client.bsky.feed.get_author_feed({'actor': did, 'cursor': r and r.cursor})
         for i in r.feed:
             is_repost, indexed_at = (
                 (True, i.reason.indexedAt) if isinstance(i.reason, ReasonRepost)
@@ -141,34 +146,40 @@ def get_posts(
                 yield i
 
 
-def get_mute_lists(client: Client) -> Iterable[ListView]:
-    r = client.bsky.graph.get_list_mutes({})
-    yield from r.lists
+async def get_mute_lists(client: AsyncClient) -> AsyncIterable[ListView]:
+    r = await client.bsky.graph.get_list_mutes({})
+    for i in r.lists:
+        yield i
     while r.cursor:
-        r = client.bsky.graph.get_list_mutes({'cursor': r.cursor})
-        yield from r.lists
+        r = await client.bsky.graph.get_list_mutes({'cursor': r.cursor})
+        for i in r.lists:
+            yield i
 
 
-def get_all_mutes(client: Client) -> Iterable[Tuple[ListView, ListItemView]]:
-    lists = get_mute_lists(client)
-    for lst in lists:
-        r = client.bsky.graph.get_list({'list': lst.uri})
-        yield from ((lst, i) for i in r.items)
+async def get_all_mutes(client: AsyncClient) -> AsyncIterable[Tuple[ListView, ListItemView]]:
+    async for lst in get_mute_lists(client):
+        r = await client.bsky.graph.get_list({'list': lst.uri})
+        for i in r.items:
+            yield (lst, i)
         while r.cursor:
-            r = client.bsky.graph.get_list({'list': lst.uri, 'cursor': r.cursor})
-            yield from ((lst, i) for i in r.items)
+            r = await client.bsky.graph.get_list({'list': lst.uri, 'cursor': r.cursor})
+            for i in r.items:
+                yield (lst, i)
 
 
-def no_connections(_client: Client, _did: str) -> Iterable[ProfileView]:
-    return []
+async def no_connections(_client: AsyncClient, _did: str) -> AsyncIterable[ProfileView]:
+    return
+    yield
 
 
-KNOWN_FURRIES_AND_CONNECTIONS = List[Tuple[Callable[[Client, str], Iterable[ProfileView]], str]]
+KNOWN_FURRIES_AND_CONNECTIONS = List[Tuple[Callable[[AsyncClient, str], AsyncIterable[ProfileView]], str]]
 
 
-def load(given_known_furries: List[str] = []) -> None:
-    client = Client()
-    client.login(HANDLE, PASSWORD)
+async def load(db: Database, given_known_furries: List[str] = []) -> None:
+    client = AsyncClient()
+    await client.login(HANDLE, PASSWORD)
+
+    client.request._client.timeout = 10.0
 
     only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
 
@@ -194,7 +205,7 @@ def load(given_known_furries: List[str] = []) -> None:
     # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
     if not given_known_furries:
         print("Grabbing everyone that's on a mute list that I'm subscribed to")
-        mutes = list(get_all_mutes(client))
+        mutes = [i async for i in get_all_mutes(client)]
     else:
         mutes = []
 
@@ -211,10 +222,10 @@ def load(given_known_furries: List[str] = []) -> None:
 
     for get_associations, handle in known_furries:
         print('Known furry:', handle)
-        profile = client.bsky.actor.get_profile({'actor': handle})
+        profile = await client.bsky.actor.get_profile({'actor': handle})
         print(f'({profile.followsCount} followers)')
         furries[profile.did] = simplify_profile_view(profile)
-        for other in get_associations(client, profile.did):
+        async for other in get_associations(client, profile.did):
             furries[other.did] = other
 
     print(f'Adding {len(furries)} furries to database')
@@ -223,7 +234,7 @@ def load(given_known_furries: List[str] = []) -> None:
         if verbose:
             print('-', user.handle, user.displayName or '')
         muted = user.did in muted_dids
-        db.actor.upsert(
+        await db.actor.upsert(
             where={'did': user.did},
             data={
                 'create': {
@@ -251,7 +262,7 @@ def load(given_known_furries: List[str] = []) -> None:
         try:
             if verbose:
                 print('Getting posts for', user.handle)
-            for post in get_posts(client, user.did, after=only_posts_after):
+            async for post in get_posts(client, user.did, after=only_posts_after):
                 p = post.post
                 reply_parent = None if post.reply is None else post.reply.parent.uri
                 reply_root = None if post.reply is None else post.reply.root.uri
@@ -264,7 +275,7 @@ def load(given_known_furries: List[str] = []) -> None:
                 )
                 if verbose:
                     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
-                db.post.upsert(
+                await db.post.upsert(
                     where={'uri': p.uri},
                     data={
                         'create': {
@@ -294,6 +305,10 @@ def load(given_known_furries: List[str] = []) -> None:
 
     cprint('Done scraping website :)', color='green')
 
+async def main():
+    db = await make_database_connection()
+    await load(db, sys.argv[1:])
+
 if __name__ == '__main__':
-    load(sys.argv[1:])
+    asyncio.run(main())
 

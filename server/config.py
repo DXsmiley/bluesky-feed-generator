@@ -1,4 +1,7 @@
 import os
+import dotenv
+
+dotenv.load_dotenv()
 
 _service_did = os.environ.get('SERVICE_DID', None)
 _hostname = os.environ.get('HOSTNAME', None)

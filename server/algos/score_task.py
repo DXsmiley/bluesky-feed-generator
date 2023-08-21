@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import traceback
 from collections import defaultdict
@@ -6,10 +7,10 @@ from datetime import timezone
 from datetime import timedelta
 from time import sleep
 
-from server.database import Post, PostScore
+from server.database import Post, PostScore, Database, make_database_connection
 
 from typing_extensions import TypedDict
-from typing import Optional, List, Dict, Iterable, Tuple
+from typing import Optional, List, Dict, Iterable, Tuple, AsyncIterable
 import prisma.errors
 
 from termcolor import cprint
@@ -26,12 +27,12 @@ def decay_curve(x: float) -> float:
     )
 
 
-def load_all_posts(run_starttime: datetime) -> Iterable[Post]:
+async def load_all_posts(db: Database, run_starttime: datetime) -> AsyncIterable[Post]:
     # This is truely terrible
     chunk_size = 5000
     offset = 0
     while True:
-        posts = Post.prisma().find_many(
+        posts = await db.post.find_many(
             take=chunk_size,
             skip=offset,
             order=[{'indexed_at': 'desc'}, {'cid': 'desc'}],
@@ -47,7 +48,8 @@ def load_all_posts(run_starttime: datetime) -> Iterable[Post]:
         )
         if not posts:
             break
-        yield from posts
+        for i in posts:
+            yield i
         offset += chunk_size
 
 
@@ -70,14 +72,14 @@ def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterab
         vix_feed += i[1].author.in_vix_feed
 
 
-def score_posts(highlight_handles: List[str]) -> None:
+async def score_posts(db: Database, highlight_handles: List[str]) -> None:
 
     run_starttime = datetime.now(tz=timezone.utc)
     run_version = int(run_starttime.timestamp())
 
     cprint(f'Starting scoring round {run_version}', 'yellow', force_color=True)
     
-    all_posts = list(load_all_posts(run_starttime))
+    all_posts = [i async for i in load_all_posts(db, run_starttime)]
 
     cprint(f'Scoring round {run_version} has {len(all_posts)} posts', 'yellow', force_color=True)
 
@@ -101,7 +103,7 @@ def score_posts(highlight_handles: List[str]) -> None:
 
     will_store = list(take_first_n_per_feed(scored_posts, 2000))
 
-    cprint(f'Scoring round {run_version} has resulted in {len(will_store)} scored posts')
+    cprint(f'Scoring round {run_version} has resulted in {len(will_store)} scored posts', 'yellow', force_color=True)
 
     for rank, (score, post) in enumerate(will_store):
         if post.author is None:
@@ -109,7 +111,7 @@ def score_posts(highlight_handles: List[str]) -> None:
         if post.author.handle in highlight_handles:
             print(f'- {post.author.handle} {post.media_count} - {rank}::{score:.2f} - {post.text}')
         try:
-            PostScore.prisma().create(
+            await db.postscore.create(
                 data={
                     'uri': post.uri,
                     'version': run_version,
@@ -127,20 +129,25 @@ def score_posts(highlight_handles: List[str]) -> None:
 
     cprint(f'Scoring round {run_version} took {(run_endtime - run_starttime).seconds // 60} minutes', 'yellow', force_color=True)
 
-    PostScore.prisma().delete_many(
+    await db.postscore.delete_many(
         where={'created_at': {'lt': run_starttime - timedelta(hours=2)}}
     )
 
 
-def score_posts_forever():
+async def score_posts_forever(db: Database):
     while True:
         try:
-            score_posts([])
+            await score_posts(db, [])
         except Exception:
             cprint(f'Error during score_posts', color='red', force_color=True)
             traceback.print_exc()
         sleep(30)
 
 
+async def main():
+    db = await make_database_connection()
+    await score_posts(db, sys.argv[1:])
+
+
 if __name__ == '__main__':
-    score_posts(sys.argv[1:])
+    asyncio.run(main())

@@ -1,11 +1,12 @@
 from atproto import models
 
 from server.logger import logger
-from server.database import Post, Actor
 from server.data_stream import OpsByType
 
 from typing import List
 from prisma.types import PostCreateInput
+
+from server.database import Database
 
 
 def mentions_fursuit(text: str) -> bool:
@@ -13,7 +14,7 @@ def mentions_fursuit(text: str) -> bool:
     return 'fursuit' in text or 'murrsuit' in text
 
 
-def operations_callback(ops: OpsByType) -> None:
+async def operations_callback(db: Database, ops: OpsByType) -> None:
     # Here we can filter, process, run ML classification, etc.
     # After our feed alg we can save posts into our DB
     # Also, we should process deleted posts to remove them from our DB and keep it in sync
@@ -44,7 +45,11 @@ def operations_callback(ops: OpsByType) -> None:
         except AttributeError:
             continue
 
-        if Actor.prisma().find_unique({'did': created_post['author']}) is not None:
+        # We're not doing anything with replies right now so we'll just ignore them to save cycles
+        if reply_parent is not None or reply_root is not None:
+            continue
+
+        if (await db.actor.find_unique({'did': created_post['author']})) is not None:
             logger.info(f'New furry post (with images: {num_images}): {inlined_text}')
             post_dict: PostCreateInput = {
                 'uri': created_post['uri'],
@@ -60,7 +65,7 @@ def operations_callback(ops: OpsByType) -> None:
 
     posts_to_delete = [p['uri'] for p in ops['posts']['deleted']]
     if posts_to_delete:
-        deleted_rows = Post.prisma().delete_many(
+        deleted_rows = await db.post.delete_many(
             where={'uri': {'in': posts_to_delete}}
         )
         if deleted_rows:
@@ -68,23 +73,17 @@ def operations_callback(ops: OpsByType) -> None:
 
     if posts_to_create:
         for post in posts_to_create:
-            Post.prisma().create(post)
-        # Post.prisma().create_many(posts_to_create) # create_many not supported by SQLite
-        # with db.atomic():
-        #     for post_dict in posts_to_create:
-        #         Post.create(**post_dict)
-        # logger.info(f'Added to feed: {len(posts_to_create)}')
+            await db.post.create(post)
 
     # TODO: the .update is timing out here for some reason??
-    # for like in ops['likes']['created']:
-    #     uri = like['record']['subject']['uri']
-    #     liked_post = Post.prisma().find_unique({'uri': uri})
-    #     if liked_post is not None:
-    #         # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
-    #         Post.prisma().update(
-    #             data={'like_count': liked_post.like_count + 1},
-    #             where={'uri': uri}
-    #         )
+    for like in ops['likes']['created']:
+        uri = like['record']['subject']['uri']
+        liked_post = await db.post.find_unique({'uri': uri})
+        if liked_post is not None:
+            # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
+            await db.post.update(
+                data={'like_count': liked_post.like_count + 1},
+                where={'uri': uri}
+            )
 
     # TODO: Handle deleted likes lmao
-

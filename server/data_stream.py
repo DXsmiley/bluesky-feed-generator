@@ -1,11 +1,11 @@
 import threading
 import typing as t
-from typing import Callable, List, Optional, TypeVar, Generic
+from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic
 from typing_extensions import Never, TypedDict
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
-from atproto.firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
+from atproto.firehose import AsyncFirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto.xrpc_client.models import get_or_create, is_record_type
 from atproto.xrpc_client.models.base import ModelBase #, DotDict
 from atproto.xrpc_client.models.common import XrpcError
@@ -14,7 +14,7 @@ from atproto.xrpc_client.models.common import XrpcError
 from httpx import ConnectError
 
 from server.logger import logger
-from server.database import SubscriptionState
+from server.database import Database
 
 if t.TYPE_CHECKING:
     from atproto.firehose import MessageFrame
@@ -44,6 +44,9 @@ class OpsByType(TypedDict):
     reposts: OpsPosts[None]
     likes: OpsPosts[models.AppBskyFeedLike.Main]
     follows: OpsPosts[models.AppBskyGraphFollow.Main]
+
+
+OPERATIONS_CALLBACK_TYPE = Callable[[Database, OpsByType], Coroutine[Any, Any, None]]
 
 
 def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsByType:
@@ -98,10 +101,10 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
     return operation_by_type
 
 
-def run(name: str, operations_callback: Callable[[OpsByType], None], stream_stop_event: Optional[threading.Event] = None) -> None:
+async def run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[threading.Event] = None) -> None:
     while stream_stop_event is None or not stream_stop_event.is_set():
         try:
-            _run(name, operations_callback, stream_stop_event)
+            await _run(db, name, operations_callback, stream_stop_event)
         except FirehoseError as e:
             logger.info(f'Got FirehoseError: {e}')
             if e.__context__ and e.__context__.args:
@@ -114,27 +117,22 @@ def run(name: str, operations_callback: Callable[[OpsByType], None], stream_stop
     print('Finished run(...) due to stream stop event')
 
 
-def _run(name: str, operations_callback: Callable[[OpsByType], None], stream_stop_event: Optional[threading.Event] = None) -> None:
+async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[threading.Event] = None) -> None:
     print('Getting subscription state...')
-    state = SubscriptionState.prisma().find_first(
-        where={'service': {'equals': name}}
-    )
+    state = await db.subscriptionstate.find_first(where={'service': {'equals': name}})
     print('Done')
 
     params = None
     if state:
         params = models.ComAtprotoSyncSubscribeRepos.Params(cursor=state.cursor)
 
-    client = FirehoseSubscribeReposClient(params)
+    client = AsyncFirehoseSubscribeReposClient(params)
 
-    # if not state:
-    #     SubscriptionState.prisma().create(data={'service': name, 'cursor': 0})
-
-    def on_message_handler(message: 'MessageFrame') -> None:
+    async def on_message_handler(message: 'MessageFrame') -> None:
 
         # stop on next message if requested
         if stream_stop_event is not None and stream_stop_event.is_set():
-            client.stop()
+            await client.stop()
             return
 
         commit = parse_subscribe_repos_message(message)
@@ -144,13 +142,12 @@ def _run(name: str, operations_callback: Callable[[OpsByType], None], stream_sto
         # update stored state every ~20 events
         if commit.seq % 20 == 0:
             # ok so I think name should probably be unique or something????
-            SubscriptionState.prisma().update(
+            await db.subscriptionstate.update(
                 data={'cursor': commit.seq},
                 where={'service': name}
             )
-            # SubscriptionState.update(cursor=commit.seq).where(SubscriptionState.service == name).execute()
 
         ops = _get_ops_by_type(commit)
-        operations_callback(ops)
+        await operations_callback(db, ops)
 
-    client.start(on_message_handler)
+    await client.start(on_message_handler)

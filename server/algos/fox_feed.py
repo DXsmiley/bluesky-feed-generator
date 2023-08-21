@@ -1,9 +1,7 @@
-from collections import defaultdict
 from datetime import datetime
-from datetime import timezone
-from typing import Optional, List, Dict, Callable
+from typing import Optional, List, Callable, Coroutine, Any
 
-from server.database import Post, PostScore
+from server.database import Database
 
 from typing_extensions import TypedDict
 
@@ -22,9 +20,12 @@ class HandlerResult(TypedDict):
 from server.algos.score_task import LOOKBACK_HARD_LIMIT
 
 
-def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[str], int], HandlerResult]:
+HandlerType = Callable[[Database, Optional[str], int], Coroutine[Any, Any, HandlerResult]]
 
-    def handler(cursor: Optional[str], limit: int) -> HandlerResult:
+
+def chronological_feed(post_query_filter: PostWhereInput) -> HandlerType:
+
+    async def handler(db: Database, cursor: Optional[str], limit: int) -> HandlerResult:
 
         if cursor:
             cursor_parts = cursor.split('::')
@@ -51,7 +52,7 @@ def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[
             ]
         }
 
-        posts = Post.prisma().find_many(
+        posts = await db.post.find_many(
             take=limit,
             where=where,
             order=[{'indexed_at': 'desc'}, {'cid': 'desc'}],
@@ -68,12 +69,12 @@ def chronological_feed(post_query_filter: PostWhereInput) -> Callable[[Optional[
     return handler
 
 
-def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> Callable[[Optional[str], int], HandlerResult]:
+def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> HandlerType:
 
-    def handler(cursor: Optional[str], limit: int) -> HandlerResult:
+    async def handler(db: Database, cursor: Optional[str], limit: int) -> HandlerResult:
 
         if cursor is None:
-            cursor_max_version = PostScore.prisma().find_first(order={'version': 'desc'})
+            cursor_max_version = await db.postscore.find_first(order={'version': 'desc'})
             cursor_version = 0 if cursor_max_version is None else cursor_max_version.version
             cursor_offset = 0
         else:
@@ -81,7 +82,7 @@ def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> Callable[[Option
             cursor_version = int(cursor_version_str)
             cursor_offset = int(cursor_offset_str)
 
-        posts = PostScore.prisma().find_many(
+        posts = await db.postscore.find_many(
             take=limit,
             skip=cursor_offset,
             order=[{'score': 'desc'}],
