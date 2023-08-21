@@ -88,7 +88,7 @@ def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> Callable[[Option
             order=[{'score': 'desc'}],
             where={
                 'AND': [
-                    {'version': cursor_version},
+                    {'version': {'equals': cursor_version}},
                     post_query_filter,
                 ]
             }

@@ -62,10 +62,12 @@ def index():
 def stats():
     users = db.actor.count()
     posts = db.post.count()
+    postscores = db.postscore.count()
     return f'''
         DB stats:<br>
         {users} users<br>
-        {posts} posts
+        {posts} posts<br>
+        {postscores} postscores<br>
     '''
 
 

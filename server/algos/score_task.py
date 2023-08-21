@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Iterable, Tuple
 from termcolor import cprint
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
-SCORING_CURVE_INFLECTION_POINT = timedelta(hours=24)
+SCORING_CURVE_INFLECTION_POINT = timedelta(hours=12)
 
 
 def decay_curve(x: float) -> float:
@@ -55,6 +55,18 @@ def raw_score(run_starttime: datetime, p: Post) -> float:
         return (p.like_count + 5) * decay_curve(x)
 
 
+def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterable[Tuple[float, Post]]:
+    fox_feed = 0
+    vix_feed = 0
+    for i in posts:
+        if i[1].author is None:
+            continue
+        if (i[1].author.in_fox_feed and fox_feed < n) or (i[1].author.in_vix_feed and vix_feed < n):
+            yield i
+        fox_feed += i[1].author.in_fox_feed
+        vix_feed += i[1].author.in_vix_feed
+
+
 def score_posts() -> None:
 
     run_starttime = datetime.now(tz=timezone.utc)
@@ -81,9 +93,7 @@ def score_posts() -> None:
         reverse=True
     )
 
-    # We'll limit the number of posts in the feed because like...
-    # maybe it's not healthy to scroll too far
-    for score, post in scored_posts[:2000]:
+    for score, post in take_first_n_per_feed(scored_posts, 2000):
         PostScore.prisma().create(
             data={
                 'uri': post.uri,
@@ -98,6 +108,10 @@ def score_posts() -> None:
     run_endtime = datetime.now(tz=timezone.utc)
 
     cprint(f'Scoring round {run_version} took {(run_endtime - run_starttime).seconds // 60} minutes', 'cyan')
+
+    PostScore.prisma().delete_many(
+        where={'created_at': {'lt': run_starttime - timedelta(hours=2)}}
+    )
 
 
 def score_posts_forever():

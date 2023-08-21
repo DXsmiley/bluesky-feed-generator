@@ -233,7 +233,7 @@ def load() -> None:
 
     for user in sorted(furries.values(), key=lambda i: is_girl(i), reverse=True):
         try:
-            print('Getting posts for', user.handle)
+            # print('Getting posts for', user.handle)
             for post in get_posts(client, user.did, after=only_posts_after):
                 p = post.post
                 reply_parent = None if post.reply is None else post.reply.parent.uri

@@ -31,12 +31,18 @@ def operations_callback(ops: OpsByType) -> None:
         inlined_text = record.text.replace('\n', ' ')
 
         reply_parent = None
-        if record.reply and record.reply.parent.uri:
-            reply_parent = record.reply.parent.uri
+        try:
+            if record.reply and record.reply.parent.uri:
+                reply_parent = record.reply.parent.uri
+        except AttributeError:
+            continue
 
         reply_root = None
-        if record.reply and record.reply.root.uri:
-            reply_root = record.reply.root.uri
+        try:
+            if record.reply and record.reply.root.uri:
+                reply_root = record.reply.root.uri
+        except AttributeError:
+            continue
 
         if Actor.prisma().find_unique({'did': created_post['author']}) is not None:
             logger.info(f'New furry post (with images: {num_images}): {inlined_text}')
@@ -54,10 +60,11 @@ def operations_callback(ops: OpsByType) -> None:
 
     posts_to_delete = [p['uri'] for p in ops['posts']['deleted']]
     if posts_to_delete:
-        Post.prisma().delete_many(
+        deleted_rows = Post.prisma().delete_many(
             where={'uri': {'in': posts_to_delete}}
         )
-        logger.info(f'Deleted from feed: {len(posts_to_delete)}')
+        if deleted_rows:
+            logger.info(f'Deleted from feed: {deleted_rows}')
 
     if posts_to_create:
         for post in posts_to_create:
@@ -71,9 +78,9 @@ def operations_callback(ops: OpsByType) -> None:
     for like in ops['likes']['created']:
         uri = like['record']['subject']['uri']
         liked_post = Post.prisma().find_unique({'uri': uri})
-        if liked_post is not None:
-            logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
-            Post.prisma().update(
+        # if liked_post is not None:
+        #     logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
+        Post.prisma().update(
                 data={'like_count': liked_post.like_count + 1},
                 where={'uri': uri}
             )
