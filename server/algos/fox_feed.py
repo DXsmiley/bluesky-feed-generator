@@ -73,9 +73,8 @@ def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> Callable[[Option
     def handler(cursor: Optional[str], limit: int) -> HandlerResult:
 
         if cursor is None:
-            cursor_version = PostScore.prisma().find_first_or_raise(
-                order={'version': 'desc'}
-            ).version
+            cursor_max_version = PostScore.prisma().find_first(order={'version': 'desc'})
+            cursor_version = 0 if cursor_max_version is None else cursor_max_version.version
             cursor_offset = 0
         else:
             cursor_version_str, cursor_offset_str = cursor.split('::')
