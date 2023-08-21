@@ -5,7 +5,6 @@ from collections import defaultdict
 from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
-from time import sleep
 
 from server.database import Post, PostScore, Database, make_database_connection
 
@@ -141,7 +140,7 @@ async def score_posts_forever(db: Database):
         except Exception:
             cprint(f'Error during score_posts', color='red', force_color=True)
             traceback.print_exc()
-        sleep(30)
+        await asyncio.sleep(30)
 
 
 async def main():

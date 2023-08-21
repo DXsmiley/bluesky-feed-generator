@@ -177,9 +177,8 @@ KNOWN_FURRIES_AND_CONNECTIONS = List[Tuple[Callable[[AsyncClient, str], AsyncIte
 
 async def load(db: Database, given_known_furries: List[str] = []) -> None:
     client = AsyncClient()
-    await client.login(HANDLE, PASSWORD)
 
-    client.request._client.timeout = 10.0
+    await client.login(HANDLE, PASSWORD)
 
     only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
 

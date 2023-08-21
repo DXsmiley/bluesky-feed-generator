@@ -1,13 +1,12 @@
-import threading
+import asyncio
 import typing as t
 from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic
-from typing_extensions import Never, TypedDict
+from typing_extensions import TypedDict
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
 from atproto.firehose import AsyncFirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto.xrpc_client.models import get_or_create, is_record_type
-from atproto.xrpc_client.models.base import ModelBase #, DotDict
 from atproto.xrpc_client.models.common import XrpcError
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
@@ -101,7 +100,7 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
     return operation_by_type
 
 
-async def run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[threading.Event] = None) -> None:
+async def run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[None] = None) -> None:
     while stream_stop_event is None or not stream_stop_event.is_set():
         try:
             await _run(db, name, operations_callback, stream_stop_event)
@@ -117,7 +116,7 @@ async def run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_
     print('Finished run(...) due to stream stop event')
 
 
-async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[threading.Event] = None) -> None:
+async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[None] = None) -> None:
     print('Getting subscription state...')
     state = await db.subscriptionstate.find_first(where={'service': {'equals': name}})
     print('Done')
@@ -149,5 +148,6 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
 
         ops = _get_ops_by_type(commit)
         await operations_callback(db, ops)
+        await asyncio.sleep(0)
 
     await client.start(on_message_handler)
