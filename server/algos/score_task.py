@@ -9,6 +9,7 @@ from server.database import Post, PostScore
 
 from typing_extensions import TypedDict
 from typing import Optional, List, Dict, Iterable, Tuple
+import prisma.errors
 
 from termcolor import cprint
 
@@ -73,11 +74,11 @@ def score_posts(highlight_handles: List[str]) -> None:
     run_starttime = datetime.now(tz=timezone.utc)
     run_version = int(run_starttime.timestamp())
 
-    cprint(f'Starting scoring round {run_version}', 'cyan')
+    cprint(f'Starting scoring round {run_version}', 'yellow', force_color=True)
     
     all_posts = list(load_all_posts(run_starttime))
 
-    cprint(f'Scoring round {run_version} has {len(all_posts)} posts', 'cyan')
+    cprint(f'Scoring round {run_version} has {len(all_posts)} posts', 'yellow', force_color=True)
 
     posts_by_author: Dict[str, List[Tuple[float, Post]]] = defaultdict(list)
     for post in all_posts:
@@ -106,20 +107,24 @@ def score_posts(highlight_handles: List[str]) -> None:
             continue
         if post.author.handle in highlight_handles:
             print(f'- {post.author.handle} {post.media_count} - {rank}::{score:.2f} - {post.text}')
-        PostScore.prisma().create(
-            data={
-                'uri': post.uri,
-                'version': run_version,
-                'score': score,
-                'created_at': run_starttime,
-                'in_fox_feed': post.author.in_fox_feed,
-                'in_vix_feed': post.author.in_vix_feed,
-            }
-        )
+        try:
+            PostScore.prisma().create(
+                data={
+                    'uri': post.uri,
+                    'version': run_version,
+                    'score': score,
+                    'created_at': run_starttime,
+                    'in_fox_feed': post.author.in_fox_feed,
+                    'in_vix_feed': post.author.in_vix_feed,
+                }
+            )
+        except prisma.errors.UniqueViolationError:
+            uri_count = sum(i.uri == post.uri for _, i in will_store)
+            cprint(f'Unique PostScore violation error on {post.uri}::{run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
 
     run_endtime = datetime.now(tz=timezone.utc)
 
-    cprint(f'Scoring round {run_version} took {(run_endtime - run_starttime).seconds // 60} minutes', 'cyan')
+    cprint(f'Scoring round {run_version} took {(run_endtime - run_starttime).seconds // 60} minutes', 'yellow', force_color=True)
 
     PostScore.prisma().delete_many(
         where={'created_at': {'lt': run_starttime - timedelta(hours=2)}}
