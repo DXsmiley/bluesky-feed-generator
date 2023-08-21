@@ -94,10 +94,10 @@ def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> Callable[[Option
             }
         )
 
-        cursor = f'{cursor_version}::{cursor_offset + len(posts)}' if posts else None
+        new_cursor = f'{cursor_version}::{cursor_offset + len(posts)}' if posts else None
         feed: List[FeedItem] = [{'post': post.uri} for post in posts]
 
-        return {'cursor': cursor, 'feed': feed}
+        return {'cursor': new_cursor, 'feed': feed}
 
     return handler
 

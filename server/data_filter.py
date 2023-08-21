@@ -73,17 +73,18 @@ def operations_callback(ops: OpsByType) -> None:
         # with db.atomic():
         #     for post_dict in posts_to_create:
         #         Post.create(**post_dict)
-        logger.info(f'Added to feed: {len(posts_to_create)}')
+        # logger.info(f'Added to feed: {len(posts_to_create)}')
 
-    for like in ops['likes']['created']:
-        uri = like['record']['subject']['uri']
-        liked_post = Post.prisma().find_unique({'uri': uri})
-        if liked_post is not None:
-            # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
-            Post.prisma().update(
-                data={'like_count': liked_post.like_count + 1},
-                where={'uri': uri}
-            )
+    # TODO: the .update is timing out here for some reason??
+    # for like in ops['likes']['created']:
+    #     uri = like['record']['subject']['uri']
+    #     liked_post = Post.prisma().find_unique({'uri': uri})
+    #     if liked_post is not None:
+    #         # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
+    #         Post.prisma().update(
+    #             data={'like_count': liked_post.like_count + 1},
+    #             where={'uri': uri}
+    #         )
 
     # TODO: Handle deleted likes lmao
 

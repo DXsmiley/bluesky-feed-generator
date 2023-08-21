@@ -8,13 +8,14 @@ from atproto import Client, models
 
 from publish_feed import HANDLE, PASSWORD
 
-from typing import Iterable, Optional, Dict, Tuple
+from typing import Iterable, Optional, Dict, Tuple, List, Callable, Set
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
 from atproto.xrpc_client.models.app.bsky.embed import images
 
+import sys
 import unicodedata
 import re
 import traceback
@@ -158,14 +159,23 @@ def get_all_mutes(client: Client) -> Iterable[Tuple[ListView, ListItemView]]:
             yield from ((lst, i) for i in r.items)
 
 
-def load() -> None:
+def no_connections(_client: Client, _did: str) -> Iterable[ProfileView]:
+    return []
+
+
+KNOWN_FURRIES_AND_CONNECTIONS = List[Tuple[Callable[[Client, str], Iterable[ProfileView]], str]]
+
+
+def load(given_known_furries: List[str] = []) -> None:
     client = Client()
     client.login(HANDLE, PASSWORD)
 
     only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
 
+    verbose = bool(given_known_furries)
+
     # Accounts picked because they're large and the people following them are most likely furries
-    known_furries = [
+    default_known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
         (get_follows, 'puppyfox.bsky.social'),
         (get_follows, 'furryli.st'),
         (get_mutuals, 'brae.gay'),
@@ -177,12 +187,16 @@ def load() -> None:
         (get_mutuals, 'zoeydogy.bsky.social')
     ]
 
+    known_furries = [(no_connections, i) for i in given_known_furries] or default_known_furries
+
     known_furries_handles = {i for _, i in known_furries}
 
     # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
-    print("Grabbing everyone that's on a mute list that I'm subscribed to")
-
-    mutes = get_all_mutes(client)
+    if not given_known_furries:
+        print("Grabbing everyone that's on a mute list that I'm subscribed to")
+        mutes = list(get_all_mutes(client))
+    else:
+        mutes = []
 
     # Make a set for fast lookup, also make a cutout for the known furries in case someone adds me to a mutelist
     # without my knowledge or something lmao
@@ -206,6 +220,8 @@ def load() -> None:
     print(f'Adding {len(furries)} furries to database')
 
     for user in furries.values():
+        if verbose:
+            print('-', user.handle, user.displayName or '')
         muted = user.did in muted_dids
         db.actor.upsert(
             where={'did': user.did},
@@ -233,7 +249,8 @@ def load() -> None:
 
     for user in sorted(furries.values(), key=lambda i: is_girl(i), reverse=True):
         try:
-            # print('Getting posts for', user.handle)
+            if verbose:
+                print('Getting posts for', user.handle)
             for post in get_posts(client, user.did, after=only_posts_after):
                 p = post.post
                 reply_parent = None if post.reply is None else post.reply.parent.uri
@@ -245,6 +262,8 @@ def load() -> None:
                     0 if not isinstance(p.embed, images.View)
                     else len(p.embed.images)
                 )
+                if verbose:
+                    print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
                 db.post.upsert(
                     where={'uri': p.uri},
                     data={
@@ -276,5 +295,5 @@ def load() -> None:
     cprint('Done scraping website :)', color='green')
 
 if __name__ == '__main__':
-    load()
+    load(sys.argv[1:])
 

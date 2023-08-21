@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 from datetime import datetime
 from datetime import timezone
@@ -67,7 +68,7 @@ def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterab
         vix_feed += i[1].author.in_vix_feed
 
 
-def score_posts() -> None:
+def score_posts(highlight_handles: List[str]) -> None:
 
     run_starttime = datetime.now(tz=timezone.utc)
     run_version = int(run_starttime.timestamp())
@@ -80,7 +81,10 @@ def score_posts() -> None:
 
     posts_by_author: Dict[str, List[Tuple[float, Post]]] = defaultdict(list)
     for post in all_posts:
-        posts_by_author[post.authorId].append((raw_score(run_starttime, post), post))
+        rs = raw_score(run_starttime, post)
+        posts_by_author[post.authorId].append((rs, post))
+        if post.author is not None and post.author.handle in highlight_handles:
+            print(f'- {post.author.handle} {post.media_count} - {rs:.2f} - {post.text}')
 
     # Decay posts by the same author to avoid clogging the feed
     scored_posts = sorted(
@@ -93,7 +97,15 @@ def score_posts() -> None:
         reverse=True
     )
 
-    for score, post in take_first_n_per_feed(scored_posts, 2000):
+    will_store = list(take_first_n_per_feed(scored_posts, 2000))
+
+    cprint(f'Scoring round {run_version} has resulted in {len(will_store)} scored posts')
+
+    for rank, (score, post) in enumerate(will_store):
+        if post.author is None:
+            continue
+        if post.author.handle in highlight_handles:
+            print(f'- {post.author.handle} {post.media_count} - {rank}::{score:.2f} - {post.text}')
         PostScore.prisma().create(
             data={
                 'uri': post.uri,
@@ -116,5 +128,9 @@ def score_posts() -> None:
 
 def score_posts_forever():
     while True:
-        score_posts()
+        score_posts([])
         sleep(30)
+
+
+if __name__ == '__main__':
+    score_posts(sys.argv[1:])
