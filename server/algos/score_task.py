@@ -9,13 +9,16 @@ from datetime import timedelta
 from server.database import Post, PostScore, Database, make_database_connection
 
 from typing_extensions import TypedDict
-from typing import Optional, List, Dict, Iterable, Tuple, AsyncIterable
+from typing import Optional, List, Dict, Iterable, Tuple, AsyncIterable, Callable
 import prisma.errors
 
 from termcolor import cprint
+from dataclasses import dataclass
+
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
 SCORING_CURVE_INFLECTION_POINT = timedelta(hours=12)
+FRESH_CURVE_INFLECTION_POINT = timedelta(minutes=30)
 
 
 def decay_curve(x: float) -> float:
@@ -53,10 +56,17 @@ async def load_all_posts(db: Database, run_starttime: datetime) -> AsyncIterable
 
 
 def raw_score(run_starttime: datetime, p: Post) -> float:
-        # Number of likes, decaying over time
-        # initial decay is much slower than the hacker news algo, but also decays to zero
-        x = (run_starttime - p.indexed_at) / SCORING_CURVE_INFLECTION_POINT
-        return (p.like_count + 5) * decay_curve(x)
+    # Number of likes, decaying over time
+    # initial decay is much slower than the hacker news algo, but also decays to zero
+    x = (run_starttime - p.indexed_at) / SCORING_CURVE_INFLECTION_POINT
+    return (p.like_count + 5) * decay_curve(x)
+
+
+def raw_freshness(run_starttime: datetime, p: Post) -> float:
+    # Number of likes, decaying over time
+    # initial decay is much slower than the hacker news algo, but also decays to zero
+    x = (run_starttime - p.indexed_at) / FRESH_CURVE_INFLECTION_POINT
+    return (p.like_count ** 0.5 + 5) * decay_curve(x)
 
 
 def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterable[Tuple[float, Post]]:
@@ -71,25 +81,28 @@ def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterab
         vix_feed += i[1].author.in_vix_feed
 
 
-async def score_posts(db: Database, highlight_handles: List[str]) -> None:
+@dataclass
+class FeedParameters:
+    feed_name: str
+    filter: Callable[[Post], bool]
+    score_func: Callable[[datetime, Post], float]
 
-    run_starttime = datetime.now(tz=timezone.utc)
-    run_version = int(run_starttime.timestamp())
 
-    cprint(f'Starting scoring round {run_version}', 'yellow', force_color=True)
-    
-    all_posts = [i async for i in load_all_posts(db, run_starttime)]
+@dataclass
+class RunDetails:
+    candidate_posts: List[Post]
+    run_starttime: datetime
+    run_version: int
 
-    cprint(f'Scoring round {run_version} has {len(all_posts)} posts', 'yellow', force_color=True)
+
+async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
 
     posts_by_author: Dict[str, List[Tuple[float, Post]]] = defaultdict(list)
-    for post in all_posts:
-        rs = raw_score(run_starttime, post)
-        posts_by_author[post.authorId].append((rs, post))
-        if post.author is not None and post.author.handle in highlight_handles:
-            print(f'- {post.author.handle} {post.media_count} - {rs:.2f} - {post.text}')
+    for post in rd.candidate_posts:
+        if fp.filter(post):
+            rs = fp.score_func(rd.run_starttime, post)
+            posts_by_author[post.authorId].append((rs, post))
 
-    # Decay posts by the same author to avoid clogging the feed
     scored_posts = sorted(
         [
         (post_raw_score / (2 ** index), post)
@@ -100,29 +113,66 @@ async def score_posts(db: Database, highlight_handles: List[str]) -> None:
         reverse=True
     )
 
-    will_store = list(take_first_n_per_feed(scored_posts, 2000))
+    will_store = scored_posts[:2000]
 
-    cprint(f'Scoring round {run_version} has resulted in {len(will_store)} scored posts', 'yellow', force_color=True)
+    cprint(f'Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts', 'yellow', force_color=True)
 
-    for rank, (score, post) in enumerate(will_store):
+    for score, post in will_store:
         if post.author is None:
             continue
-        if post.author.handle in highlight_handles:
-            print(f'- {post.author.handle} {post.media_count} - {rank}::{score:.2f} - {post.text}')
         try:
             await db.postscore.create(
                 data={
                     'uri': post.uri,
-                    'version': run_version,
+                    'version': rd.run_version,
                     'score': score,
-                    'created_at': run_starttime,
-                    'in_fox_feed': post.author.in_fox_feed,
-                    'in_vix_feed': post.author.in_vix_feed,
+                    'created_at': rd.run_starttime,
+                    'feed_name': fp.feed_name,
                 }
             )
         except prisma.errors.UniqueViolationError:
             uri_count = sum(i.uri == post.uri for _, i in will_store)
-            cprint(f'Unique PostScore violation error on {post.uri}::{run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
+            cprint(f'Unique PostScore violation error on {post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
+
+
+ALGORITHMIC_FEEDS = [
+    FeedParameters(
+        feed_name='fox-feed',
+        filter=lambda p: p.author and p.author.in_fox_feed or False,
+        score_func=raw_score,
+    ),
+    FeedParameters(
+        feed_name='vix-feed',
+        filter=lambda p: p.author and p.author.in_vix_feed or False,
+        score_func=raw_score,
+    ),
+    FeedParameters(
+        feed_name='fresh-feed',
+        filter=lambda p: p.author and p.author.in_vix_feed or False,
+        score_func=raw_freshness,
+    ),
+]
+
+
+async def score_posts(db: Database, highlight_handles: List[str]) -> None:
+
+    run_starttime = datetime.now(tz=timezone.utc)
+    run_version = int(run_starttime.timestamp())
+
+    cprint(f'Starting scoring round {run_version}', 'yellow', force_color=True)
+
+    all_posts = [i async for i in load_all_posts(db, run_starttime)]
+
+    cprint(f'Scoring round {run_version} has {len(all_posts)} posts', 'yellow', force_color=True)
+
+    rd = RunDetails(
+        candidate_posts=all_posts,
+        run_starttime=run_starttime,
+        run_version=run_version
+    )
+
+    for algo in ALGORITHMIC_FEEDS:
+        await create_feed(db, algo, rd)
 
     run_endtime = datetime.now(tz=timezone.utc)
 

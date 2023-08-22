@@ -330,6 +330,8 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
             cprint(f'error while getting posts for user {user.handle}', color='red')
             traceback.print_exc()
 
+    cprint('Waiting for worker to finish...', 'blue', force_color=True)
+
     await q.join()
     worker.cancel()
     await asyncio.gather(worker, return_exceptions=True)

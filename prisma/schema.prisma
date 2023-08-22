@@ -45,10 +45,9 @@ model Post {
 model PostScore {
   uri String
   version Int
+  feed_name String
   score Float
   created_at DateTime
-  in_fox_feed Boolean // Always true for now
-  in_vix_feed Boolean // Might not be true
-  @@id([version, uri])
-  @@index([version, score(sort: Desc)])
+  @@id([feed_name, version, uri])
+  @@index([feed_name, version, score(sort: Desc)])
 }

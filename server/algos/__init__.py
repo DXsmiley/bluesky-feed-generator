@@ -32,5 +32,11 @@ algo_details: List[AlgorithmDetails] = [
         'display_name': '🦊 Fursuits',
         'description': '(in development)',
         'handler': fox_feed.fursuit_feed,
+    },
+    {
+        'record_name': 'fresh-feed',
+        'display_name': '🦊 Fresh',
+        'description': 'New and upcomming posts from furry bluesky.',
+        'handler': fox_feed.fresh_feed
     }
 ]

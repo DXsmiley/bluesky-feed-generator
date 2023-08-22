@@ -5,7 +5,7 @@ from server.database import Database
 
 from typing_extensions import TypedDict
 
-from prisma.types import PostWhereInput, PostScoreWhereInput
+from prisma.types import PostWhereInput, PostScoreWhereInput, PostScoreOrderByInput
 
 
 class FeedItem(TypedDict):
@@ -69,7 +69,7 @@ def chronological_feed(post_query_filter: PostWhereInput) -> HandlerType:
     return handler
 
 
-def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> HandlerType:
+def algorithmic_feed(feed_name: str) -> HandlerType:
 
     async def handler(db: Database, cursor: Optional[str], limit: int) -> HandlerResult:
 
@@ -85,11 +85,11 @@ def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> HandlerType:
         posts = await db.postscore.find_many(
             take=limit,
             skip=cursor_offset,
-            order=[{'score': 'desc'}],
+            order={'score': 'desc'},
             where={
                 'AND': [
                     {'version': {'equals': cursor_version}},
-                    post_query_filter,
+                    {'feed_name': {'equals': feed_name}},
                 ]
             }
         )
@@ -102,8 +102,9 @@ def algorithmic_feed(post_query_filter: PostScoreWhereInput) -> HandlerType:
     return handler
 
 
-fox_feed = algorithmic_feed({'in_fox_feed': {'equals': True}})
-vix_feed = algorithmic_feed({'in_vix_feed': {'equals': True}})
+fox_feed = algorithmic_feed('fox-feed')
+vix_feed = algorithmic_feed('vix-feed')
+fresh_feed = algorithmic_feed('fresh-feed')
 
 fursuit_feed = chronological_feed(
     {
