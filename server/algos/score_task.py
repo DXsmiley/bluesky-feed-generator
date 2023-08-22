@@ -66,7 +66,7 @@ def raw_freshness(run_starttime: datetime, p: Post) -> float:
     # Number of likes, decaying over time
     # initial decay is much slower than the hacker news algo, but also decays to zero
     x = (run_starttime - p.indexed_at) / FRESH_CURVE_INFLECTION_POINT
-    return (p.like_count ** 0.5 + 5) * decay_curve(x)
+    return (p.like_count ** 0.2 + 5) * decay_curve(x)
 
 
 def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterable[Tuple[float, Post]]:

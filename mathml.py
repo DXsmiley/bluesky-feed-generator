@@ -47,6 +47,7 @@ def m_(s: NodeType):
 
 alpha = i_('α')
 beta = i_('β')
+gamma = i_('γ')
 T = i_('T')
 L = i_('L')
 x = i_('x')
@@ -54,7 +55,7 @@ y = i_('y')
 
 m_(x == T / beta)
 
-m_(y == p_(L + 5) * if_([
+m_(y == p_(L ** gamma + 5) * if_([
     (1 / (x ** alpha), x >= 1),
     (2 - 1 / (p_(2 - x) ** alpha), x < 1),
 ]))
