@@ -23,6 +23,14 @@ from server.algos.score_task import LOOKBACK_HARD_LIMIT
 HandlerType = Callable[[Database, Optional[str], int], Coroutine[Any, Any, HandlerResult]]
 
 
+PLACEHOLDER_FEED: List[FeedItem] = [
+    # https://bsky.app/profile/amaryllis.no/post/3k5hl44adih2z
+    {'post': 'at://did:plc:ilmue7bf43hluzpuuevcb6cw/app.bsky.feed.post/3k5hl44adih2z'},
+    # https://bsky.app/profile/puppyfox.bsky.social/post/3k3uyn6gkym24
+    {'post': 'at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.post/3k3uyn6gkym24'},
+]
+
+
 def chronological_feed(post_query_filter: PostWhereInput) -> HandlerType:
 
     async def handler(db: Database, cursor: Optional[str], limit: int) -> HandlerResult:
@@ -96,7 +104,7 @@ def algorithmic_feed(feed_name: str) -> HandlerType:
         )
 
         new_cursor = f'{cursor_version}::{cursor_offset + len(posts)}' if posts else None
-        feed: List[FeedItem] = [{'post': post.uri} for post in posts]
+        feed: List[FeedItem] = [{'post': post.uri} for post in posts] or PLACEHOLDER_FEED
 
         return {'cursor': new_cursor, 'feed': feed}
 
