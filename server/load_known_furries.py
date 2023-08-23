@@ -12,7 +12,7 @@ from publish_feed import HANDLE, PASSWORD
 from typing import Iterable, AsyncIterable, Optional, Dict, Tuple, List, Callable, Set, Union
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
-from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost
+from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost, GeneratorView
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
 from atproto.xrpc_client.models.app.bsky.embed import images
 
@@ -110,6 +110,36 @@ async def get_mutuals(client: AsyncClient, did: str) -> AsyncIterable[ProfileVie
             yield i
 
 
+async def get_feeds(client: AsyncClient, did: str) -> AsyncIterable[GeneratorView]:
+    r = await client.bsky.feed.get_actor_feeds({'actor': did})
+    for i in r.feeds:
+        yield i
+    while r.cursor is not None:
+        r = await client.bsky.feed.get_actor_feeds({'actor': did, 'cursor': r.cursor})
+        for i in r.feeds:
+            yield i
+
+
+async def get_people_who_like_the_feed(client: AsyncClient, uri: str) -> AsyncIterable[ProfileView]:
+    r = await client.bsky.feed.get_likes({'uri': uri})
+    for i in r.likes:
+        yield i.actor
+    while r.cursor is not None:
+        r = await client.bsky.feed.get_likes({'uri': uri, 'cursor': r.cursor})
+        for i in r.likes:
+            yield i.actor
+
+
+async def get_people_who_like_your_feeds(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
+    seen: Set[str] = set()
+    async for feed in get_feeds(client, did):
+        async for user in get_people_who_like_the_feed(client, feed.uri):
+            if user.did not in seen:
+                seen.add(user.did)
+                # print(user.handle, user.displayName)
+                yield user
+
+
 def parse_datetime(s: str) -> datetime:
     formats = [
         r'%Y-%m-%dT%H:%M:%S.%fZ',
@@ -161,15 +191,30 @@ async def get_mute_lists(client: AsyncClient) -> AsyncIterable[ListView]:
             yield i
 
 
-async def get_all_mutes(client: AsyncClient) -> AsyncIterable[Tuple[ListView, ListItemView]]:
+async def _get_all_mutes(client: AsyncClient) -> AsyncIterable[Tuple[Optional[ListView], ProfileView]]:
+    # Direct, manual mutes
+    r = await client.bsky.graph.get_mutes()
+    for i in r.mutes:
+        yield (None, i)
+    while r.cursor is not None:
+        r = await client.bsky.graph.get_mutes({'cursor': r.cursor})
+        for i in r.mutes:
+            yield (None, i)
+    # Mutes from a mute list
     async for lst in get_mute_lists(client):
         r = await client.bsky.graph.get_list({'list': lst.uri})
         for i in r.items:
-            yield (lst, i)
+            yield (lst, i.subject)
         while r.cursor:
             r = await client.bsky.graph.get_list({'list': lst.uri, 'cursor': r.cursor})
             for i in r.items:
-                yield (lst, i)
+                yield (lst, i.subject)
+
+
+async def get_all_mutes(client: AsyncClient) -> AsyncIterable[Tuple[Optional[ListView], ProfileView]]:
+    async for i, j in _get_all_mutes(client):
+        # print('>', j.handle, j.displayName)
+        yield (i, j)
 
 
 async def no_connections(_client: AsyncClient, _did: str) -> AsyncIterable[ProfileView]:
@@ -275,6 +320,7 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
 
     # Accounts picked because they're large and the people following them are most likely furries
     default_known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
+        (get_people_who_like_your_feeds, 'puppyfox.bsky.social'),
         (get_follows, 'puppyfox.bsky.social'),
         (get_follows, 'furryli.st'),
         (get_mutuals, 'brae.gay'),
@@ -283,7 +329,7 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
         (get_mutuals, 'itswolven.bsky.social'),
         (get_mutuals, 'coolkoinu.bsky.social'),
         (get_mutuals, 'gutterbunny.bsky.social'),
-        (get_mutuals, 'zoeydogy.bsky.social')
+        (get_mutuals, 'zoeydogy.bsky.social'),
     ]
 
     known_furries = [(no_connections, i) for i in given_known_furries] or default_known_furries
@@ -292,14 +338,14 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
 
     # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
     if not given_known_furries:
-        cprint("Grabbing everyone that's on a mute list that I'm subscribed to", 'blue', force_color=True)
+        cprint("Grabbing everyone that I've muted", 'blue', force_color=True)
         mutes = [i async for i in get_all_mutes(client)]
     else:
         mutes = []
 
     # Make a set for fast lookup, also make a cutout for the known furries in case someone adds me to a mutelist
     # without my knowledge or something lmao
-    muted_dids = {i.subject.did for _, i in mutes if i.subject.handle not in known_furries_handles}
+    muted_dids = {i.did for _, i in mutes if i.handle not in known_furries_handles}
 
     # for lst, m in mutes:
     #     print(lst.name, m.subject.handle, m.subject.displayName, ':', (m.subject.description or '').replace('\n', ' ')[:100])
