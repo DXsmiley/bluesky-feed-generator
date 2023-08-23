@@ -29,40 +29,44 @@ from server.data_filter import mentions_fursuit
 
 
 def is_girl(user: ProfileView) -> bool:
-    text = ((user.displayName or '') + ' ' + (user.description or '')).strip()
-    if text == '':
-        return False
-    desc = unicodedata.normalize('NFKC', text).replace('\n', ' ').lower()
-    # he/him results in False (to catch cases of he/she/they)
-    if re.search(r'\bhe\b', desc):
-        return False
-    if re.search(r'\bhim\b', desc):
-        return False
-    # Emoji
-    if '♀️' in desc or '⚢' in desc:
-        return True
-    # look for cases of "25F" or something similar
-    if re.search(r'\b\d\df\b', desc):
-        return True
-    # singular words
-    words = [
-        'she',
-        'her',
-        'f',
-        'woman',
-        'female',
-        'girl',
-        'transgirl',
-        'tgirl',
-        'transwoman',
-        'puppygirl',
-        'doggirl',
-    ]
-    for w in words:
-        if re.search(r'\b' + w + r'\b', desc):
+    if user.description is not None:
+        desc = unicodedata.normalize('NFKC', user.description).replace('\n', ' ').lower()
+        # he/him results in False (to catch cases of he/she/they)
+        if re.search(r'\bhe\b', desc):
+            return False
+        if re.search(r'\bhim\b', desc):
+            return False
+        # Emoji
+        if '♀️' in desc or '⚢' in desc:
             return True
-    # they/them intentionally not considered
-    # if we've seen nothing by now we bail
+        # look for cases of "25F" or something similar
+        if re.search(r'\b\d\df\b', desc):
+            return True
+        # singular words
+        words = [
+            'she',
+            'her',
+            'f',
+            'woman',
+            'female',
+            'girl',
+            'transgirl',
+            'tgirl',
+            'transwoman',
+            'puppygirl',
+            'doggirl',
+            'lesbian',
+            'sapphic',
+        ]
+        for w in words:
+            if re.search(r'\b' + w + r'\b', desc):
+                return True
+        # they/them intentionally not considered
+        # if we've seen nothing by now we bail
+    if user.displayName is not None:
+        if '♀️' in user.displayName or '⚢' in user.displayName:
+            return True
+    # Found nothing :(
     return False
 
 
@@ -327,7 +331,7 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
             async for post in get_posts(client, user.did, after=only_posts_after):
                 await q.put(StorePost(post))
         except Exception:
-            cprint(f'error while getting posts for user {user.handle}', color='red')
+            cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
             traceback.print_exc()
 
     cprint('Waiting for worker to finish...', 'blue', force_color=True)
