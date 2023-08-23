@@ -23,7 +23,7 @@ from server.algos.score_task import LOOKBACK_HARD_LIMIT
 HandlerType = Callable[[Database, Optional[str], int], Coroutine[Any, Any, HandlerResult]]
 
 
-NO_MORE_POSTS_CURSOR = 'no-more-posts'
+NO_MORE_POSTS_CURSOR = ''
 
 PLACEHOLDER_FEED: List[FeedItem] = [
     # https://bsky.app/profile/amaryllis.no/post/3k5hl44adih2z
