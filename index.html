@@ -9,9 +9,9 @@
             box-sizing: border-box;
         }
         body {
-            font-family: Verdana, Geneva, Tahoma, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
             text-align: justify;
-            line-height: 1.8em;
+            line-height: 1.5em;
             margin: 0px;
         }
         .top {
@@ -34,7 +34,7 @@
             display: inline-block;
         }
         .main {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0px auto;
             padding: 20px 40px 80px 40px;
         }
@@ -55,8 +55,10 @@
             border-spacing: 0;
         }
         td, th {
-            padding-left: 5px;
-            padding-right: 5px;
+            padding-top: 3px;
+            padding-bottom: 3px;
+            padding-left: 7px;
+            padding-right: 7px;
             margin: 0px;
         }
         th:nth-child(even), td:nth-child(even) {
@@ -76,14 +78,17 @@
     </div>
     <div class="main">
         <h2>Available Feeds</h2>
-        <h3><a href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fox-feed">Main Feed</a></h3>
-        <p>Top recent posts by all furries, replies not included.</p>
-        <h3><a href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/vix-feed">Vixen Feed</a></h3>
-        <p>Top recent posts by all furry women, replies not included.</p>
+        <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fox-feed">Main Feed</a></h3>
+        <p>Top recent posts by all furries.</p>
+        <p>Contains SFW and NSFW content, use your in-client settings to filter it.</p>
+        <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/vix-feed">Vixen Feed</a></h3>
+        <p>Top recent posts by all furry women.</p>
         <p>I created this because I noticed other furry feeds (both chronological and algorithmic) on bluesky were overwhelmingly dominated by men.</p>
-        <h3><a href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fresh-feed">Fresh Feed</a></h3>
+        <p>Contains SFW and NSFW content, use your in-client settings to filter it.</p>
+        <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fresh-feed">Fresh Feed</a></h3>
         <p>New and upcomming posts by furry women.</p>
-        <p>This feed prioritises the newness of posts over the number of likes. It's faster-moving but may have less interesting posts.</p>
+        <p>This feed prioritises the newness of posts over the number of likes. It's much faster-moving and more chaotic.</p>
+        <p>Contains SFW and NSFW content, use your in-client settings to filter it.</p>
         <h2>What Is Included On The Feed?</h2>
         <p>Only posts from the last 96 hours (~4 days) are considered.</p>
         <p>Currently, "furries" constitutes anybody who is followed by at least one of a short list of major furry accounts. It does not dynamically update, and ends up including some people who are not furries. Additionally, small number of mutelists is used to exclude accounts from the feeds. This is a temporary solution before something better is built.</p>
