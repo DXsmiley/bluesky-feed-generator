@@ -17,6 +17,7 @@ model SubscriptionState {
   cursor Int
 }
 
+
 model Actor {
   did String @id
   handle String
@@ -24,6 +25,8 @@ model Actor {
   displayName String?
   in_fox_feed Boolean
   in_vix_feed Boolean
+  gender_label_auto String @default("unknown")
+  gender_label_manual String @default("not-looked-at")
   posts Post[]
 }
 

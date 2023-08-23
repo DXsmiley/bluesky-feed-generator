@@ -9,7 +9,7 @@ from atproto import AsyncClient, models
 
 from publish_feed import HANDLE, PASSWORD
 
-from typing import Iterable, AsyncIterable, Optional, Dict, Tuple, List, Callable, Set, Union
+from typing import Iterable, AsyncIterable, Optional, Dict, Tuple, List, Callable, Set, Union, Literal
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost, GeneratorView
@@ -26,48 +26,7 @@ from dataclasses import dataclass
 
 import server.algos.fox_feed
 from server.data_filter import mentions_fursuit
-
-
-def is_girl(user: ProfileView) -> bool:
-    if user.description is not None:
-        desc = unicodedata.normalize('NFKC', user.description).replace('\n', ' ').lower()
-        # he/him results in False (to catch cases of he/she/they)
-        if re.search(r'\bhe\b', desc):
-            return False
-        if re.search(r'\bhim\b', desc):
-            return False
-        # Emoji
-        if '♀️' in desc or '⚢' in desc:
-            return True
-        # look for cases of "25F" or something similar
-        if re.search(r'\b\d\df\b', desc):
-            return True
-        # singular words
-        words = [
-            'she',
-            'her',
-            'f',
-            'woman',
-            'female',
-            'girl',
-            'transgirl',
-            'tgirl',
-            'transwoman',
-            'puppygirl',
-            'doggirl',
-            'lesbian',
-            'sapphic',
-        ]
-        for w in words:
-            if re.search(r'\b' + w + r'\b', desc):
-                return True
-        # they/them intentionally not considered
-        # if we've seen nothing by now we bail
-    if user.displayName is not None:
-        if '♀️' in user.displayName or '⚢' in user.displayName:
-            return True
-    # Found nothing :(
-    return False
+from server.gender import guess_gender_reductive
 
 
 def simplify_profile_view(p: ProfileViewDetailed) -> ProfileView:
@@ -243,6 +202,7 @@ async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Unio
                 # print('Storing user', item.user.handle, '/', q.qsize())
                 user = item.user
                 muted = user.did in muted_dids
+                gender = guess_gender_reductive(user.description) if user.description is not None else 'unknown'
                 await db.actor.upsert(
                     where={'did': user.did},
                     data={
@@ -251,16 +211,18 @@ async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Unio
                             'handle': user.handle,
                             'description': user.description,
                             'displayName': user.displayName,
-                            'in_fox_feed': True and not muted,
-                            'in_vix_feed': is_girl(user) and not muted,
+                            'in_fox_feed': not muted,
+                            'in_vix_feed': (gender == 'girl') and not muted,
+                            'gender_label_auto': gender,
                         },
                         'update': {
                             'did': user.did,
                             'handle': user.handle,
                             'description': user.description,
                             'displayName': user.displayName,
-                            'in_fox_feed': True and not muted,
-                            'in_vix_feed': is_girl(user) and not muted,
+                            'in_fox_feed': not muted,
+                            'in_vix_feed': (gender == 'girl') and not muted,
+                            'gender_label_auto': gender,
                         }
                     }
                 )
@@ -309,7 +271,7 @@ async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Unio
             q.task_done()
 
 
-async def load(db: Database, given_known_furries: List[str] = []) -> None:
+async def load(db: Database, given_known_furries: List[str] = [], load_posts: bool = True) -> None:
     client = AsyncClient()
 
     await client.login(HANDLE, PASSWORD)
@@ -369,16 +331,16 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
                 furries[other.did] = other
                 await q.put(StoreUser(other))
 
-    cprint('Grabbing posts for furries...', 'blue', force_color=True)
-
-    for user in sorted(furries.values(), key=lambda i: is_girl(i), reverse=True):
-        try:
-            # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
-            async for post in get_posts(client, user.did, after=only_posts_after):
-                await q.put(StorePost(post))
-        except Exception:
-            cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
-            traceback.print_exc()
+    if load_posts:
+        cprint('Grabbing posts for furries...', 'blue', force_color=True)
+        for user in sorted(furries.values(), key=lambda i: (guess_gender_reductive(i.description or '') == 'girl'), reverse=True):
+            try:
+                # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
+                async for post in get_posts(client, user.did, after=only_posts_after):
+                    await q.put(StorePost(post))
+            except Exception:
+                cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
+                traceback.print_exc()
 
     cprint('Waiting for worker to finish...', 'blue', force_color=True)
 
@@ -391,7 +353,7 @@ async def load(db: Database, given_known_furries: List[str] = []) -> None:
 
 async def main():
     db = await make_database_connection()
-    await load(db, sys.argv[1:])
+    await load(db, sys.argv[1:], load_posts=False)
 
 if __name__ == '__main__':
     asyncio.run(main())
