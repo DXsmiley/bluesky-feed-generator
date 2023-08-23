@@ -74,7 +74,10 @@ def algorithmic_feed(feed_name: str) -> HandlerType:
     async def handler(db: Database, cursor: Optional[str], limit: int) -> HandlerResult:
 
         if cursor is None:
-            cursor_max_version = await db.postscore.find_first(order={'version': 'desc'})
+            cursor_max_version = await db.postscore.find_first(
+                where={'feed_name': feed_name},
+                order={'version': 'desc'},
+            )
             cursor_version = 0 if cursor_max_version is None else cursor_max_version.version
             cursor_offset = 0
         else:
@@ -87,10 +90,8 @@ def algorithmic_feed(feed_name: str) -> HandlerType:
             skip=cursor_offset,
             order={'score': 'desc'},
             where={
-                'AND': [
-                    {'version': {'equals': cursor_version}},
-                    {'feed_name': {'equals': feed_name}},
-                ]
+                'version': cursor_version,
+                'feed_name': feed_name,
             }
         )
 
