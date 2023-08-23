@@ -23,6 +23,8 @@ from server.algos.score_task import LOOKBACK_HARD_LIMIT
 HandlerType = Callable[[Database, Optional[str], int], Coroutine[Any, Any, HandlerResult]]
 
 
+NO_MORE_POSTS_CURSOR = 'no-more-posts'
+
 PLACEHOLDER_FEED: List[FeedItem] = [
     # https://bsky.app/profile/amaryllis.no/post/3k5hl44adih2z
     {'post': 'at://did:plc:ilmue7bf43hluzpuuevcb6cw/app.bsky.feed.post/3k5hl44adih2z'},
@@ -88,6 +90,8 @@ def algorithmic_feed(feed_name: str) -> HandlerType:
             )
             cursor_version = 0 if cursor_max_version is None else cursor_max_version.version
             cursor_offset = 0
+        elif cursor == NO_MORE_POSTS_CURSOR:
+            return {'cursor': NO_MORE_POSTS_CURSOR, 'feed': []}
         else:
             cursor_version_str, cursor_offset_str = cursor.split('::')
             cursor_version = int(cursor_version_str)
@@ -103,8 +107,8 @@ def algorithmic_feed(feed_name: str) -> HandlerType:
             }
         )
 
-        new_cursor = f'{cursor_version}::{cursor_offset + len(posts)}' if posts else None
-        feed: List[FeedItem] = [{'post': post.uri} for post in posts] or PLACEHOLDER_FEED
+        new_cursor = f'{cursor_version}::{cursor_offset + len(posts)}' if posts else NO_MORE_POSTS_CURSOR
+        feed: List[FeedItem] = [{'post': post.uri} for post in posts] if posts else PLACEHOLDER_FEED
 
         return {'cursor': new_cursor, 'feed': feed}
 
