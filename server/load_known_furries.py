@@ -203,14 +203,13 @@ class StorePost:
     post: FeedViewPost
 
 
-async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Union[StoreUser, StorePost]]'):
+async def store_to_db_task(db: Database, q: 'asyncio.Queue[Union[StoreUser, StorePost]]'):
     while True:
         item = await q.get()
         try:
             if isinstance(item, StoreUser):
                 # print('Storing user', item.user.handle, '/', q.qsize())
                 user = item.user
-                muted = user.did in muted_dids
                 gender = guess_gender_reductive(user.description) if user.description is not None else 'unknown'
                 await db.actor.upsert(
                     where={'did': user.did},
@@ -220,8 +219,8 @@ async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Unio
                             'handle': user.handle,
                             'description': user.description,
                             'displayName': user.displayName,
-                            'in_fox_feed': not muted,
-                            'in_vix_feed': (gender == 'girl') and not muted,
+                            'in_fox_feed': True,
+                            'in_vix_feed': (gender == 'girl'),
                             'gender_label_auto': gender,
                         },
                         'update': {
@@ -229,8 +228,8 @@ async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Unio
                             'handle': user.handle,
                             'description': user.description,
                             'displayName': user.displayName,
-                            'in_fox_feed': not muted,
-                            'in_vix_feed': (gender == 'girl') and not muted,
+                            'in_fox_feed': True,
+                            'in_vix_feed': (gender == 'girl'),
                             'gender_label_auto': gender,
                         }
                     }
@@ -280,17 +279,40 @@ async def store_to_db(muted_dids: Set[str], db: Database, q: 'asyncio.Queue[Unio
             q.task_done()
 
 
-async def load(db: Database, given_known_furries: List[str] = [], load_posts: bool = True) -> None:
-    client = AsyncClient()
+async def load_posts_task(
+        client: AsyncClient,
+        only_posts_after: datetime,
+        input_queue: 'asyncio.Queue[ProfileView]',
+        output_queue: 'asyncio.Queue[Union[StorePost, StoreUser]]',
+        *,
+        actually_do_shit: bool = True
+):
+    cprint('Grabbing posts for furries...', 'blue', force_color=True)
+    while True:
+        user = await input_queue.get()
+        try:
+            if actually_do_shit:
+                # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
+                async for post in get_posts(client, user.did, after=only_posts_after):
+                    await output_queue.put(StorePost(post))
+        except Exception:
+            cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
+            traceback.print_exc()
+        finally:
+            input_queue.task_done()
 
-    await client.login(HANDLE, PASSWORD)
 
-    only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
+async def log_queue_size_task(
+        storage_queue: 'asyncio.Queue[Union[StorePost, StoreUser]]' ,
+        post_load_queue: 'asyncio.Queue[ProfileView]',
+) -> None:
+    while True:
+        print(f'> Load: {post_load_queue.qsize()} . Store: {storage_queue.qsize()}')
+        await asyncio.sleep(30)
 
-    # verbose = bool(given_known_furries)
 
-    # Accounts picked because they're large and the people following them are most likely furries
-    default_known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
+async def find_furries_raw(client: AsyncClient) -> AsyncIterable[ProfileView]:
+    known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
         (get_people_who_like_your_feeds, 'puppyfox.bsky.social'),
         (get_follows, 'puppyfox.bsky.social'),
         (get_follows, 'furryli.st'),
@@ -303,74 +325,71 @@ async def load(db: Database, given_known_furries: List[str] = [], load_posts: bo
         (get_mutuals, 'zoeydogy.bsky.social'),
     ]
 
-    known_furries = [(no_connections, i) for i in given_known_furries] or default_known_furries
-
-    known_furries_handles = {i for _, i in known_furries}
-
-    # TODO: Need something better, this is just a rudimentary filter for shit people and dumb gimmick accounts
-    if not given_known_furries:
-        cprint("Grabbing everyone that I've muted", 'blue', force_color=True)
-        mutes = [i async for i in get_all_mutes(client)]
-    else:
-        mutes = []
-
-    # Make a set for fast lookup, also make a cutout for the known furries in case someone adds me to a mutelist
-    # without my knowledge or something lmao
-    muted_dids = {i.did for _, i in mutes if i.handle not in known_furries_handles}
-
-    # for lst, m in mutes:
-    #     print(lst.name, m.subject.handle, m.subject.displayName, ':', (m.subject.description or '').replace('\n', ' ')[:100])
-
-    furries: Dict[str, ProfileView] = {}
-
-    q: 'asyncio.Queue[Union[StorePost, StoreUser]]' = asyncio.Queue()
-
-    async def enq(profile: ProfileView):
-        if profile.did not in furries:
-            furries[profile.did] = profile
-            await q.put(StoreUser(profile))
-
-    worker = asyncio.create_task(store_to_db(muted_dids, db, q))
-
     cprint('Loading furries from seed list', 'blue', force_color=True)
 
     with gzip.open('./seed.json.gzip', 'rb') as sff:
         seed_list = json.loads(sff.read().decode('utf-8'))['seed']
 
     async for profile in get_many_profiles(client, seed_list):
-        await enq(profile)
+        yield profile
 
-    cprint('Grabbing furry-adjacent accounts...', 'blue', force_color=True)
+    cprint('Grabbing furry-adjacent accounts', 'blue', force_color=True)
 
     for get_associations, handle in known_furries:
         profile = simplify_profile_view(await client.bsky.actor.get_profile({'actor': handle}))
-        await enq(profile)
+        yield profile
         async for other in get_associations(client, profile.did):
-            await enq(other)
+            yield other
 
-    if load_posts:
-        cprint('Grabbing posts for furries...', 'blue', force_color=True)
-        for user in sorted(furries.values(), key=lambda i: (guess_gender_reductive(i.description or '') == 'girl'), reverse=True):
-            try:
-                # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
-                async for post in get_posts(client, user.did, after=only_posts_after):
-                    await q.put(StorePost(post))
-            except Exception:
-                cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
-                traceback.print_exc()
 
-    cprint('Waiting for worker to finish...', 'blue', force_color=True)
+async def find_furries_clean(client: AsyncClient, mutes: Set[str]) -> AsyncIterable[ProfileView]:
+    seen: Set[str] = set()
+    async for profile in find_furries_raw(client):
+        if profile.did not in seen and profile.did not in mutes:
+            seen.add(profile.did)
+            yield profile
 
-    await q.join()
-    worker.cancel()
-    await asyncio.gather(worker, return_exceptions=True)
+
+async def load(db: Database, load_posts: bool = True) -> None:
+    client = AsyncClient()
+    await client.login(HANDLE, PASSWORD)
+
+    only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
+
+    cprint('Getting muted accounts', 'blue', force_color=True)
+    mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
+
+    storage_queue: 'asyncio.Queue[Union[StorePost, StoreUser]]' = asyncio.Queue()
+    post_load_queue: 'asyncio.Queue[ProfileView]' = asyncio.Queue()
+
+    storage_worker = asyncio.create_task(store_to_db_task(db, storage_queue))
+    load_posts_worker = asyncio.create_task(load_posts_task(client, only_posts_after, post_load_queue, storage_queue, actually_do_shit=load_posts))
+    report_task = asyncio.create_task(log_queue_size_task(storage_queue, post_load_queue))
+
+    async for furry in find_furries_clean(client, mutes):
+        # The posts for a user can be loaded before the user is stored, however the StoreUser will always be ahead of the relevant
+        # StorePosts, so this will never break the DB foreign keys
+        await storage_queue.put(StoreUser(furry))
+        await post_load_queue.put(furry)
+
+    cprint('Waiting for workers to finish...', 'blue', force_color=True)
+    print(f'> Load: {post_load_queue.qsize()} . Store: {storage_queue.qsize()}')
+
+    await post_load_queue.join()
+    await storage_queue.join()
+    storage_worker.cancel()
+    load_posts_worker.cancel()
+    report_task.cancel()
+    await asyncio.gather(storage_worker, load_posts_worker, report_task, return_exceptions=True)
 
     cprint('Ok! Yeah! Woooo!', 'blue', force_color=True)
     cprint('Done scraping website :)', 'green', force_color=True)
 
+
 async def main():
     db = await make_database_connection()
-    await load(db, sys.argv[1:], load_posts=False)
+    await load(db, load_posts=True)
+
 
 if __name__ == '__main__':
     asyncio.run(main())
