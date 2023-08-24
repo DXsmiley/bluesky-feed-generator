@@ -1,5 +1,7 @@
 import prisma
-from prisma.types import HttpConfig
+from prisma.types import HttpConfig, DatasourceOverride
+
+from typing import Optional
 
 Database = prisma.Prisma
 Post = prisma.models.Post
@@ -8,11 +10,13 @@ Actor = prisma.models.Actor
 PostScore = prisma.models.PostScore
 
 
-async def make_database_connection() -> Database:
+async def make_database_connection(url: Optional[str] = None, timeout: int = 10) -> Database:
     db = prisma.Prisma(
-        connect_timeout=10,
-        http=HttpConfig(timeout=10),
+        connect_timeout=timeout,
+        http=HttpConfig(timeout=timeout),
+        datasource=(None if url is None else DatasourceOverride(url=url)),
         # log_queries=True
     )
     await db.connect()
     return db
+

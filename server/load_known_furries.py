@@ -16,6 +16,8 @@ from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRe
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
 from atproto.xrpc_client.models.app.bsky.embed import images
 
+import gzip
+import json
 import sys
 import unicodedata
 import re
@@ -176,6 +178,13 @@ async def get_all_mutes(client: AsyncClient) -> AsyncIterable[Tuple[Optional[Lis
         yield (i, j)
 
 
+async def get_many_profiles(client: AsyncClient, dids: List[str]) -> AsyncIterable[ProfileView]:
+    for i in range(0, len(dids), 25):
+        r = await client.bsky.actor.get_profiles({'actors': dids[i:i+25]})
+        for p in r.profiles:
+            yield simplify_profile_view(p)
+
+
 async def no_connections(_client: AsyncClient, _did: str) -> AsyncIterable[ProfileView]:
     return
     yield
@@ -312,24 +321,32 @@ async def load(db: Database, given_known_furries: List[str] = [], load_posts: bo
     # for lst, m in mutes:
     #     print(lst.name, m.subject.handle, m.subject.displayName, ':', (m.subject.description or '').replace('\n', ' ')[:100])
 
-    cprint('Grabbing known furries...', 'blue', force_color=True)
-
     furries: Dict[str, ProfileView] = {}
 
     q: 'asyncio.Queue[Union[StorePost, StoreUser]]' = asyncio.Queue()
 
-    worker = asyncio.create_task(store_to_db(muted_dids, db, q))
-
-    for get_associations, handle in known_furries:
-        # cprint(f'Known furry {handle}', 'blue', force_color=True)
-        profile = simplify_profile_view(await client.bsky.actor.get_profile({'actor': handle}))
+    async def enq(profile: ProfileView):
         if profile.did not in furries:
             furries[profile.did] = profile
             await q.put(StoreUser(profile))
+
+    worker = asyncio.create_task(store_to_db(muted_dids, db, q))
+
+    cprint('Loading furries from seed list', 'blue', force_color=True)
+
+    with gzip.open('./seed.json.gzip', 'rb') as sff:
+        seed_list = json.loads(sff.read().decode('utf-8'))['seed']
+
+    async for profile in get_many_profiles(client, seed_list):
+        await enq(profile)
+
+    cprint('Grabbing furry-adjacent accounts...', 'blue', force_color=True)
+
+    for get_associations, handle in known_furries:
+        profile = simplify_profile_view(await client.bsky.actor.get_profile({'actor': handle}))
+        await enq(profile)
         async for other in get_associations(client, profile.did):
-            if other.did not in furries:
-                furries[other.did] = other
-                await q.put(StoreUser(other))
+            await enq(other)
 
     if load_posts:
         cprint('Grabbing posts for furries...', 'blue', force_color=True)
