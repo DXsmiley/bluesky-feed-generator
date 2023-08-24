@@ -6,11 +6,10 @@ from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
 
-from server.database import Post, PostScore, Database, make_database_connection
-
-from typing_extensions import TypedDict
-from typing import Optional, List, Dict, Iterable, Tuple, AsyncIterable, Callable
+from server.database import Post, Database, make_database_connection
 import prisma.errors
+
+from typing import List, Dict, Iterable, Tuple, AsyncIterable, Callable
 
 from termcolor import cprint
 from dataclasses import dataclass
@@ -59,7 +58,7 @@ def raw_score(run_starttime: datetime, p: Post) -> float:
     # Number of likes, decaying over time
     # initial decay is much slower than the hacker news algo, but also decays to zero
     x = (run_starttime - p.indexed_at) / SCORING_CURVE_INFLECTION_POINT
-    return (p.like_count + 5) * decay_curve(x)
+    return (p.like_count ** 0.9 + 5) * decay_curve(x)
 
 
 def raw_freshness(run_starttime: datetime, p: Post) -> float:
