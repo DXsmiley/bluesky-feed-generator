@@ -5,11 +5,15 @@ from collections import defaultdict
 from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
+from functools import reduce
+import operator
 
 from server.database import Post, Database, make_database_connection
 import prisma.errors
 
 from typing import List, Dict, Iterable, Tuple, AsyncIterable, Callable
+
+import server.gender
 
 from termcolor import cprint
 from dataclasses import dataclass
@@ -55,6 +59,17 @@ async def load_all_posts(db: Database, run_starttime: datetime) -> AsyncIterable
         offset += chunk_size
 
 
+def penalty(p: Post):
+    gender = server.gender.guess_gender_reductive(p.text)
+    return (
+        # Penalise people posting images without alt-text
+        (0.7 if p.media_count > 0 and p.media_with_alt_text_count == 0 else 1.0)
+        # TODO: boosting girl-vibes on the feed, assess the impact of this later
+        * (1.1 if gender == 'girl' else 1.0)
+        * (0.9 if gender == 'boy' else 1.0)
+    )
+
+
 def _raw_score(post_age: timedelta, like_count: int) -> float:
     # Number of likes, decaying over time
     # initial decay is much slower than the hacker news algo, but also decays to zero
@@ -63,14 +78,18 @@ def _raw_score(post_age: timedelta, like_count: int) -> float:
 
 
 def raw_score(run_starttime: datetime, p: Post) -> float:
-    return _raw_score(run_starttime - p.indexed_at, p.like_count)
+    return _raw_score(run_starttime - p.indexed_at, p.like_count) * penalty(p)
+
+
+def _raw_freshness(post_age: timedelta, like_count: int) -> float:
+    # Number of likes, decaying over time
+    # initial decay is much slower than the hacker news algo, but also decays to zero
+    x = post_age / FRESH_CURVE_INFLECTION_POINT
+    return (like_count ** 0.3 + 5) * decay_curve(max(0, x))
 
 
 def raw_freshness(run_starttime: datetime, p: Post) -> float:
-    # Number of likes, decaying over time
-    # initial decay is much slower than the hacker news algo, but also decays to zero
-    x = (run_starttime - p.indexed_at) / FRESH_CURVE_INFLECTION_POINT
-    return (p.like_count ** 0.2 + 5) * decay_curve(x)
+    return _raw_freshness(run_starttime - p.indexed_at, p.like_count) * penalty(p)
 
 
 def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterable[Tuple[float, Post]]:

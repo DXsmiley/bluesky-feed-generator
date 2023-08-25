@@ -25,10 +25,8 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
     for created_post in ops['posts']['created']:
         record = created_post['record']
 
-        num_images = (
-            0 if not isinstance(record.embed, models.AppBskyEmbedImages.Main)
-            else len(record.embed.images)
-        )
+        images = record.embed.images if isinstance(record.embed, models.AppBskyEmbedImages.Main) else []
+        images_with_alt_text = [i for i in images if i.alt.strip() != '']
         inlined_text = record.text.replace('\n', ' ')
 
         reply_parent = None
@@ -50,7 +48,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             continue
 
         if (await db.actor.find_unique({'did': created_post['author']})) is not None:
-            logger.info(f'New furry post (with images: {num_images}): {inlined_text}')
+            logger.info(f'New furry post (with images: {len(images)}): {inlined_text}')
             post_dict: PostCreateInput = {
                 'uri': created_post['uri'],
                 'cid': created_post['cid'],
@@ -59,7 +57,8 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                 'authorId': created_post['author'],
                 'text': record.text,
                 'mentions_fursuit': mentions_fursuit(record.text),
-                'media_count': num_images,
+                'media_count': len(images),
+                'media_with_alt_text_count': len(images_with_alt_text),
             }
             posts_to_create.append(post_dict)
 

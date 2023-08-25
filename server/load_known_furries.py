@@ -245,10 +245,8 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[Union[StoreUser, Stor
                 p = post.post
                 reply_parent = None if post.reply is None else post.reply.parent.uri
                 reply_root = None if post.reply is None else post.reply.root.uri
-                media_count = (
-                    0 if not isinstance(p.embed, images.View)
-                    else len(p.embed.images)
-                )
+                media = p.embed.images if isinstance(p.embed, images.View) else []
+                media_with_alt_text = sum(i.alt != '' for i in media)
                 # if verbose:
                 #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
                 await db.post.upsert(
@@ -264,12 +262,14 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[Union[StoreUser, Stor
                             'like_count': p.likeCount or 0,
                             'authorId': p.author.did,
                             'mentions_fursuit': mentions_fursuit(p.record['text']),
-                            'media_count': media_count,
+                            'media_count': len(media),
+                            'media_with_alt_text_count': media_with_alt_text,
                             'text': p.record['text'],
                         },
                         'update': {
                             'like_count': p.likeCount or 0,
-                            'media_count': media_count,
+                            'media_count': len(media),
+                            'media_with_alt_text_count': media_with_alt_text,
                             'mentions_fursuit': mentions_fursuit(p.record['text']),
                             'text': p.record['text'],
                         }
