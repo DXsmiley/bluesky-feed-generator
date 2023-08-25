@@ -13,6 +13,7 @@ from typing import List, Dict, Iterable, Tuple, AsyncIterable, Callable
 
 from termcolor import cprint
 from dataclasses import dataclass
+import gc
 
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
@@ -54,11 +55,15 @@ async def load_all_posts(db: Database, run_starttime: datetime) -> AsyncIterable
         offset += chunk_size
 
 
-def raw_score(run_starttime: datetime, p: Post) -> float:
+def _raw_score(post_age: timedelta, like_count: int) -> float:
     # Number of likes, decaying over time
     # initial decay is much slower than the hacker news algo, but also decays to zero
-    x = (run_starttime - p.indexed_at) / SCORING_CURVE_INFLECTION_POINT
-    return (p.like_count ** 0.9 + 5) * decay_curve(x)
+    x = post_age / SCORING_CURVE_INFLECTION_POINT
+    return (like_count ** 0.9 + 5) * decay_curve(max(0, x))
+
+
+def raw_score(run_starttime: datetime, p: Post) -> float:
+    return _raw_score(run_starttime - p.indexed_at, p.like_count)
 
 
 def raw_freshness(run_starttime: datetime, p: Post) -> float:
@@ -186,6 +191,7 @@ async def score_posts_forever(db: Database):
     while True:
         try:
             await score_posts(db, [])
+            cprint(f'gc-d {gc.collect()} objects', 'yellow', force_color=True)
         except Exception:
             cprint(f'Error during score_posts', color='red', force_color=True)
             traceback.print_exc()

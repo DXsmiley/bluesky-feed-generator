@@ -18,17 +18,22 @@ from atproto.xrpc_client.models.app.bsky.embed import images
 
 import gzip
 import json
-import sys
-import unicodedata
-import re
 import traceback
 from termcolor import cprint
 from dataclasses import dataclass
 
 
 import server.algos.fox_feed
+import server.algos.score_task
 from server.data_filter import mentions_fursuit
 from server.gender import guess_gender_reductive
+
+
+# TODO: Eeeeeeeh
+SCORE_REQUIREMENT = server.algos.score_task._raw_score(
+    server.algos.score_task.SCORING_CURVE_INFLECTION_POINT,
+    0
+)
 
 
 def simplify_profile_view(p: ProfileViewDetailed) -> ProfileView:
@@ -240,9 +245,6 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[Union[StoreUser, Stor
                 p = post.post
                 reply_parent = None if post.reply is None else post.reply.parent.uri
                 reply_root = None if post.reply is None else post.reply.root.uri
-                # TODO: Probably remove this later!!! But for now we don't care about replies.
-                if reply_parent is not None or reply_root is not None:
-                    continue
                 media_count = (
                     0 if not isinstance(p.embed, images.View)
                     else len(p.embed.images)
@@ -294,7 +296,12 @@ async def load_posts_task(
             if actually_do_shit:
                 # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
                 async for post in get_posts(client, user.did, after=only_posts_after):
-                    await output_queue.put(StorePost(post))
+                    score = server.algos.score_task._raw_score(
+                        datetime.now() - parse_datetime(post.post.indexedAt),
+                        post.post.likeCount or 0,
+                    )
+                    if post.reply is None and score > SCORE_REQUIREMENT:
+                        await output_queue.put(StorePost(post))
         except Exception:
             cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
             traceback.print_exc()
