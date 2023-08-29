@@ -42,8 +42,8 @@ algo_details: List[AlgorithmDetails] = [
     },
     {
         'record_name': 'vix-votes',
-        'display_name': '🦊 ❔',
-        'description': '(in development)',
+        'display_name': '🦊 V²',
+        'description': 'Top furry posts, as *voted by* furry women! Details at bsky.probablyaweb.site',
         'handler': fox_feed.vix_votes,
     }
 ]

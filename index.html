@@ -14,8 +14,23 @@
             line-height: 1.5em;
             margin: 0px;
         }
+        h2 {
+            text-decoration-style: solid; 
+            text-decoration-color: rgb(223, 14, 136);
+            text-decoration-thickness: 5px;
+            text-decoration-line: underline;
+            position: relative;
+            margin-top: 30px;
+        }
+        /* h2:hover::before {
+            content: "#";
+            float: left;
+            position: absolute;
+            left: -15px;
+            color: rgb(223, 14, 136);
+        } */
         .top {
-            background-color: rgb(39, 176, 255);
+            background-color: rgb(223, 14, 136);
             color: white;
         }
         .top div {
@@ -67,33 +82,71 @@
         th:nth-child(odd), td:nth-child(odd) {
             background-color: #ccc;
         }
+        .feeds {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
+            row-gap: 15px;
+            gap: 15px;
+        }
+        .feed {
+            border: solid 5px #ccc;
+            padding-right: 15px;
+            padding-left: 15px;
+            flex-grow: 1;
+            flex-shrink: 1;
+            max-width: 300px;
+            font-size: 0.9em;
+            text-align: left;
+        }
+        a, a:visited {
+            color:rgb(223, 14, 136);
+        }
     </style>
 </head>
 <body>
     <div class="top">
         <div>
             <h1><span class="circle">🦊</span> Fox Feed</h1>
-            <p>Custom Furry Feeds for BlueSky, made by <a href="https://bsky.app/profile/puppyfox.bsky.social">Paf</a></p>
         </div>
     </div>
     <div class="main">
-        <h2>Available Feeds</h2>
-        <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fox-feed">Main Feed</a></h3>
-        <p>Top recent posts by all furries.</p>
-        <p>Contains SFW and NSFW content, use your in-client settings to filter it.</p>
-        <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/vix-feed">Vixen Feed</a></h3>
-        <p>Top recent posts by all furry women.</p>
-        <p>I created this because I noticed other furry feeds (both chronological and algorithmic) on bluesky were overwhelmingly dominated by men.</p>
-        <p>Contains SFW and NSFW content, use your in-client settings to filter it.</p>
-        <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fresh-feed">Fresh Feed</a></h3>
-        <p>New and upcomming posts by furry women.</p>
-        <p>This feed prioritises the newness of posts over the number of likes. It's much faster-moving and more chaotic.</p>
-        <p>Contains SFW and NSFW content, use your in-client settings to filter it.</p>
-        <h2>What Is Included On The Feed?</h2>
+
+        <p>Heeeeey~! My name's <a target="_blank" href="https://bsky.app/profile/puppyfox.bsky.social">Paf</a> and I've been working on making a few furry-focussed feeds for <a target="_black" href="https://bsky.app/">BlueSky</a>.</p>
+
+        <p>A "Feed" is similar to a twitter timeline, such as "For You" or "Following", but much more customizable! Here's a few that I've made for myself that I want to share with other people :&rpar;</p>
+        
+        <h2 id="#feeds">Available Feeds</h2>
+        <p>All feeds contain a mix of SFW and NSFW content, use your in-client settings to filter it.</p>
+        <div class="feeds">
+            <div class="feed">
+                <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fox-feed">Main Feed</a></h3>
+                <p>Top recent posts by all furries.</p>
+            </div>
+            <div class="feed">
+                <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/vix-feed">Vixen Feed</a></h3>
+                <p>Top recent posts by all furry women.</p>
+                <p>I made this because I noticed other furry feeds on bluesky were overwhelmingly dominated by men, and I wanted to help fellow girls commect with each other ^&nbsp;^;</p>
+            </div>
+            <div class="feed">
+                <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fresh-feed">Fresh Feed</a></h3>
+                <p>New and upcomming posts by furry women.</p>
+                <p>This feed prioritises the newness of posts over the number of likes. It's much faster-moving and more chaotic.</p>
+            </div>
+            <div class="feed">
+                <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/vix-votes">V<sup>2</sup></a></h3>
+                <p>Top recent posts, as <i>voted by furry women</i>.</p>
+                <p>Can potentially contain posts by any furry, however the algorithm only counts likes made <i>by</i> furry women.</p>
+            </div>
+        </div>
+        
+        <h2 id="what">What Is Included On The Feed?</h2>
         <p>Only posts from the last 96 hours (~4 days) are considered.</p>
         <p>Currently, "furries" constitutes anybody who is followed by at least one of a short list of major furry accounts. It does not dynamically update, and ends up including some people who are not furries. Additionally, small number of mutelists is used to exclude accounts from the feeds. This is a temporary solution before something better is built.</p>
-        <p>The feed defines "woman" as anyone with whose bio contains fem-aligned pronouns (she/her, she/they, ...), a female (♀️) or sapphic (⚢) emoji, or an age-gender indicator (e.g. 25F). Presently, those who mix fem and masc pronouns (e.g. she/they/he) are excluded.</p>
-        <h2>How is the feed ranked?</h2>
+        <p>The feed defines "woman" as anyone with whose bio contains fem-aligned pronouns (she/her, she/they, ...), a female (♀️) or sapphic (⚢) emoji, or an age-gender indicator (e.g. 25F). Presently, those who mix fem and masc pronouns (e.g. she/he) are excluded.</p>
+        
+        <h2 id="how">How are the feeds ranked?</h2>
         <p>Each post is scored individually, depending on its age, and the amount of <i>positive-sentiment</i> interaction its getting</p>
         <div class="center">
             <!-- MathML is so shit for humans lmao -->
@@ -101,18 +154,21 @@
             <math><mi>y</mi><mo>=</mo><mrow><mo>(</mo><mrow><msup><mi>L</mi><mi>γ</mi></msup><mo>+</mo><mn>5</mn></mrow><mo>)</mo></mrow><mo>∙</mo><mrow><mo>&#123;</mo><mrow><mtable><mtr><mtd><mfrac><mn>1</mn><msup><mi>x</mi><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&geq;</mo><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn><mo>-</mo><mfrac><mn>1</mn><msup><mrow><mo>(</mo><mrow><mn>2</mn><mo>-</mo><mi>x</mi></mrow><mo>)</mo></mrow><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&lt;</mo><mn>1</mn></mtd></mtr></mtable></mrow></mrow></math>
         </div>
         <p>Where <i>L</i> is the number of likes and <i>T</i> is the age of the post.</p>
+        <p>The V<sup>2</sup> feed only counts likes made by furry women, not the total number of likes on the post. If the post author is <i>not</i> a woman, and less than 2 women have liked the post, the post is excluded from the feed entirely.</p>
         <p>Tweakable parameters currently vary depending on the feed</p>
         <div class="center">
             <table>
                 <thead>
                     <th></th>
-                    <th>Fox Feed</th>
-                    <th>Vix Feed</th>
-                    <th>Fresh Feed</th>
+                    <th>Main</th>
+                    <th>Vixen</th>
+                    <th>V<sup>2</sup></th>
+                    <th>Fresh</th>
                     <!-- <th>Comment</th> -->
                 </thead>
                 <tr>
                     <td><math><mi>α</mi></math></td>
+                    <td>1.5</td>
                     <td>1.5</td>
                     <td>1.5</td>
                     <td>1.5</td>
@@ -122,11 +178,13 @@
                     <td><math><mi>β</mi></math></td>
                     <td>12 hours</td>
                     <td>12 hours</td>
+                    <td>12 hours</td>
                     <td>30 minutes</td>
                     <!-- <td></td> -->
                 </tr>
                 <tr>
                     <td><math><mi>γ</mi></math></td>
+                    <td>0.9</td>
                     <td>0.9</td>
                     <td>0.9</td>
                     <td>0.3</td>
@@ -136,6 +194,10 @@
         </div>
         <p>Multiple posts by the same author will occur a penalty. An author's highest-scoring post on a feed will receive a multiplier of 1, the second highest-scoring a multiplier of &half;, the third a multiplier of &frac14;, and so on.</p>
         <p>Posts with images but no alt-text will incur a penalty of 0.7.</p>
+
+        <h2>What else is out there?</h2>
+        <p><a href="https://furryli.st/" target="_blank">Furryli.st</a> also runs a number of furry-focussed feeds.</p>
+        <p>There's a <a href="https://discord.gg/fursky">"FurSky"</a> Discord, a social chat for furries on BlueSky.</p>
     </div>
 </body>
 </html>

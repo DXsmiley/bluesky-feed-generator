@@ -86,6 +86,7 @@ def raw_score(run_starttime: datetime, p: Post) -> float:
 
 
 def raw_vix_vote_score(run_starttime: datetime, p: Post) -> float:
+    # IDEA: use sqrt(total_likes * girl_likes)?
     likes = 0 if p.likes is None else len([i for i in p.likes if i.liker and i.liker.in_vix_feed])
     author_in_vix_feed = p.author and p.author.in_vix_feed
     return (
