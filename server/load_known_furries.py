@@ -305,6 +305,7 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
         except Exception:
             cprint(f'Error during handling item: {item}', color='red', force_color=True)
             traceback.print_exc()
+            await asyncio.sleep(30)
         finally:
             q.task_done()
 
@@ -335,9 +336,14 @@ async def load_posts_task(
                         await llq.put((-(post.post.likeCount or 0), unique, post))
                         # hack to prevent post objects being compared against each other
                         unique += 1
+        except asyncio.CancelledError:
+            break
+        except KeyboardInterrupt:
+            break
         except Exception:
             cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
             traceback.print_exc()
+            await asyncio.sleep(30)
         finally:
             input_queue.task_done()
 
@@ -353,9 +359,14 @@ async def load_likes_task(
         try:
             async for like in get_likes(client, post.post.uri):
                 await output_queue.put(StoreLike(post.post.uri, like))
+        except asyncio.CancelledError:
+            break
+        except KeyboardInterrupt:
+            break
         except Exception:
             cprint(f'error while getting likes for post {post.post.uri}', color='red', force_color=True)
             traceback.print_exc()
+            await asyncio.sleep(30)
         finally:
             input_queue.task_done()
 
