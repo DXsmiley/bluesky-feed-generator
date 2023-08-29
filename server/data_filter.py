@@ -84,12 +84,12 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         liked_post = await db.post.find_unique({'uri': uri})
         like_author = await db.actor.find_unique(where={'did': like['author']})
         # TODO: We're gonna be phasing this out at some point
-        if liked_post is not None:
-            # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
-            await db.post.update(
-                data={'like_count': liked_post.like_count + 1},
-                where={'uri': uri}
-            )
+        # if liked_post is not None:
+        #     # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
+        #     await db.post.update(
+        #         data={'like_count': liked_post.like_count + 1},
+        #         where={'uri': uri}
+        #     )
         if liked_post is not None and like_author is not None:
             print(f'{like_author.handle} ({like_author.gender_label_auto}) liked a post')
             await db.like.create(
