@@ -5,7 +5,8 @@ from server.database import Database
 
 from typing_extensions import TypedDict
 
-from prisma.types import PostWhereInput, PostScoreWhereInput, PostScoreOrderByInput
+from prisma.types import PostWhereInput
+from server.algos.feed_names import FeedName
 
 
 class FeedItem(TypedDict):
@@ -15,9 +16,6 @@ class FeedItem(TypedDict):
 class HandlerResult(TypedDict):
     cursor: Optional[str]
     feed: List[FeedItem]
-
-
-from server.algos.score_task import LOOKBACK_HARD_LIMIT
 
 
 HandlerType = Callable[[Database, Optional[str], int], Coroutine[Any, Any, HandlerResult]]
@@ -79,7 +77,7 @@ def chronological_feed(post_query_filter: PostWhereInput) -> HandlerType:
     return handler
 
 
-def algorithmic_feed(feed_name: str) -> HandlerType:
+def algorithmic_feed(feed_name: FeedName) -> HandlerType:
 
     async def handler(db: Database, cursor: Optional[str], limit: int) -> HandlerResult:
 
@@ -118,6 +116,7 @@ def algorithmic_feed(feed_name: str) -> HandlerType:
 fox_feed = algorithmic_feed('fox-feed')
 vix_feed = algorithmic_feed('vix-feed')
 fresh_feed = algorithmic_feed('fresh-feed')
+vix_votes = algorithmic_feed('vix-votes')
 
 fursuit_feed = chronological_feed(
     {

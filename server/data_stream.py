@@ -104,6 +104,10 @@ async def run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_
     while stream_stop_event is None or not stream_stop_event.is_set():
         try:
             await _run(db, name, operations_callback, stream_stop_event)
+        except asyncio.CancelledError:
+            raise
+        except KeyboardInterrupt:
+            raise
         except FirehoseError as e:
             logger.info(f'Got FirehoseError: {e}')
             if e.__context__ and e.__context__.args:

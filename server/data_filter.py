@@ -7,11 +7,10 @@ from typing import List
 from prisma.types import PostCreateInput
 
 from server.database import Database
+from server.load_known_furries import parse_datetime
 
+from server.util import mentions_fursuit, parse_datetime
 
-def mentions_fursuit(text: str) -> bool:
-    text = text.replace('\n', ' ').lower()
-    return 'fursuit' in text or 'murrsuit' in text
 
 
 async def operations_callback(db: Database, ops: OpsByType) -> None:
@@ -74,15 +73,28 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         for post in posts_to_create:
             await db.post.create(post)
 
-    # TODO: the .update is timing out here for some reason??
     for like in ops['likes']['created']:
         uri = like['record']['subject']['uri']
         liked_post = await db.post.find_unique({'uri': uri})
+        like_author = await db.actor.find_unique(where={'did': like['author']})
+        # TODO: We're gonna be phasing this out at some point
         if liked_post is not None:
             # logger.info(f'Someone liked a furry post!! ({liked_post.like_count})')
             await db.post.update(
                 data={'like_count': liked_post.like_count + 1},
                 where={'uri': uri}
+            )
+        if liked_post is not None and like_author is not None:
+            print(f'{like_author.handle} ({like_author.gender_label_auto}) liked a post')
+            await db.like.create(
+                data={
+                    'uri': like['uri'],
+                    'cid': like['cid'],
+                    'liker_id': like['author'],
+                    'post_uri': like['record'].subject.uri,
+                    'post_cid': like['record'].subject.cid,
+                    'created_at': parse_datetime(like['record'].createdAt),
+                }
             )
 
     # TODO: Handle deleted likes lmao

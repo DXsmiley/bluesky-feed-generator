@@ -5,13 +5,13 @@ from collections import defaultdict
 from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
-from functools import reduce
-import operator
 
-from server.database import Post, Database, make_database_connection
+from server.database import Database, make_database_connection
+from prisma.models import Like, Post
 import prisma.errors
 
 from typing import List, Dict, Iterable, Tuple, AsyncIterable, Callable
+from .feed_names import FeedName
 
 import server.gender
 
@@ -49,7 +49,11 @@ async def load_all_posts(db: Database, run_starttime: datetime) -> AsyncIterable
                 ]
             },
             include={
-                'author': True
+                'author': True,
+                # 'likes': {'include': {'liker': True}},
+                # Optimisation for the data we actually care about right now.
+                # Probably better if we just store the girl-like count on the post itself though TBH
+                'likes': {'include': {'liker': True}, 'where': {'liker': {'is': {'gender_label_auto': 'girl'}}}},
             }
         )
         if not posts:
@@ -81,6 +85,15 @@ def raw_score(run_starttime: datetime, p: Post) -> float:
     return _raw_score(run_starttime - p.indexed_at, p.like_count) * penalty(p)
 
 
+def raw_vix_vote_score(run_starttime: datetime, p: Post) -> float:
+    likes = 0 if p.likes is None else len([i for i in p.likes if i.liker and i.liker.in_vix_feed])
+    author_in_vix_feed = p.author and p.author.in_vix_feed
+    return (
+        0 if likes < 2 and not author_in_vix_feed
+        else _raw_score(run_starttime - p.indexed_at, likes) * penalty(p)
+    )
+
+
 def _raw_freshness(post_age: timedelta, like_count: int) -> float:
     # Number of likes, decaying over time
     # initial decay is much slower than the hacker news algo, but also decays to zero
@@ -92,21 +105,9 @@ def raw_freshness(run_starttime: datetime, p: Post) -> float:
     return _raw_freshness(run_starttime - p.indexed_at, p.like_count) * penalty(p)
 
 
-def take_first_n_per_feed(posts: Iterable[Tuple[float, Post]], n: int) -> Iterable[Tuple[float, Post]]:
-    fox_feed = 0
-    vix_feed = 0
-    for i in posts:
-        if i[1].author is None:
-            continue
-        if (i[1].author.in_fox_feed and fox_feed < n) or (i[1].author.in_vix_feed and vix_feed < n):
-            yield i
-        fox_feed += i[1].author.in_fox_feed
-        vix_feed += i[1].author.in_vix_feed
-
-
 @dataclass
 class FeedParameters:
-    feed_name: str
+    feed_name: FeedName
     filter: Callable[[Post], bool]
     score_func: Callable[[datetime, Post], float]
 
@@ -131,6 +132,7 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
         (post_raw_score / (2 ** index), post)
         for just_by_author in posts_by_author.values()
         for index, (post_raw_score, post) in enumerate(sorted(just_by_author, key=lambda x: x[0], reverse=True))
+        if post_raw_score > 0
         ],
         key=lambda x: x[0],
         reverse=True
@@ -174,6 +176,11 @@ ALGORITHMIC_FEEDS = [
         filter=lambda p: p.author and p.author.in_vix_feed or False,
         score_func=raw_freshness,
     ),
+    FeedParameters(
+        feed_name='vix-votes',
+        filter=lambda p: p.author and p.author.in_fox_feed or False,
+        score_func=raw_vix_vote_score,
+    )
 ]
 
 
@@ -185,8 +192,10 @@ async def score_posts(db: Database, highlight_handles: List[str]) -> None:
     cprint(f'Starting scoring round {run_version}', 'yellow', force_color=True)
 
     all_posts = [i async for i in load_all_posts(db, run_starttime)]
+    all_likes = [i for p in all_posts for i in p.likes or []]
+    girl_likes = [i for i in all_likes if i.liker and i.liker.in_vix_feed]
 
-    cprint(f'Scoring round {run_version} has {len(all_posts)} posts', 'yellow', force_color=True)
+    cprint(f'Scoring round {run_version} has {len(all_posts)} posts and {len(all_likes)} likes and {len(girl_likes)} girl-likes', 'yellow', force_color=True)
 
     rd = RunDetails(
         candidate_posts=all_posts,

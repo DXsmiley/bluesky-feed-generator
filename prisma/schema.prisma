@@ -17,7 +17,6 @@ model SubscriptionState {
   cursor Int
 }
 
-
 model Actor {
   did String @id
   handle String
@@ -28,6 +27,7 @@ model Actor {
   gender_label_auto String @default("unknown")
   gender_label_manual String @default("not-looked-at")
   posts Post[]
+  likes Like[]
 }
 
 model Post {
@@ -43,7 +43,20 @@ model Post {
   media_with_alt_text_count Int @default(0)
   authorId String
   author Actor @relation(fields: [authorId], references: [did])
+  likes Like[]
   @@index([indexed_at])
+}
+
+model Like {
+  uri String @id
+  cid String // do I even need this?
+  liker_id String
+  liker Actor @relation(fields: [liker_id], references: [did])
+  post_uri String
+  post Post @relation(fields: [post_uri], references: [uri])
+  post_cid String
+  created_at DateTime
+  @@index([post_uri])
 }
 
 model PostScore {
@@ -54,4 +67,5 @@ model PostScore {
   created_at DateTime
   @@id([feed_name, version, uri])
   @@index([feed_name, version, score(sort: Desc)])
+  @@index([created_at])
 }

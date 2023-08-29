@@ -14,6 +14,7 @@ from typing import Iterable, AsyncIterable, Optional, Dict, Tuple, List, Callabl
 from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import FeedViewPost, ReasonRepost, GeneratorView
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
+from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
 from atproto.xrpc_client.models.app.bsky.embed import images
 
 import gzip
@@ -21,12 +22,14 @@ import json
 import traceback
 from termcolor import cprint
 from dataclasses import dataclass
+import random
+import prisma.errors
 
 
 import server.algos.fox_feed
 import server.algos.score_task
-from server.data_filter import mentions_fursuit
 from server.gender import guess_gender_reductive
+from server.util import mentions_fursuit, parse_datetime
 
 
 # TODO: Eeeeeeeh
@@ -106,23 +109,6 @@ async def get_people_who_like_your_feeds(client: AsyncClient, did: str) -> Async
                 yield user
 
 
-def parse_datetime(s: str) -> datetime:
-    formats = [
-        r'%Y-%m-%dT%H:%M:%S.%fZ',
-        r'%Y-%m-%dT%H:%M:%S.%f',
-        r'%Y-%m-%dT%H:%M:%SZ',
-        r'%Y-%m-%dT%H:%M:%S',
-        r'%Y-%m-%dT%H:%M:%S.%f+00:00',
-        r'%Y-%m-%dT%H:%M:%S+00:00',
-    ]
-    for fmt in formats:
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            pass
-    raise ValueError(f'failed to parse datetime string "{s}"')
-
-
 async def get_posts(
     client: AsyncClient,
     did: str,
@@ -145,6 +131,16 @@ async def get_posts(
                     return
             if include_reposts or not is_repost:
                 yield i
+
+
+async def get_likes(client: AsyncClient, uri: str) -> AsyncIterable[Like]:
+    r = await client.bsky.feed.get_likes({'uri': uri})
+    for i in r.likes:
+        yield i
+    while r.cursor is not None:
+        r = await client.bsky.feed.get_likes({'uri': uri, 'cursor': r.cursor})
+        for i in r.likes:
+            yield i
 
 
 async def get_mute_lists(client: AsyncClient) -> AsyncIterable[ListView]:
@@ -208,7 +204,16 @@ class StorePost:
     post: FeedViewPost
 
 
-async def store_to_db_task(db: Database, q: 'asyncio.Queue[Union[StoreUser, StorePost]]'):
+@dataclass
+class StoreLike:
+    post_uri: str
+    like: Like
+
+
+StoreThing = Union[StoreUser, StorePost, StoreLike]
+
+
+async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
     while True:
         item = await q.get()
         try:
@@ -275,8 +280,31 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[Union[StoreUser, Stor
                         }
                     }
                 )
-            else:
-                pass
+            elif isinstance(item, StoreLike):
+                # print(item)
+                ugh = datetime.utcnow().isoformat()
+                blh = random.randint(0, 1 << 32)
+                uri = f'fuck://{ugh}-{blh}'
+                try:
+                    await db.like.create(
+                        data={
+                            'uri': uri, # TODO
+                            'cid': '', # TODO
+                            'post_uri': item.post_uri,
+                            'post_cid': '', # TODO
+                            'liker_id': item.like.actor.did,
+                            'created_at': parse_datetime(item.like.createdAt),
+                        }
+                    )
+                except prisma.errors.ForeignKeyViolationError:
+                    pass
+        except asyncio.CancelledError:
+            break
+        except KeyboardInterrupt:
+            break
+        except Exception:
+            cprint(f'Error during handling item: {item}', color='red', force_color=True)
+            traceback.print_exc()
         finally:
             q.task_done()
 
@@ -285,11 +313,13 @@ async def load_posts_task(
         client: AsyncClient,
         only_posts_after: datetime,
         input_queue: 'asyncio.Queue[ProfileView]',
-        output_queue: 'asyncio.Queue[Union[StorePost, StoreUser]]',
+        llq: 'asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]',
+        output_queue: 'asyncio.Queue[StoreThing]',
         *,
         actually_do_shit: bool = True
 ):
     cprint('Grabbing posts for furries...', 'blue', force_color=True)
+    unique = 0
     while True:
         user = await input_queue.get()
         try:
@@ -302,6 +332,9 @@ async def load_posts_task(
                     )
                     if post.reply is None and score > SCORE_REQUIREMENT:
                         await output_queue.put(StorePost(post))
+                        await llq.put((-(post.post.likeCount or 0), unique, post))
+                        # hack to prevent post objects being compared against each other
+                        unique += 1
         except Exception:
             cprint(f'error while getting posts for user {user.handle}', color='red', force_color=True)
             traceback.print_exc()
@@ -309,12 +342,31 @@ async def load_posts_task(
             input_queue.task_done()
 
 
+async def load_likes_task(
+        client: AsyncClient,
+        input_queue: 'asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]',
+        output_queue: 'asyncio.Queue[StoreThing]',
+):
+    cprint('Grabbing likes for posts...', 'blue', force_color=True)
+    while True:
+        _, _, post = await input_queue.get()
+        try:
+            async for like in get_likes(client, post.post.uri):
+                await output_queue.put(StoreLike(post.post.uri, like))
+        except Exception:
+            cprint(f'error while getting likes for post {post.post.uri}', color='red', force_color=True)
+            traceback.print_exc()
+        finally:
+            input_queue.task_done()
+
+
 async def log_queue_size_task(
-        storage_queue: 'asyncio.Queue[Union[StorePost, StoreUser]]' ,
+        storage_queue: 'asyncio.Queue[StoreThing]' ,
         post_load_queue: 'asyncio.Queue[ProfileView]',
+        like_load_queue: 'asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]',
 ) -> None:
     while True:
-        print(f'> Load: {post_load_queue.qsize()} . Store: {storage_queue.qsize()}')
+        print(f'> Load: {post_load_queue.qsize()} . Like: {like_load_queue.qsize()} . Store: {storage_queue.qsize()}')
         await asyncio.sleep(30)
 
 
@@ -361,17 +413,19 @@ async def load(db: Database, load_posts: bool = True) -> None:
     client = AsyncClient()
     await client.login(HANDLE, PASSWORD)
 
-    only_posts_after = datetime.now() - server.algos.fox_feed.LOOKBACK_HARD_LIMIT
+    only_posts_after = datetime.now() - server.algos.score_task.LOOKBACK_HARD_LIMIT
 
     cprint('Getting muted accounts', 'blue', force_color=True)
     mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
 
-    storage_queue: 'asyncio.Queue[Union[StorePost, StoreUser]]' = asyncio.Queue()
+    storage_queue: 'asyncio.Queue[StoreThing]' = asyncio.Queue()
     post_load_queue: 'asyncio.Queue[ProfileView]' = asyncio.Queue()
+    like_load_queue: 'asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]' = asyncio.PriorityQueue()
 
     storage_worker = asyncio.create_task(store_to_db_task(db, storage_queue))
-    load_posts_worker = asyncio.create_task(load_posts_task(client, only_posts_after, post_load_queue, storage_queue, actually_do_shit=load_posts))
-    report_task = asyncio.create_task(log_queue_size_task(storage_queue, post_load_queue))
+    load_posts_worker = asyncio.create_task(load_posts_task(client, only_posts_after, post_load_queue, like_load_queue, storage_queue, actually_do_shit=load_posts))
+    load_likes_worker = asyncio.create_task(load_likes_task(client, like_load_queue, storage_queue))
+    report_task = asyncio.create_task(log_queue_size_task(storage_queue, post_load_queue, like_load_queue))
 
     async for furry in find_furries_clean(client, mutes):
         # The posts for a user can be loaded before the user is stored, however the StoreUser will always be ahead of the relevant
@@ -384,10 +438,14 @@ async def load(db: Database, load_posts: bool = True) -> None:
 
     await post_load_queue.join()
     await storage_queue.join()
+    await like_load_queue.join()
+
     storage_worker.cancel()
     load_posts_worker.cancel()
+    load_likes_worker.cancel()
     report_task.cancel()
-    await asyncio.gather(storage_worker, load_posts_worker, report_task, return_exceptions=True)
+
+    await asyncio.gather(storage_worker, load_posts_worker, load_likes_worker, report_task, return_exceptions=True)
 
     cprint('Ok! Yeah! Woooo!', 'blue', force_color=True)
     cprint('Done scraping website :)', 'green', force_color=True)

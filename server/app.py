@@ -23,8 +23,14 @@ import termcolor
 
 
 algos = {
-    (os.environ[server.algos.environment_variable_name_for(i['record_name'])]): i['handler']
-    for i in server.algos.algo_details
+    **{
+        (os.environ[server.algos.environment_variable_name_for(i['record_name'])]): i['handler']
+        for i in server.algos.algo_details
+    },
+    **{
+        i['record_name']: i['handler']
+        for i in server.algos.algo_details
+    }
 }
 
 
@@ -170,5 +176,24 @@ def create_route_table(db: Database):
             return web.HTTPBadRequest(text='Malformed Cursor')
 
         return web.json_response(body)
+    
+    @routes.get('/feed/{feed}')
+    async def get_feed(request: web.Request) -> web.Response:
+        feed_name = request.match_info['feed']
+        algo = algos.get(feed_name)
+        if algo is None:
+            return web.HTTPNotFound(text='Feed not found')
+        
+        posts = (await algo(db, None, 50))['feed']
+
+        full_posts = [await db.post.find_unique_or_raise({'uri': i['post']}, include={'author': True}) for i in posts]
+
+        t = '<br>'.join(
+            f'{"?" if not i.author else i.author.handle} - {i.like_count}L - {i.media_count}M - {i.text}'
+            for i in full_posts
+        )
+        
+        return web.Response(text=f'<html><body><h3>{feed_name}</h3><br>{t}</body></html>', content_type='text/html')
+
     
     return routes
