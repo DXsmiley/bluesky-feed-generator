@@ -270,6 +270,10 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
                             'media_count': len(media),
                             'media_with_alt_text_count': media_with_alt_text,
                             'text': p.record['text'],
+                            'm0': None if len(media) <= 0 else media[0].thumb,
+                            'm1': None if len(media) <= 1 else media[1].thumb,
+                            'm2': None if len(media) <= 2 else media[2].thumb,
+                            'm3': None if len(media) <= 3 else media[3].thumb,
                         },
                         'update': {
                             'like_count': p.likeCount or 0,
@@ -277,6 +281,10 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
                             'media_with_alt_text_count': media_with_alt_text,
                             'mentions_fursuit': mentions_fursuit(p.record['text']),
                             'text': p.record['text'],
+                            'm0': None if len(media) <= 0 else media[0].thumb,
+                            'm1': None if len(media) <= 1 else media[1].thumb,
+                            'm2': None if len(media) <= 2 else media[2].thumb,
+                            'm3': None if len(media) <= 3 else media[3].thumb,
                         }
                     }
                 )

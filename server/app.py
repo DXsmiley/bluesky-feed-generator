@@ -21,6 +21,8 @@ from typing import AsyncIterator, Callable, Coroutine, Any
 import traceback
 import termcolor
 
+from prisma.models import Post
+import re
 
 algos = {
     **{
@@ -188,12 +190,30 @@ def create_route_table(db: Database):
 
         full_posts = [await db.post.find_unique_or_raise({'uri': i['post']}, include={'author': True}) for i in posts]
 
-        t = '<br>'.join(
-            f'{"?" if not i.author else i.author.handle} - {i.like_count}L - {i.media_count}M - {i.text}'
-            for i in full_posts
+        from server.html import Node, html, head, style, body, img, div, h3, p, a
+
+        def posthtml(i: Post) -> Node:
+            t = re.sub(r'\n+', ' • ', i.text, re.MULTILINE)
+            l = p("?" if not i.author else i.author.handle, ' - ', str(i.like_count), ' - ', t)
+            xs = div(*[a(href=x, target="_blank")(img(src=x, width='100px', height='80px')) for x in [i.m0, i.m1, i.m2, i.m3] if x is not None])
+            return div(l, xs, class_='post')
+
+        css = '''
+            body {
+                max-width: 800px;
+                margin: auto;
+                text-align: justify;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            }
+            img{object-fit:contain;}
+        '''
+
+        out = html(
+            head(style(css)),
+            body(h3(feed_name), *[posthtml(i) for i in full_posts]),
         )
         
-        return web.Response(text=f'<html><body><h3>{feed_name}</h3><br>{t}</body></html>', content_type='text/html')
+        return web.Response(text=str(out), content_type='text/html')
 
     
     return routes

@@ -44,6 +44,11 @@ model Post {
   authorId String
   author Actor @relation(fields: [authorId], references: [did])
   likes Like[]
+  // Media URLs
+  m0 String?
+  m1 String?
+  m2 String?
+  m3 String?
   @@index([indexed_at])
 }
 

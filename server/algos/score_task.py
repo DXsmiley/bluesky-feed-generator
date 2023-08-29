@@ -50,10 +50,10 @@ async def load_all_posts(db: Database, run_starttime: datetime) -> AsyncIterable
             },
             include={
                 'author': True,
-                # 'likes': {'include': {'liker': True}},
+                'likes': {'include': {'liker': True}},
                 # Optimisation for the data we actually care about right now.
                 # Probably better if we just store the girl-like count on the post itself though TBH
-                'likes': {'include': {'liker': True}, 'where': {'liker': {'is': {'gender_label_auto': 'girl'}}}},
+                # 'likes': {'include': {'liker': True}, 'where': {'liker': {'is': {'gender_label_auto': 'girl'}}}},
             }
         )
         if not posts:
@@ -82,16 +82,18 @@ def _raw_score(post_age: timedelta, like_count: int) -> float:
 
 
 def raw_score(run_starttime: datetime, p: Post) -> float:
-    return _raw_score(run_starttime - p.indexed_at, p.like_count) * penalty(p)
+    likes = len([i for i in p.likes or [] if i.liker and i.liker.in_fox_feed])
+    return _raw_score(run_starttime - p.indexed_at, likes) * penalty(p)
 
 
 def raw_vix_vote_score(run_starttime: datetime, p: Post) -> float:
-    # IDEA: use sqrt(total_likes * girl_likes)?
-    likes = 0 if p.likes is None else len([i for i in p.likes if i.liker and i.liker.in_vix_feed])
+    girl_likes = len([i for i in p.likes or [] if i.liker and i.liker.in_vix_feed])
+    furry_likes = len([i for i in p.likes or [] if i.liker and i.liker.in_fox_feed])
+    like_score = (girl_likes * furry_likes) ** 0.5
     author_in_vix_feed = p.author and p.author.in_vix_feed
     return (
-        0 if likes < 2 and not author_in_vix_feed
-        else _raw_score(run_starttime - p.indexed_at, likes) * penalty(p)
+        0 if girl_likes < 5 and not author_in_vix_feed
+        else _raw_score(run_starttime - p.indexed_at, like_score) * penalty(p)
     )
 
 
@@ -103,7 +105,8 @@ def _raw_freshness(post_age: timedelta, like_count: int) -> float:
 
 
 def raw_freshness(run_starttime: datetime, p: Post) -> float:
-    return _raw_freshness(run_starttime - p.indexed_at, p.like_count) * penalty(p)
+    likes = len([i for i in p.likes or [] if i.liker and i.liker.in_fox_feed])
+    return _raw_freshness(run_starttime - p.indexed_at, likes) * penalty(p)
 
 
 @dataclass

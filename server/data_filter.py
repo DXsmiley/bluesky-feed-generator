@@ -48,6 +48,8 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         if (await db.actor.find_unique({'did': created_post['author']})) is not None:
             logger.info(f'New furry post (with images: {len(images)}): {inlined_text}')
+            if len(images) > 0:
+                print(images)
             post_dict: PostCreateInput = {
                 'uri': created_post['uri'],
                 'cid': created_post['cid'],
@@ -58,6 +60,10 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                 'mentions_fursuit': mentions_fursuit(record.text),
                 'media_count': len(images),
                 'media_with_alt_text_count': len(images_with_alt_text),
+                'm0': None if len(images) <= 0 else images[0].image.ref,
+                'm1': None if len(images) <= 1 else images[1].image.ref,
+                'm2': None if len(images) <= 2 else images[2].image.ref,
+                'm3': None if len(images) <= 3 else images[3].image.ref,
             }
             posts_to_create.append(post_dict)
 
