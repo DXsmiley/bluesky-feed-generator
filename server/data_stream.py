@@ -1,7 +1,10 @@
+import sys
+
 import asyncio
 import typing as t
 from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic
 from typing_extensions import TypedDict
+import traceback
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
@@ -154,4 +157,8 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
         await operations_callback(db, ops)
         await asyncio.sleep(0)
 
-    await client.start(on_message_handler)
+    def on_error_handler(exception: Exception) -> None:
+        print('Error in data stream message handler:', file=sys.stderr)
+        traceback.print_exception(type(exception), exception, exception.__traceback__)
+
+    await client.start(on_message_handler, on_error_handler)
