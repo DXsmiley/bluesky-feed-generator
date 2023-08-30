@@ -437,9 +437,11 @@ async def load(db: Database, load_posts: bool = True) -> None:
     cprint('Getting muted accounts', 'blue', force_color=True)
     mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
 
-    storage_queue: 'asyncio.Queue[StoreThing]' = asyncio.Queue()
-    post_load_queue: 'asyncio.Queue[ProfileView]' = asyncio.Queue()
-    like_load_queue: 'asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]' = asyncio.PriorityQueue()
+    queue_size_limit = 10_000
+
+    storage_queue: 'asyncio.Queue[StoreThing]' = asyncio.Queue(maxsize=queue_size_limit)
+    post_load_queue: 'asyncio.Queue[ProfileView]' = asyncio.Queue(maxsize=queue_size_limit)
+    like_load_queue: 'asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]' = asyncio.PriorityQueue(maxsize=queue_size_limit)
 
     storage_worker = asyncio.create_task(store_to_db_task(db, storage_queue))
     load_posts_worker = asyncio.create_task(load_posts_task(client, only_posts_after, post_load_queue, like_load_queue, storage_queue, actually_do_shit=load_posts))
@@ -453,7 +455,6 @@ async def load(db: Database, load_posts: bool = True) -> None:
         await post_load_queue.put(furry)
 
     cprint('Waiting for workers to finish...', 'blue', force_color=True)
-    print(f'> Load: {post_load_queue.qsize()} . Store: {storage_queue.qsize()}')
 
     await post_load_queue.join()
     await storage_queue.join()
