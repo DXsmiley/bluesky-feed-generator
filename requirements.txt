@@ -1,4 +1,4 @@
-atproto==0.0.23
+atproto==0.0.24
 python-dotenv~=1.0.0
 prisma==0.9.1
 typing_extensions==4.5.0

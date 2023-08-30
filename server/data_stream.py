@@ -7,7 +7,7 @@ from typing_extensions import TypedDict
 import traceback
 
 from atproto import CAR, AtUri, models
-from atproto.exceptions import FirehoseError
+from atproto.exceptions import FirehoseError, UnexpectedFieldError
 from atproto.firehose import AsyncFirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto.xrpc_client.models import get_or_create, is_record_type
 from atproto.xrpc_client.models.common import XrpcError
@@ -141,6 +141,11 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
             await client.stop()
             return
 
+        if 'rev' in message.body:
+            del message.body['rev']
+        if 'since' in message.body:
+            del message.body['since']
+
         commit = parse_subscribe_repos_message(message)
         if not isinstance(commit, models.ComAtprotoSyncSubscribeRepos.Commit):
             return
@@ -157,7 +162,7 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
         await operations_callback(db, ops)
         await asyncio.sleep(0)
 
-    def on_error_handler(exception: Exception) -> None:
+    def on_error_handler(exception: BaseException) -> None:
         print('Error in data stream message handler:', file=sys.stderr)
         traceback.print_exception(type(exception), exception, exception.__traceback__)
 

@@ -72,6 +72,8 @@ def background_tasks(db: Database) -> Callable[[web.Application], AsyncIterator[
     async def catch(name: str, c: Coroutine[Any, Any, None]) -> None:
         try:
             await c
+        except KeyboardInterrupt:
+            pass
         except:
             termcolor.cprint(f'--------[ Failure in {name} ]--------', 'red', force_color=True)
             termcolor.cprint( 'Critical exception in background task', 'red', force_color=True)
