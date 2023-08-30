@@ -157,7 +157,9 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
 
     cprint(f'Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts', 'yellow', force_color=True)
 
-    for score, post in will_store:
+    for i, (score, post) in enumerate(will_store):
+        if i % 20 == 0:
+            await asyncio.sleep(0.01)
         try:
             await db.postscore.create(
                 data={
@@ -168,7 +170,6 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
                     'feed_name': fp.feed_name,
                 }
             )
-            print('Stored!', fp.feed_name, rd.run_version, post.post.uri)
         except prisma.errors.UniqueViolationError:
             uri_count = sum(i.post.uri == post.post.uri for _, i in will_store)
             cprint(f'Unique PostScore violation error on {post.post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
