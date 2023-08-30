@@ -131,7 +131,8 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
 
     params = subscribe_repos.Params(cursor=state.cursor) if state else None
 
-    client = AsyncFirehoseSubscribeReposClient(params)
+    # passing params causes it to loop???
+    client = AsyncFirehoseSubscribeReposClient(None)
 
     async def on_message_handler(message: 'MessageFrame') -> None:
 
