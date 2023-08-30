@@ -20,6 +20,7 @@ from typing import AsyncIterator, Callable, Coroutine, Any
 
 import traceback
 import termcolor
+from termcolor import cprint
 
 from prisma.models import Post
 import re
@@ -171,6 +172,8 @@ def create_route_table(db: Database):
         algo = algos.get(feed)
         if not algo:
             return web.HTTPBadRequest(text='Unsupported algorithm')
+        
+        cprint(f'Getting feed {feed}', 'magenta', force_color=True)
 
         try:
             cursor = request.query.get('cursor', default=None)

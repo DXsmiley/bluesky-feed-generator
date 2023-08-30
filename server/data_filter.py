@@ -90,15 +90,18 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         if like_author is None:
             continue
         print(f'{like_author.handle} ({like_author.gender_label_auto}) liked a post')
-        await db.like.create(
-            data={
-                'uri': like['uri'],
-                'cid': like['cid'],
-                'liker_id': like['author'],
-                'post_uri': like['record'].subject.uri,
-                'post_cid': like['record'].subject.cid,
-                'created_at': parse_datetime(like['record'].createdAt),
-            }
-        )
+        try:
+            await db.like.create(
+                data={
+                    'uri': like['uri'],
+                    'cid': like['cid'],
+                    'liker_id': like['author'],
+                    'post_uri': like['record'].subject.uri,
+                    'post_cid': like['record'].subject.cid,
+                    'created_at': parse_datetime(like['record'].createdAt),
+                }
+            )
+        except prisma.errors.UniqueViolationError:
+            pass
 
     # TODO: Handle deleted likes lmao

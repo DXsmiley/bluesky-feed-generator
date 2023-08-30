@@ -215,6 +215,7 @@ StoreThing = Union[StoreUser, StorePost, StoreLike]
 
 async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
     while True:
+        await asyncio.sleep(0.01)
         item = await q.get()
         try:
             if isinstance(item, StoreUser):
