@@ -21,6 +21,7 @@ from typing import AsyncIterator, Callable, Coroutine, Any
 import traceback
 import termcolor
 from termcolor import cprint
+from datetime import datetime
 
 from prisma.models import Post
 import re
@@ -82,7 +83,7 @@ def background_tasks(db: Database) -> Callable[[web.Application], AsyncIterator[
             traceback.print_exc()
             termcolor.cprint('-------------------------------------', 'red', force_color=True)
     async def f(_: web.Application) -> AsyncIterator[None]:
-        asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
+        # asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
         asyncio.create_task(catch('SCORES', score_posts_forever(db)))
         asyncio.create_task(catch('FIREHS', data_stream.run(db, config.SERVICE_DID, operations_callback, None)))
         yield
@@ -175,12 +176,18 @@ def create_route_table(db: Database):
         
         cprint(f'Getting feed {feed}', 'magenta', force_color=True)
 
+        s = datetime.now()
+
         try:
             cursor = request.query.get('cursor', default=None)
             limit = request.query.get('limit', default=20)
             body = await algo(db, cursor, int(limit))
         except ValueError:
             return web.HTTPBadRequest(text='Malformed Cursor')
+        
+        d = datetime.now() - s
+        
+        cprint(f'Done in {int(d.total_seconds())}', 'magenta', force_color=True)
 
         return web.json_response(body)
     
