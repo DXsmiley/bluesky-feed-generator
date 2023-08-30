@@ -83,7 +83,7 @@ def background_tasks(db: Database) -> Callable[[web.Application], AsyncIterator[
             traceback.print_exc()
             termcolor.cprint('-------------------------------------', 'red', force_color=True)
     async def f(_: web.Application) -> AsyncIterator[None]:
-        # asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
+        asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
         asyncio.create_task(catch('SCORES', score_posts_forever(db)))
         asyncio.create_task(catch('FIREHS', data_stream.run(db, config.SERVICE_DID, operations_callback, None)))
         yield
