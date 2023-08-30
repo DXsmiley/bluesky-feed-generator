@@ -153,7 +153,7 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
         reverse=True
     )
 
-    will_store = scored_posts[:2000]
+    will_store = scored_posts[:500]
 
     cprint(f'Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts', 'yellow', force_color=True)
 
