@@ -11,6 +11,7 @@ from atproto.exceptions import FirehoseError, UnexpectedFieldError
 from atproto.firehose import AsyncFirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto.xrpc_client.models import get_or_create, is_record_type
 from atproto.xrpc_client.models.common import XrpcError
+from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
 from httpx import ConnectError
@@ -128,9 +129,9 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
     state = await db.subscriptionstate.find_first(where={'service': {'equals': name}})
     print('Done')
 
-    params = None
-    if state:
-        params = models.ComAtprotoSyncSubscribeRepos.Params(cursor=state.cursor)
+    params = subscribe_repos.Params(
+        cursor=state.cursor if state else None
+    )
 
     client = AsyncFirehoseSubscribeReposClient(params)
 
@@ -147,15 +148,23 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
             del message.body['since']
 
         commit = parse_subscribe_repos_message(message)
-        if not isinstance(commit, models.ComAtprotoSyncSubscribeRepos.Commit):
+        if not isinstance(commit, subscribe_repos.Commit):
             return
 
         # update stored state every ~20 events
-        if commit.seq % 20 == 0:
+        if commit.seq % 500 == 0:
             # ok so I think name should probably be unique or something????
-            await db.subscriptionstate.update(
-                data={'cursor': commit.seq},
-                where={'service': name}
+            await db.subscriptionstate.upsert(
+                where={'service': name},
+                data={
+                    'create': {
+                        'service': name,
+                        'cursor': commit.seq
+                    },
+                    'update': {
+                        'cursor': commit.seq
+                    }
+                }
             )
 
         ops = _get_ops_by_type(commit)

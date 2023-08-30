@@ -1,0 +1,4 @@
+#!/bin/bash
+
+gzip --decompress --stdout --keep seed.db.gzip > ./prisma/dev.db
+prisma db push

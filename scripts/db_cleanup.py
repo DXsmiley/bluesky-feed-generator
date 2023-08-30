@@ -1,13 +1,23 @@
 import asyncio
+from datetime import datetime
 from server.database import make_database_connection
-from datetime import datetime, timedelta
+from server.algos.score_task import LOOKBACK_HARD_LIMIT
 
 async def main():
     now = datetime.utcnow()
     db = await make_database_connection(timeout=120)
-    await db.postscore.delete_many(
-        where={'created_at': {'lt': now - timedelta(hours=2)}}
-    )
 
+    print('Cleaning up the database...')
+
+    postscore_max_version = await db.postscore.find_first(order={'version': 'desc'})
+    if postscore_max_version is not None:
+        c = await db.postscore.delete_many(where={'version': {'not': postscore_max_version.version}})
+        print('Deleted', c, 'postscores')
+
+    c = await db.actor.delete_many(where={'in_fox_feed': False, 'in_vix_feed': False})
+    print('Deleted', c, 'actors')
+
+    c = await db.post.delete_many(where={'indexed_at': {'lt': now - LOOKBACK_HARD_LIMIT}})
+    print('Deleted', c, 'posts')
 
 asyncio.run(main())

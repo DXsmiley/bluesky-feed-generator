@@ -42,13 +42,14 @@ model Post {
   media_count Int
   media_with_alt_text_count Int @default(0)
   authorId String
-  author Actor @relation(fields: [authorId], references: [did])
+  author Actor @relation(fields: [authorId], references: [did], onDelete: Cascade)
   likes Like[]
   // Media URLs
   m0 String?
   m1 String?
   m2 String?
   m3 String?
+  @@index([uri])
   @@index([indexed_at])
 }
 
@@ -56,9 +57,9 @@ model Like {
   uri String @id
   cid String // do I even need this?
   liker_id String
-  liker Actor @relation(fields: [liker_id], references: [did])
+  liker Actor @relation(fields: [liker_id], references: [did], onDelete: Cascade)
   post_uri String
-  post Post @relation(fields: [post_uri], references: [uri])
+  post Post @relation(fields: [post_uri], references: [uri], onDelete: Cascade)
   post_cid String
   created_at DateTime
   counter Int @default(1)

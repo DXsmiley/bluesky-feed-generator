@@ -1,1 +1,1 @@
-web: prisma db push --accept-data-loss && PORT=$PORT python -m server
+web: ./h-setup && PORT=$PORT python -m server
