@@ -438,7 +438,7 @@ async def load(db: Database, load_posts: bool = True) -> None:
     cprint('Getting muted accounts', 'blue', force_color=True)
     mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
 
-    queue_size_limit = 10_000
+    queue_size_limit = 500
 
     storage_queue: 'asyncio.Queue[StoreThing]' = asyncio.Queue(maxsize=queue_size_limit)
     post_load_queue: 'asyncio.Queue[ProfileView]' = asyncio.Queue(maxsize=queue_size_limit)

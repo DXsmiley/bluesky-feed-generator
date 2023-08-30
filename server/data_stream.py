@@ -149,10 +149,10 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
         if commit.seq % 500 == 0:
             print(commit.seq)
             # ok so I think name should probably be unique or something????
-            await db.subscriptionstate.update(
-                where={'service': name},
-                data={'cursor': commit.seq}
-            )
+            # await db.subscriptionstate.update(
+            #     where={'service': name},
+            #     data={'cursor': commit.seq}
+            # )
 
         ops = _get_ops_by_type(commit)
         await operations_callback(db, ops)
