@@ -61,7 +61,9 @@ model Like {
   post Post @relation(fields: [post_uri], references: [uri])
   post_cid String
   created_at DateTime
+  counter Int @default(1)
   @@index([post_uri])
+  @@index([created_at])
 }
 
 model PostScore {

@@ -1,5 +1,4 @@
 import asyncio
-import sys
 import traceback
 from collections import defaultdict
 from datetime import datetime
@@ -7,10 +6,11 @@ from datetime import timezone
 from datetime import timedelta
 
 from server.database import Database, make_database_connection
-from prisma.models import Like, Post
+from prisma.models import Post, Actor
 import prisma.errors
+import prisma.types
 
-from typing import List, Dict, Iterable, Tuple, AsyncIterable, Callable
+from typing import List, Dict, Tuple, Callable
 from .feed_names import FeedName
 
 import server.gender
@@ -33,41 +33,58 @@ def decay_curve(x: float) -> float:
     )
 
 
-async def load_all_posts(db: Database, run_starttime: datetime) -> AsyncIterable[Post]:
-    # This is truely terrible
-    chunk_size = 5000
-    offset = 0
-    while True:
-        posts = await db.post.find_many(
-            take=chunk_size,
-            skip=offset,
-            order=[{'indexed_at': 'desc'}, {'cid': 'desc'}],
-            where={
-                'AND': [
-                    {'reply_root': None},
-                    {'indexed_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT}},
-                ]
-            },
-            include={
-                'author': True,
-                'likes': {'include': {'liker': True}},
-                # Optimisation for the data we actually care about right now.
-                # Probably better if we just store the girl-like count on the post itself though TBH
-                # 'likes': {'include': {'liker': True}, 'where': {'liker': {'is': {'gender_label_auto': 'girl'}}}},
-            }
+async def get_like_counts(db: Database, run_starttime: datetime, filter: prisma.types.LikeWhereInput) -> Dict[str, int]:
+    likes_aggregated = await db.like.group_by(
+        by=['post_uri'],
+        where={
+            'AND': [
+                {'created_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT}},
+                filter,
+            ]
+        },
+        sum={'counter': True}
+    )
+    return {i.get('post_uri', ''): i.get('_sum', {}).get('counter', 0) for i in likes_aggregated}
+
+
+@dataclass
+class PostWithInfo:
+    post: Post
+    author: Actor
+    like_count_furries: int
+    like_count_girls: int
+
+
+async def load_all_posts(db: Database, run_starttime: datetime) -> List[PostWithInfo]:
+    likes_by_furries = await get_like_counts(db, run_starttime, {'liker': {'is': {'in_fox_feed': True}}})
+    likes_by_girls = await get_like_counts(db, run_starttime, {'liker': {'is': {'in_vix_feed': True}}})
+    posts = await db.post.find_many(
+        order=[{'indexed_at': 'desc'}, {'cid': 'desc'}],
+        where={
+            'reply_root': None,
+            'indexed_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT},
+        },
+        include={
+            'author': True,
+        }
+    )
+    return [
+        PostWithInfo(
+            post=i,
+            author=i.author,
+            like_count_furries=likes_by_furries.get(i.uri, 0),
+            like_count_girls=likes_by_girls.get(i.uri, 0)
         )
-        if not posts:
-            break
-        for i in posts:
-            yield i
-        offset += chunk_size
+        for i in posts
+        if i.author is not None
+    ]
 
 
-def penalty(p: Post):
-    gender = server.gender.guess_gender_reductive(p.text)
+def penalty(p: PostWithInfo):
+    gender = server.gender.guess_gender_reductive(p.post.text)
     return (
         # Penalise people posting images without alt-text
-        (0.7 if p.media_count > 0 and p.media_with_alt_text_count == 0 else 1.0)
+        (0.7 if p.post.media_count > 0 and p.post.media_with_alt_text_count == 0 else 1.0)
         # TODO: boosting girl-vibes on the feed, assess the impact of this later
         * (1.1 if gender == 'girl' else 1.0)
         * (0.9 if gender == 'boy' else 1.0)
@@ -81,19 +98,14 @@ def _raw_score(post_age: timedelta, like_count: int) -> float:
     return (like_count ** 0.9 + 5) * decay_curve(max(0, x))
 
 
-def raw_score(run_starttime: datetime, p: Post) -> float:
-    likes = len([i for i in p.likes or [] if i.liker and i.liker.in_fox_feed])
-    return _raw_score(run_starttime - p.indexed_at, likes) * penalty(p)
+def raw_score(run_starttime: datetime, p: PostWithInfo) -> float:
+    return _raw_score(run_starttime - p.post.indexed_at, p.like_count_furries) * penalty(p)
 
 
-def raw_vix_vote_score(run_starttime: datetime, p: Post) -> float:
-    girl_likes = len([i for i in p.likes or [] if i.liker and i.liker.in_vix_feed])
-    furry_likes = len([i for i in p.likes or [] if i.liker and i.liker.in_fox_feed])
-    like_score = (girl_likes * furry_likes) ** 0.5
-    author_in_vix_feed = p.author and p.author.in_vix_feed
+def raw_vix_vote_score(run_starttime: datetime, p: PostWithInfo) -> float:
     return (
-        0 if girl_likes < 5 and not author_in_vix_feed
-        else _raw_score(run_starttime - p.indexed_at, like_score) * penalty(p)
+        0 if p.like_count_girls < 5 and not p.author.in_vix_feed
+        else _raw_score(run_starttime - p.post.indexed_at, p.like_count_girls) * penalty(p)
     )
 
 
@@ -104,32 +116,31 @@ def _raw_freshness(post_age: timedelta, like_count: int) -> float:
     return (like_count ** 0.3 + 5) * decay_curve(max(0, x))
 
 
-def raw_freshness(run_starttime: datetime, p: Post) -> float:
-    likes = len([i for i in p.likes or [] if i.liker and i.liker.in_fox_feed])
-    return _raw_freshness(run_starttime - p.indexed_at, likes) * penalty(p)
+def raw_freshness(run_starttime: datetime, p: PostWithInfo) -> float:
+    return _raw_freshness(run_starttime - p.post.indexed_at, p.like_count_furries) * penalty(p)
 
 
 @dataclass
 class FeedParameters:
     feed_name: FeedName
-    filter: Callable[[Post], bool]
-    score_func: Callable[[datetime, Post], float]
+    filter: Callable[[PostWithInfo], bool]
+    score_func: Callable[[datetime, PostWithInfo], float]
 
 
 @dataclass
 class RunDetails:
-    candidate_posts: List[Post]
+    candidate_posts: List[PostWithInfo]
     run_starttime: datetime
     run_version: int
 
 
 async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
 
-    posts_by_author: Dict[str, List[Tuple[float, Post]]] = defaultdict(list)
+    posts_by_author: Dict[str, List[Tuple[float, PostWithInfo]]] = defaultdict(list)
     for post in rd.candidate_posts:
         if fp.filter(post):
             rs = fp.score_func(rd.run_starttime, post)
-            posts_by_author[post.authorId].append((rs, post))
+            posts_by_author[post.author.did].append((rs, post))
 
     scored_posts = sorted(
         [
@@ -147,12 +158,10 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
     cprint(f'Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts', 'yellow', force_color=True)
 
     for score, post in will_store:
-        if post.author is None:
-            continue
         try:
             await db.postscore.create(
                 data={
-                    'uri': post.uri,
+                    'uri': post.post.uri,
                     'version': rd.run_version,
                     'score': score,
                     'created_at': rd.run_starttime,
@@ -160,46 +169,46 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
                 }
             )
         except prisma.errors.UniqueViolationError:
-            uri_count = sum(i.uri == post.uri for _, i in will_store)
-            cprint(f'Unique PostScore violation error on {post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
+            uri_count = sum(i.post.uri == post.post.uri for _, i in will_store)
+            cprint(f'Unique PostScore violation error on {post.post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
 
 
 ALGORITHMIC_FEEDS = [
     FeedParameters(
         feed_name='fox-feed',
-        filter=lambda p: p.author and p.author.in_fox_feed or False,
+        filter=lambda p: p.author.in_fox_feed,
         score_func=raw_score,
     ),
     FeedParameters(
         feed_name='vix-feed',
-        filter=lambda p: p.author and p.author.in_vix_feed or False,
+        filter=lambda p: p.author.in_vix_feed,
         score_func=raw_score,
     ),
     FeedParameters(
         feed_name='fresh-feed',
-        filter=lambda p: p.author and p.author.in_vix_feed or False,
+        filter=lambda p: p.author.in_vix_feed,
         score_func=raw_freshness,
     ),
     FeedParameters(
         feed_name='vix-votes',
-        filter=lambda p: p.author and p.author.in_fox_feed or False,
+        filter=lambda p: p.author.in_fox_feed,
         score_func=raw_vix_vote_score,
     )
 ]
 
 
-async def score_posts(db: Database, highlight_handles: List[str]) -> None:
+async def score_posts(db: Database) -> None:
 
     run_starttime = datetime.now(tz=timezone.utc)
     run_version = int(run_starttime.timestamp())
 
     cprint(f'Starting scoring round {run_version}', 'yellow', force_color=True)
 
-    all_posts = [i async for i in load_all_posts(db, run_starttime)]
-    all_likes = [i for p in all_posts for i in p.likes or []]
-    girl_likes = [i for i in all_likes if i.liker and i.liker.in_vix_feed]
+    all_posts = await load_all_posts(db, run_starttime)
+    total_likes = sum(i.like_count_furries for i in all_posts)
+    total_girl_likes = sum(i.like_count_girls for i in all_posts)
 
-    cprint(f'Scoring round {run_version} has {len(all_posts)} posts and {len(all_likes)} likes and {len(girl_likes)} girl-likes', 'yellow', force_color=True)
+    cprint(f'Scoring round {run_version} has {len(all_posts)} posts and {total_likes} likes and {total_girl_likes} girl-likes', 'yellow', force_color=True)
 
     rd = RunDetails(
         candidate_posts=all_posts,
@@ -222,7 +231,7 @@ async def score_posts(db: Database, highlight_handles: List[str]) -> None:
 async def score_posts_forever(db: Database):
     while True:
         try:
-            await score_posts(db, [])
+            await score_posts(db)
             cprint(f'gc-d {gc.collect()} objects', 'yellow', force_color=True)
         except Exception:
             cprint(f'Error during score_posts', color='red', force_color=True)
@@ -232,7 +241,7 @@ async def score_posts_forever(db: Database):
 
 async def main():
     db = await make_database_connection()
-    await score_posts(db, sys.argv[1:])
+    await score_posts(db)
 
 
 if __name__ == '__main__':
