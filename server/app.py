@@ -5,6 +5,7 @@ import signal
     
 from server import config
 from server import data_stream
+import server.interface
 
 from aiohttp import web
 
@@ -16,7 +17,7 @@ import server.load_known_furries
 
 from server.database import Database, make_database_connection
 
-from typing import AsyncIterator, Callable, Coroutine, Any, Optional
+from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set
 
 import traceback
 import termcolor
@@ -26,6 +27,8 @@ from dataclasses import dataclass
 
 from prisma.models import Post
 import re
+import html
+
 
 algos = {
     **{
@@ -114,44 +117,28 @@ def create_route_table(db: Database):
 
     @routes.get('/stats')
     async def stats(request: web.Request) -> web.Response:
-        users = await db.actor.count()
-        posts = await db.post.count()
-        postscores = await db.postscore.count()
-        likes = await db.like.count()
-        return web.Response(text=f'''
-            DB stats:<br>
-            {users} users<br>
-            {posts} posts<br>
-            {likes} likes<br>
-            {postscores} postscores<br>
-        ''', content_type='text/html')
+        page = server.interface.stats_page([
+            ('feeds', len(server.algos.algo_details)),
+            ('users', await db.actor.count()),
+            ('posts', await db.post.count()),
+            ('likes', await db.like.count()),
+            ('postscores', await db.postscore.count()),
+        ])
+        return web.Response(text=str(page), content_type='text/html')
 
 
-    # TODO: double check this
-    def htmlescape(s: str) -> str:
-        return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '')
-
-    @routes.get('/user-deets')
+    @routes.get('/user/{handle}')
     async def user_deets(request: web.Request) -> web.Response:
-        handle = request.query.get('handle', None)
+        handle = request.match_info['handle']
         if not isinstance(handle, str):
             return web.HTTPBadRequest(text='requires parameter "handle"')
         user = await db.actor.find_first(where={'handle': handle})
         if user is None:
             return web.HTTPNotFound(text='user not found')
-        posts = await db.post.find_many(where={'authorId': user.did})
-        posts_html = ''.join([
-            f"<code>{i.uri}</code><br>{i.media_count}M {i.like_count}L // {htmlescape(i.text)}<br><br>"
-            for i in posts
-        ])
-        return web.Response(text=f'''
-            {handle} {htmlescape(user.displayName or '')}<br>
-            Fox feed: {user.in_fox_feed}<br>
-            Vix feed: {user.in_vix_feed}<br>
-            <br>
-            {len(posts)} posts in db<br><br>
-            {posts_html}<br>
-        ''', content_type='text/html')
+        posts = await db.post.find_many(where={'authorId': user.did}, order={'indexed_at': 'desc'})
+        page = server.interface.user_page(user, posts)
+        return web.Response(text=str(page), content_type='text/html')
+
 
     @routes.get('/.well-known/did.json')
     async def did_json(request: web.Request) -> web.Response:
@@ -206,41 +193,83 @@ def create_route_table(db: Database):
 
         return web.json_response(body)
     
+
+    @routes.get('/feed')
+    async def get_feeds(request: web.Request) -> web.Response:
+        page = server.interface.feeds_page([i['record_name'] for i in server.algos.algo_details])
+        return web.Response(text=str(page), content_type='text/html')
+
+    
     @routes.get('/feed/{feed}')
     async def get_feed(request: web.Request) -> web.Response:
-        feed_name = request.match_info['feed']
+        feed_name = request.match_info.get('feed', '')
         algo = algos.get(feed_name)
         if algo is None:
             return web.HTTPNotFound(text='Feed not found')
         
         posts = (await algo(db, None, 50))['feed']
-
         full_posts = [await db.post.find_unique_or_raise({'uri': i['post']}, include={'author': True}) for i in posts]
 
-        from server.html import Node, html, head, style, body, img, div, h3, p, a
+        page = server.interface.feed_page(feed_name, full_posts)
 
-        def posthtml(i: Post) -> Node:
-            t = re.sub(r'\n+', ' • ', i.text, re.MULTILINE)
-            l = p("?" if not i.author else i.author.handle, ' - ', str(i.like_count), ' - ', t)
-            xs = div(*[a(href=x, target="_blank")(img(src=x, width='100px', height='80px')) for x in [i.m0, i.m1, i.m2, i.m3] if x is not None])
-            return div(l, xs, class_='post')
+        return web.Response(text=str(page), content_type='text/html')
+    
 
-        css = '''
-            body {
-                max-width: 800px;
-                margin: auto;
-                text-align: justify;
-                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            }
-            img{object-fit:contain;}
-        '''
+    async def quickflag_candidates_from_feed(feed_name: server.algos.FeedName) -> Set[str]:
+        max_version = await db.postscore.find_first_or_raise(where={'feed_name': feed_name}, order={'version': 'desc'})
+        postscores = await db.postscore.find_many(where={'feed_name': feed_name, 'version': max_version.version})
+        posts = await db.post.find_many(where={'uri': {'in': [i.uri for i in postscores]}})
+        return set(i.authorId for i in posts)
 
-        out = html(
-            head(style(css)),
-            body(h3(feed_name), *[posthtml(i) for i in full_posts]),
+
+    @routes.get('/quickflag')
+    async def quickflag(request: web.Request) -> web.Response:
+        # pick from feeds that are actually able to contain non-girls
+        dids = (
+            await quickflag_candidates_from_feed('vix-votes')
         )
-        
-        return web.Response(text=str(out), content_type='text/html')
+        users = await db.actor.find_many(
+            take=10,
+            where={
+                'did': {'in': list(dids)},
+                'gender_label_auto': 'unknown',
+                'gender_label_manual': 'not-looked-at',
+            },
+            include={
+                'posts': {
+                    'take': 4,
+                    'order_by': {'like_count': 'desc'},
+                }
+            }
+        )
+        page = server.interface.quickflag_page(users)
+        return web.Response(text=str(page), content_type='text/html')
+    
+
+    @routes.post('/admin/mark')
+    async def mark_user(request: web.Request) -> web.Response:
+        blob = await request.json()
+        print(blob)
+        did = blob['did']
+        in_fox_feed = blob['in_fox_feed']
+        in_vix_feed = blob['in_vix_feed']
+        gender = blob['gender']
+        assert isinstance(did, str)
+        assert isinstance(in_fox_feed, bool)
+        assert isinstance(in_vix_feed, bool)
+        assert isinstance(gender, str)
+        assert gender in ['unknown', 'non-furry', 'boy', 'enby', 'girl', 'not-looked-at']
+        updated = await db.actor.update(
+            where={'did': did},
+            data={
+                'in_fox_feed': in_fox_feed,
+                'in_vix_feed': in_vix_feed,
+                'gender_label_manual': gender
+            }
+        )
+        if updated is None:
+            return web.HTTPNotFound(text='user not found')
+        return web.HTTPOk(text=f'{updated.handle} gender set to {updated.gender_label_manual}')
 
     
     return routes

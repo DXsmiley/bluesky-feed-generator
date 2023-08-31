@@ -19,6 +19,7 @@ model Actor {
   handle String
   description String?
   displayName String?
+  avatar String?
   in_fox_feed Boolean
   in_vix_feed Boolean
   gender_label_auto String @default("unknown")

@@ -23,11 +23,16 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
     posts_to_create: List[PostCreateWithoutRelationsInput] = []
     for created_post in ops['posts']['created']:
+        author_did = created_post['author']
         record = created_post['record']
 
+        inlined_text = record.text.replace('\n', ' ')
         images = record.embed.images if isinstance(record.embed, models.AppBskyEmbedImages.Main) else []
         images_with_alt_text = [i for i in images if i.alt.strip() != '']
-        inlined_text = record.text.replace('\n', ' ')
+        image_urls = {
+            index: f'https://av-cdn.bsky.app/img/feed_thumbnail/plain/{author_did}/{image.image.cid}@jpeg'
+            for index, image in enumerate(images)
+        }
 
         reply_parent = None
         try:
@@ -47,7 +52,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         if reply_parent is not None or reply_root is not None:
             continue
 
-        if (await db.actor.find_unique({'did': created_post['author']})) is not None:
+        if (await db.actor.find_unique({'did': author_did})) is not None:
             logger.info(f'New furry post (with images: {len(images)}): {inlined_text}')
             post_dict: PostCreateWithoutRelationsInput = {
                 'uri': created_post['uri'],
@@ -59,10 +64,10 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                 'mentions_fursuit': mentions_fursuit(record.text),
                 'media_count': len(images),
                 'media_with_alt_text_count': len(images_with_alt_text),
-                'm0': None if len(images) <= 0 else images[0].image.ref,
-                'm1': None if len(images) <= 1 else images[1].image.ref,
-                'm2': None if len(images) <= 2 else images[2].image.ref,
-                'm3': None if len(images) <= 3 else images[3].image.ref,
+                'm0': image_urls.get(0, None),
+                'm1': image_urls.get(1, None),
+                'm2': image_urls.get(2, None),
+                'm3': image_urls.get(3, None),
             }
             posts_to_create.append(post_dict)
 

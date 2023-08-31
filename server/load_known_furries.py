@@ -143,6 +143,16 @@ async def get_likes(client: AsyncClient, uri: str) -> AsyncIterable[Like]:
             yield i
 
 
+async def get_actor_likes(client: AsyncClient, actor: str) -> AsyncIterable[FeedViewPost]:
+    r = await client.bsky.feed.get_actor_likes({'actor': actor})
+    for i in r.feed:
+        yield i
+    while r.cursor is not None:
+        r = await client.bsky.feed.get_actor_likes({'actor': actor, 'cursor': r.cursor})
+        for i in r.feed:
+            yield i
+
+
 async def get_mute_lists(client: AsyncClient) -> AsyncIterable[ListView]:
     r = await client.bsky.graph.get_list_mutes({})
     for i in r.lists:
@@ -226,6 +236,7 @@ async def store_user(db: Database, user: ProfileView) -> None:
                 'in_fox_feed': True,
                 'in_vix_feed': (gender == 'girl'),
                 'gender_label_auto': gender,
+                'avatar': user.avatar,
             },
             'update': {
                 'did': user.did,
@@ -235,6 +246,7 @@ async def store_user(db: Database, user: ProfileView) -> None:
                 'in_fox_feed': True,
                 'in_vix_feed': (gender == 'girl'),
                 'gender_label_auto': gender,
+                'avatar': user.avatar,
             }
         }
     )
