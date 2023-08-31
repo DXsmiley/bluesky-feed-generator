@@ -4,7 +4,7 @@ from server.logger import logger
 from server.data_stream import OpsByType
 
 from typing import List
-from prisma.types import PostCreateInput
+from prisma.types import PostCreateWithoutRelationsInput
 import prisma.errors
 
 from server.database import Database
@@ -21,7 +21,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
     # for example, let's create our custom feed that will contain all posts that contains fox related text
 
-    posts_to_create: List[PostCreateInput] = []
+    posts_to_create: List[PostCreateWithoutRelationsInput] = []
     for created_post in ops['posts']['created']:
         record = created_post['record']
 
@@ -49,7 +49,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         if (await db.actor.find_unique({'did': created_post['author']})) is not None:
             logger.info(f'New furry post (with images: {len(images)}): {inlined_text}')
-            post_dict: PostCreateInput = {
+            post_dict: PostCreateWithoutRelationsInput = {
                 'uri': created_post['uri'],
                 'cid': created_post['cid'],
                 'reply_parent': reply_parent,
@@ -67,11 +67,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             posts_to_create.append(post_dict)
 
     if posts_to_create:
-        for post in posts_to_create:
-            try:
-                await db.post.create(post)
-            except prisma.errors.UniqueViolationError:
-                pass
+        await db.post.create_many(posts_to_create)
 
     posts_to_delete = [p['uri'] for p in ops['posts']['deleted']]
     if posts_to_delete:

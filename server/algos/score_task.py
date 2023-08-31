@@ -226,7 +226,7 @@ async def score_posts(db: Database) -> None:
     cprint(f'Scoring round {run_version} took {(run_endtime - run_starttime).seconds // 60} minutes', 'yellow', force_color=True)
 
     await db.postscore.delete_many(
-        where={'created_at': {'lt': run_starttime - timedelta(hours=2)}}
+        where={'created_at': {'lt': run_starttime - timedelta(hours=1)}}
     )
 
 
@@ -238,7 +238,7 @@ async def score_posts_forever(db: Database):
         except Exception:
             cprint(f'Error during score_posts', color='red', force_color=True)
             traceback.print_exc()
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
 
 
 async def main():

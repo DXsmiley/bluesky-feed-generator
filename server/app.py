@@ -22,6 +22,7 @@ import traceback
 import termcolor
 from termcolor import cprint
 from datetime import datetime
+from dataclasses import dataclass
 
 from prisma.models import Post
 import re
@@ -47,13 +48,22 @@ algos = {
 # signal.signal(signal.SIGINT, sigint_handler)
 
 
-def create_and_run_webapp(*, port: int, db_url: Optional[str]) -> None:
-    asyncio.run(_create_and_run_webapp(port, db_url))
+@dataclass
+class Services:
+    scraper: bool = True
+    firehose: bool = True
+    scores: bool = True
+    # probably shouldn't be here tbh
+    log_db_queries: bool = False
 
 
-async def _create_and_run_webapp(port: int, db_url: Optional[str]) -> None:
-    db = await make_database_connection(db_url)
-    app = create_web_application(db)
+def create_and_run_webapp(*, port: int, db_url: Optional[str], services: Optional[Services] = None) -> None:
+    asyncio.run(_create_and_run_webapp(port, db_url, services or Services()))
+
+
+async def _create_and_run_webapp(port: int, db_url: Optional[str], services: Services) -> None:
+    db = await make_database_connection(db_url, log_queries=services.log_db_queries)
+    app = create_web_application(db, services)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', port)
@@ -63,14 +73,14 @@ async def _create_and_run_webapp(port: int, db_url: Optional[str]) -> None:
         await asyncio.sleep(10)
 
 
-def create_web_application(db: Database) -> web.Application:
+def create_web_application(db: Database, services: Services) -> web.Application:
     app = web.Application()
     app.add_routes(create_route_table(db))
-    app.cleanup_ctx.append(background_tasks(db))
+    app.cleanup_ctx.append(background_tasks(db, services))
     return app
 
 
-def background_tasks(db: Database) -> Callable[[web.Application], AsyncIterator[None]]:
+def background_tasks(db: Database, services: Services) -> Callable[[web.Application], AsyncIterator[None]]:
     async def catch(name: str, c: Coroutine[Any, Any, None]) -> None:
         try:
             await c
@@ -83,9 +93,12 @@ def background_tasks(db: Database) -> Callable[[web.Application], AsyncIterator[
             traceback.print_exc()
             termcolor.cprint('-------------------------------------', 'red', force_color=True)
     async def f(_: web.Application) -> AsyncIterator[None]:
-        asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
-        asyncio.create_task(catch('SCORES', score_posts_forever(db)))
-        asyncio.create_task(catch('FIREHS', data_stream.run(db, config.SERVICE_DID, operations_callback, None)))
+        if services.scraper:
+            asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
+        if services.scores:
+            asyncio.create_task(catch('SCORES', score_posts_forever(db)))
+        if services.firehose:
+            asyncio.create_task(catch('FIREHS', data_stream.run(db, config.SERVICE_DID, operations_callback, None)))
         yield
     return f
 
@@ -104,10 +117,12 @@ def create_route_table(db: Database):
         users = await db.actor.count()
         posts = await db.post.count()
         postscores = await db.postscore.count()
+        likes = await db.like.count()
         return web.Response(text=f'''
             DB stats:<br>
             {users} users<br>
             {posts} posts<br>
+            {likes} likes<br>
             {postscores} postscores<br>
         ''', content_type='text/html')
 
