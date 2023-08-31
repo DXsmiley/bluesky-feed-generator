@@ -24,6 +24,9 @@ model Actor {
   in_vix_feed Boolean
   gender_label_auto String @default("unknown")
   gender_label_manual String @default("not-looked-at")
+  // This should allow us to pipe in a bunch of users without too much risk
+  // They'll count for votes but not have their posts appear in feeds
+  flagged_for_manual_review Boolean @default(false)
   posts Post[]
   likes Like[]
 }
@@ -63,6 +66,7 @@ model Like {
   counter Int @default(1)
   @@index([post_uri])
   @@index([created_at])
+  @@unique([post_uri, liker_id])
 }
 
 model PostScore {

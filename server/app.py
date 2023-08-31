@@ -25,9 +25,7 @@ from termcolor import cprint
 from datetime import datetime
 from dataclasses import dataclass
 
-from prisma.models import Post
-import re
-import html
+import scripts.find_furry_girls
 
 
 algos = {
@@ -58,6 +56,7 @@ class Services:
     scores: bool = True
     # probably shouldn't be here tbh
     log_db_queries: bool = False
+    admin_panel: bool = False
 
 
 def create_and_run_webapp(*, port: int, db_url: Optional[str], services: Optional[Services] = None) -> None:
@@ -78,7 +77,7 @@ async def _create_and_run_webapp(port: int, db_url: Optional[str], services: Ser
 
 def create_web_application(db: Database, services: Services) -> web.Application:
     app = web.Application()
-    app.add_routes(create_route_table(db))
+    app.add_routes(create_route_table(db, admin_panel=services.admin_panel))
     app.cleanup_ctx.append(background_tasks(db, services))
     return app
 
@@ -106,7 +105,7 @@ def background_tasks(db: Database, services: Services) -> Callable[[web.Applicat
     return f
 
 
-def create_route_table(db: Database):
+def create_route_table(db: Database, *, admin_panel: bool=False):
 
     routes = web.RouteTableDef()
 
@@ -157,6 +156,7 @@ def create_route_table(db: Database):
             ]
         })
 
+
     @routes.get('/xrpc/app.bsky.feed.describeFeedGenerator')
     async def describe_feed_generator(request: web.Request) -> web.Response:
         feeds = [{'uri': uri} for uri in algos.keys()]
@@ -168,6 +168,7 @@ def create_route_table(db: Database):
             }
         }
         return web.json_response(response)
+
 
     @routes.get('/xrpc/app.bsky.feed.getFeedSkeleton')
     async def get_feed_skeleton(request: web.Request) -> web.Response:
@@ -192,7 +193,7 @@ def create_route_table(db: Database):
         cprint(f'Done in {int(d.total_seconds())}', 'magenta', force_color=True)
 
         return web.json_response(body)
-    
+
 
     @routes.get('/feed')
     async def get_feeds(request: web.Request) -> web.Response:
@@ -213,7 +214,7 @@ def create_route_table(db: Database):
         page = server.interface.feed_page(feed_name, full_posts)
 
         return web.Response(text=str(page), content_type='text/html')
-    
+
 
     async def quickflag_candidates_from_feed(feed_name: server.algos.FeedName) -> Set[str]:
         max_version = await db.postscore.find_first_or_raise(where={'feed_name': feed_name}, order={'version': 'desc'})
@@ -231,23 +232,32 @@ def create_route_table(db: Database):
         users = await db.actor.find_many(
             take=10,
             where={
-                'did': {'in': list(dids)},
-                'gender_label_auto': 'unknown',
-                'gender_label_manual': 'not-looked-at',
+                'OR': [
+                    {
+                        'flagged_for_manual_review': True,
+                    },
+                    {
+                        'did': {'in': list(dids)},
+                        'gender_label_auto': 'unknown',
+                        'gender_label_manual': 'not-looked-at',
+                    }
+                ]
             },
             include={
                 'posts': {
                     'take': 4,
-                    'order_by': {'like_count': 'desc'},
+                    'order_by': {'indexed_at': 'desc'},
                 }
             }
         )
         page = server.interface.quickflag_page(users)
         return web.Response(text=str(page), content_type='text/html')
-    
+
 
     @routes.post('/admin/mark')
     async def mark_user(request: web.Request) -> web.Response:
+        if not admin_panel:
+            return web.HTTPForbidden(text='admin tools currently disabled')
         blob = await request.json()
         print(blob)
         did = blob['did']
@@ -264,12 +274,26 @@ def create_route_table(db: Database):
             data={
                 'in_fox_feed': in_fox_feed,
                 'in_vix_feed': in_vix_feed,
-                'gender_label_manual': gender
+                'gender_label_manual': gender,
+                # hmmmm.....
+                'flagged_for_manual_review': False,
             }
         )
         if updated is None:
             return web.HTTPNotFound(text='user not found')
         return web.HTTPOk(text=f'{updated.handle} gender set to {updated.gender_label_manual}')
 
-    
+
+    @routes.post('/admin/boost')
+    async def boost_post(request: web.Request) -> web.Response:
+        if not admin_panel:
+            return web.HTTPForbidden(text='admin tools currently disabled')
+        blob = await request.json()
+        print(blob)
+        uri = blob['uri']
+        assert isinstance(uri, str)
+        added_users, added_likes = await scripts.find_furry_girls.from_likes_of_post(db, uri)
+        return web.HTTPOk(text=f'Found {added_users} new candidate furries and {added_likes} new likes')
+
+
     return routes

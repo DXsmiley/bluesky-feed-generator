@@ -63,6 +63,7 @@ async def load_all_posts(db: Database, run_starttime: datetime) -> List[PostWith
         where={
             'reply_root': None,
             'indexed_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT},
+            'author': {'is': {'in_fox_feed': True, 'flagged_for_manual_review': False}}
         },
         include={
             'author': True,

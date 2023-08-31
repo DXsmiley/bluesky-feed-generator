@@ -223,7 +223,7 @@ class StoreLike:
 StoreThing = Union[StoreUser, StorePost, StoreLike]
 
 
-async def store_user(db: Database, user: ProfileView) -> None:
+async def store_user(db: Database, user: ProfileView, *, flag_for_manual_review: bool = False) -> None:
     gender = guess_gender_reductive(user.description) if user.description is not None else 'unknown'
     await db.actor.upsert(
         where={'did': user.did},
@@ -237,19 +237,42 @@ async def store_user(db: Database, user: ProfileView) -> None:
                 'in_vix_feed': (gender == 'girl'),
                 'gender_label_auto': gender,
                 'avatar': user.avatar,
+                'flagged_for_manual_review': flag_for_manual_review
             },
             'update': {
                 'did': user.did,
                 'handle': user.handle,
                 'description': user.description,
                 'displayName': user.displayName,
-                'in_fox_feed': True,
-                'in_vix_feed': (gender == 'girl'),
+                # 'in_fox_feed': True,
+                # 'in_vix_feed': (gender == 'girl'),
                 'gender_label_auto': gender,
                 'avatar': user.avatar,
             }
         }
     )
+
+
+async def store_like(db: Database, post_uri: str, like: Like) -> Optional[prisma.models.Like]:
+    ugh = datetime.utcnow().isoformat()
+    blh = random.randint(0, 1 << 32)
+    uri = f'fuck://{ugh}-{blh}'
+    try:
+        return await db.like.create(
+            data={
+                'uri': uri, # TODO
+                'cid': '', # TODO
+                'post_uri': post_uri,
+                'post_cid': '', # TODO
+                'liker_id': like.actor.did,
+                'created_at': parse_datetime(like.createdAt),
+            }
+        )
+    except prisma.errors.UniqueViolationError:
+        pass
+    except prisma.errors.ForeignKeyViolationError:
+        pass
+    return None
 
 
 async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
@@ -304,23 +327,7 @@ async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
                     }
                 )
             elif isinstance(item, StoreLike):
-                # print(item)
-                ugh = datetime.utcnow().isoformat()
-                blh = random.randint(0, 1 << 32)
-                uri = f'fuck://{ugh}-{blh}'
-                try:
-                    await db.like.create(
-                        data={
-                            'uri': uri, # TODO
-                            'cid': '', # TODO
-                            'post_uri': item.post_uri,
-                            'post_cid': '', # TODO
-                            'liker_id': item.like.actor.did,
-                            'created_at': parse_datetime(item.like.createdAt),
-                        }
-                    )
-                except prisma.errors.ForeignKeyViolationError:
-                    pass
+                await store_like(db, item.post_uri, item.like)
         except asyncio.CancelledError:
             break
         except KeyboardInterrupt:

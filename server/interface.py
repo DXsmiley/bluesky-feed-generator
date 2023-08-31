@@ -75,6 +75,25 @@ async function mark(did, in_fox_feed, in_vix_feed, gender) {
     const text = await response.text();
     toast(`${response.status} ${response.statusText} - ${text}`);
 }
+
+async function boost(uri) {
+    const data = {
+        'uri': uri
+    };
+    const response = await fetch(
+        '/admin/boost',
+        {
+            method: 'POST',
+            cache: 'no-cache',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        }
+    );
+    const text = await response.text();
+    toast(`${response.status} ${response.statusText} - ${text}`);
+}
 '''
 
 
@@ -102,10 +121,10 @@ def wrap_body(*n: Union[Node, None]) -> Node:
 def post(post_: Post) -> Node:
     text = re.sub(r'\n+', ' • ', post_.text, re.MULTILINE)
     mainline = p(
-        "?" if not post_.author
-        else a(post_.author.handle, href='/user/' + post_.author.handle),
-        ' - ',
-        str(post_.like_count),
+        img(src=post_.author.avatar, width="30px", height="30px", class_="profile") if post_.author and post_.author.avatar else None,
+        # html.button('boost', onclick=UnescapedString(f"boost('{post_.uri}')")),
+        ' ',
+        "?" if not post_.author else a(post_.author.handle, href='/user/' + post_.author.handle),
         ' - ',
         text
     )

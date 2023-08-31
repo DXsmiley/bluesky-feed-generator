@@ -10,6 +10,7 @@ ARGS = {
     '--no-firehose': 'Disable the firehose consumer',
     '--no-scores': 'Disable the score task',
     '--log-db-queries': 'Log queries made to the database',
+    '--admin-panel': 'Enable admin panel',
 }
 
 def main(args: List[str]) -> int:
@@ -37,6 +38,7 @@ def main(args: List[str]) -> int:
             firehose='--no-firehose' not in args,
             scores='--no-scores' not in args,
             log_db_queries='--log-db-queries' in args,
+            admin_panel='--admin-panel' in args,
         )
     )
     return 0
