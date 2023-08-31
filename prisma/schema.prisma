@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = "postgresql://paf:password@localhost:5432/foxfeed"
+  url      = env("DATABASE_URL")
 }
 
 model SubscriptionState {
