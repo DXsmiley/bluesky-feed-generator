@@ -94,7 +94,7 @@ def background_tasks(db: Database, services: Services) -> Callable[[web.Applicat
             termcolor.cprint('-------------------------------------', 'red', force_color=True)
     async def f(_: web.Application) -> AsyncIterator[None]:
         if services.scraper:
-            asyncio.create_task(catch('LOADDB', server.load_known_furries.load(db)))
+            asyncio.create_task(catch('LOADDB', server.load_known_furries.rescan_furry_accounts_forever(db)))
         if services.scores:
             asyncio.create_task(catch('SCORES', score_posts_forever(db)))
         if services.firehose:

@@ -213,38 +213,40 @@ class StoreLike:
 StoreThing = Union[StoreUser, StorePost, StoreLike]
 
 
+async def store_user(db: Database, user: ProfileView) -> None:
+    gender = guess_gender_reductive(user.description) if user.description is not None else 'unknown'
+    await db.actor.upsert(
+        where={'did': user.did},
+        data={
+            'create': {
+                'did': user.did,
+                'handle': user.handle,
+                'description': user.description,
+                'displayName': user.displayName,
+                'in_fox_feed': True,
+                'in_vix_feed': (gender == 'girl'),
+                'gender_label_auto': gender,
+            },
+            'update': {
+                'did': user.did,
+                'handle': user.handle,
+                'description': user.description,
+                'displayName': user.displayName,
+                'in_fox_feed': True,
+                'in_vix_feed': (gender == 'girl'),
+                'gender_label_auto': gender,
+            }
+        }
+    )
+
+
 async def store_to_db_task(db: Database, q: 'asyncio.Queue[StoreThing]'):
     while True:
         await asyncio.sleep(0.001)
         item = await q.get()
         try:
             if isinstance(item, StoreUser):
-                # print('Storing user', item.user.handle, '/', q.qsize())
-                user = item.user
-                gender = guess_gender_reductive(user.description) if user.description is not None else 'unknown'
-                await db.actor.upsert(
-                    where={'did': user.did},
-                    data={
-                        'create': {
-                            'did': user.did,
-                            'handle': user.handle,
-                            'description': user.description,
-                            'displayName': user.displayName,
-                            'in_fox_feed': True,
-                            'in_vix_feed': (gender == 'girl'),
-                            'gender_label_auto': gender,
-                        },
-                        'update': {
-                            'did': user.did,
-                            'handle': user.handle,
-                            'description': user.description,
-                            'displayName': user.displayName,
-                            'in_fox_feed': True,
-                            'in_vix_feed': (gender == 'girl'),
-                            'gender_label_auto': gender,
-                        }
-                    }
-                )
+                await store_user(db, item.user)
             elif isinstance(item, StorePost):
                 # print('Storing post', item.post.post.uri, '/', q.qsize())
                 post = item.post
@@ -361,13 +363,16 @@ async def load_likes_task(
         client: AsyncClient,
         input_queue: 'asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]',
         output_queue: 'asyncio.Queue[StoreThing]',
+        *,
+        actually_do_shit: bool = True
 ):
     cprint('Grabbing likes for posts...', 'blue', force_color=True)
     while True:
         _, _, post = await input_queue.get()
         try:
-            async for like in get_likes(client, post.post.uri):
-                await output_queue.put(StoreLike(post.post.uri, like))
+            if actually_do_shit:
+                async for like in get_likes(client, post.post.uri):
+                    await output_queue.put(StoreLike(post.post.uri, like))
         except asyncio.CancelledError:
             break
         except KeyboardInterrupt:
@@ -395,7 +400,6 @@ async def find_furries_raw(client: AsyncClient) -> AsyncIterable[ProfileView]:
         (get_people_who_like_your_feeds, 'puppyfox.bsky.social'),
         (get_follows, 'puppyfox.bsky.social'),
         (get_follows, 'furryli.st'),
-        (get_mutuals, 'brae.gay'),
         (get_mutuals, '100racs.bsky.social'),
         (get_mutuals, 'glitzyfox.bsky.social'),
         (get_mutuals, 'itswolven.bsky.social'),
@@ -429,7 +433,7 @@ async def find_furries_clean(client: AsyncClient, mutes: Set[str]) -> AsyncItera
             yield profile
 
 
-async def load(db: Database, load_posts: bool = True) -> None:
+async def load(db: Database, load_posts: bool = True, load_likes: bool = True) -> None:
     client = AsyncClient()
     await client.login(HANDLE, PASSWORD)
 
@@ -446,7 +450,7 @@ async def load(db: Database, load_posts: bool = True) -> None:
 
     storage_worker = asyncio.create_task(store_to_db_task(db, storage_queue))
     load_posts_worker = asyncio.create_task(load_posts_task(client, only_posts_after, post_load_queue, like_load_queue, storage_queue, actually_do_shit=load_posts))
-    load_likes_worker = asyncio.create_task(load_likes_task(client, like_load_queue, storage_queue))
+    load_likes_worker = asyncio.create_task(load_likes_task(client, like_load_queue, storage_queue, actually_do_shit=load_likes))
     report_task = asyncio.create_task(log_queue_size_task(storage_queue, post_load_queue, like_load_queue))
 
     async for furry in find_furries_clean(client, mutes):
@@ -470,6 +474,37 @@ async def load(db: Database, load_posts: bool = True) -> None:
 
     cprint('Ok! Yeah! Woooo!', 'blue', force_color=True)
     cprint('Done scraping website :)', 'green', force_color=True)
+
+
+async def rescan_furry_accounts_forever(db: Database):
+    client = AsyncClient()
+    await client.login(HANDLE, PASSWORD)
+    while True:
+        try:
+            cprint('Loading list of furries', 'blue', force_color=True)
+            mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
+            all_furries = [i async for i in find_furries_clean(client, mutes)]
+            cprint('Storing furries', 'blue', force_color=True)
+            for user in all_furries:
+                await store_user(db, user)
+            # some accounts may have previously been in the dataset but are now excluded
+            await db.actor.update_many(
+                where={'did': {'in': list(mutes)}},
+                data={
+                    'in_fox_feed': False,
+                    'in_vix_feed': False,
+                }
+            )
+            cprint('Done', 'blue', force_color=True)
+            await asyncio.sleep(60 * 30)
+        except asyncio.CancelledError:
+            break
+        except KeyboardInterrupt:
+            break
+        except Exception:
+            cprint(f'error while scanning furries', color='red', force_color=True)
+            traceback.print_exc()
+            await asyncio.sleep(60 * 30)
 
 
 async def main():
