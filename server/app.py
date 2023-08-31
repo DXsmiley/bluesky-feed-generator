@@ -16,7 +16,7 @@ import server.load_known_furries
 
 from server.database import Database, make_database_connection
 
-from typing import AsyncIterator, Callable, Coroutine, Any
+from typing import AsyncIterator, Callable, Coroutine, Any, Optional
 
 import traceback
 import termcolor
@@ -47,12 +47,12 @@ algos = {
 # signal.signal(signal.SIGINT, sigint_handler)
 
 
-def create_and_run_webapp(port: int) -> None:
-    asyncio.run(_create_and_run_webapp(port))
+def create_and_run_webapp(*, port: int, db_url: Optional[str]) -> None:
+    asyncio.run(_create_and_run_webapp(port, db_url))
 
 
-async def _create_and_run_webapp(port: int) -> None:
-    db = await make_database_connection()
+async def _create_and_run_webapp(port: int, db_url: Optional[str]) -> None:
+    db = await make_database_connection(db_url)
     app = create_web_application(db)
     runner = web.AppRunner(app)
     await runner.setup()

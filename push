@@ -1,8 +1,0 @@
-#!/bin/bash
-
-python -m scripts.db_cleanup
-sqlite3 prisma/dev.db -echo -cmd 'VACUUM;' '.quit'
-gzip --best --verbose --stdout --keep prisma/dev.db > ./seed.db.gzip
-git add seed.db.gzip || true
-git commit -m "update seed db" || true
-git push heroku main
