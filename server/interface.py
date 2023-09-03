@@ -1,101 +1,13 @@
 from server import html
-from server.html import Node, head, style, img, div, h3, p, a, UnescapedString
+from server.html import Node, head, style, img, div, h3, p, span, a, UnescapedString
 import re
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, TypeVar, Optional
 from prisma.models import Post, Actor
 from server.util import interleave
 
 
-base_css = '''
-body {
-    margin: 0px;
-    text-align: justify;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-}
+T = TypeVar('T')
 
-.body {
-    max-width: 800px;
-    margin: 40px auto;
-}
-
-button + button {
-    margin-left: 5px;
-}
-
-img {
-    object-fit: contain;
-}
-
-.profile {
-    float: right;
-    border-radius: 50%;
-    margin-left: 10px;
-}
-
-.toast {
-    border: 2px solid black;
-    margin: 10px;
-    padding: 5px;
-    box-shadow: 5px 5px #888888;
-}
-
-.toastbox {
-    position: fixed;
-}
-'''
-
-
-base_script = '''
-function toast(string) {
-    let toast = document.createElement('div');
-    toast.setAttribute('class', 'toast');
-    toast.textContent = string;
-    let box = document.getElementById('toastbox');
-    box.appendChild(toast);
-    window.setTimeout((() => box.removeChild(toast)), 10000);
-}
-
-async function mark(did, in_fox_feed, in_vix_feed, gender) {
-    const data = {
-        'did': did,
-        'in_fox_feed': in_fox_feed,
-        'in_vix_feed': in_vix_feed,
-        'gender': gender,
-    };
-    const response = await fetch(
-        '/admin/mark',
-        {
-            method: 'POST',
-            cache: 'no-cache',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data)
-        }
-    );
-    const text = await response.text();
-    toast(`${response.status} ${response.statusText} - ${text}`);
-}
-
-async function boost(uri) {
-    const data = {
-        'uri': uri
-    };
-    const response = await fetch(
-        '/admin/boost',
-        {
-            method: 'POST',
-            cache: 'no-cache',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data)
-        }
-    );
-    const text = await response.text();
-    toast(`${response.status} ${response.statusText} - ${text}`);
-}
-'''
 
 _navbar = [
     a(href='/')('home'),
@@ -110,8 +22,8 @@ navbar = div(*interleave(' | ', _navbar))
 def wrap_body(*n: Union[Node, None]) -> Node:
     return html.html(
         head(
-            style(base_css),
-            html.script(base_script),
+            Node('link', [], {'rel': 'stylesheet', 'href': '/static/admin-style.css'}),
+            Node('script', [], {'src': '/static/admin-script.js'})
         ),
         html.body(
             div(class_='toastbox', id_='toastbox'),
@@ -120,11 +32,58 @@ def wrap_body(*n: Union[Node, None]) -> Node:
     )
 
 
+# TODO: I *really* don't like how this works, I think it's awful and I hate it
+def toggle_foxfeed(handle: str, did: str, current_value: Optional[bool]) -> Node:
+    return Node('span', [
+        html.button(
+            "Exclude",
+            class_='togglestrip' + (' selected' if current_value is False else ''),
+            id_=f'{handle}-ff-false',
+            onclick=UnescapedString(f"set_include_in_fox_feed('{handle}', '{did}', false)")
+        ),
+        html.button(
+            "Shrug",
+            class_='togglestrip' + (' selected' if current_value is None else ''),
+            id_=f'{handle}-ff-null',
+            onclick=UnescapedString(f"set_include_in_fox_feed('{handle}', '{did}', null)")
+        ),
+        html.button(
+            "Include",
+            class_='togglestrip' + (' selected' if current_value is True else ''),
+            id_=f'{handle}-ff-true',
+            onclick=UnescapedString(f"set_include_in_fox_feed('{handle}', '{did}', true)")
+        )
+    ], {})
+
+
+def toggle_vixfeed(handle: str, did: str, current_value: Optional[bool]) -> Node:
+    return Node('span', [
+        html.button(
+            "Exclude",
+            class_='togglestrip' + (' selected' if current_value is False else ''),
+            id_=f'{handle}-vf-false',
+            onclick=UnescapedString(f"set_include_in_vix_feed('{handle}', '{did}', false)")
+        ),
+        html.button(
+            "Shrug",
+            class_='togglestrip' + (' selected' if current_value is None else ''),
+            id_=f'{handle}-vf-null',
+            onclick=UnescapedString(f"set_include_in_vix_feed('{handle}', '{did}', null)")
+        ),
+        html.button(
+            "Include",
+            class_='togglestrip' + (' selected' if current_value is True else ''),
+            id_=f'{handle}-vf-true',
+            onclick=UnescapedString(f"set_include_in_vix_feed('{handle}', '{did}', true)")
+        )
+    ], {})
+
+
 def post(post_: Post) -> Node:
     text = re.sub(r'\n+', ' • ', post_.text, re.MULTILINE)
     mainline = p(
         img(src=post_.author.avatar, width="30px", height="30px", class_="profile") if post_.author and post_.author.avatar else None,
-        # html.button('boost', onclick=UnescapedString(f"boost('{post_.uri}')")),
+        html.button('scan', onclick=UnescapedString(f"scan_likes('{post_.uri}')")),
         ' ',
         "?" if not post_.author else a(post_.author.handle, href='/user/' + post_.author.handle),
         ' - ',
@@ -169,14 +128,19 @@ def user_main(user: Actor, posts: List[Post]) -> Node:
         h3(*interleave(' • ', [i for i in hline if i is not None])),
         (img(src=user.avatar, width="150px", height="150px", class_="profile") if user.avatar else None),
         p(user.description),
-        # user_controls(user.did),
-        p(f'Muted: {user.is_muted}'),
-        p(f'Furrylist verified: {user.is_furrylist_verified}'),
-        p(f'In fox feed: {user.manual_include_in_fox_feed}'),
-        p(f'In vix feed: {user.manual_include_in_vix_feed}'),
+        p(
+            span(class_='marker' if not user.autolabel_fem_vibes else 'marker pink'),
+            span(class_='marker' if not user.autolabel_nb_vibes else 'marker yellow'),
+            span(class_='marker' if not user.autolabel_masc_vibes else 'marker blue'),
+            span('Verified', class_='pill') if user.is_furrylist_verified else None,
+            span('Muted', class_='pill') if user.is_muted else None,
+        ),
+        p(f'In fox feed: ', toggle_foxfeed(user.handle, user.did, user.manual_include_in_fox_feed)),
+        p(f'In vix feed: ', toggle_vixfeed(user.handle, user.did, user.manual_include_in_vix_feed)),
         h3(f'{len(posts)} posts') if posts else None,
         *[post(i) for i in posts]
     )
+
 
 def user_page(user: Actor, posts: List[Post]) -> Node:
     return wrap_body(user_main(user, posts))

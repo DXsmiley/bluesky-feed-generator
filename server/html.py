@@ -50,6 +50,7 @@ h3 = Node('h3', [], {})
 h4 = Node('h4', [], {})
 br = UnescapedString('<br>')
 button = Node('button', [], {})
+span = Node('span', [], {})
 
 def style(css: str) -> Node:
     return Node('style', [UnescapedString(css)], {})

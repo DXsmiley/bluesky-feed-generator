@@ -15,6 +15,7 @@ from server.algos.score_task import score_posts_forever
 
 import server.load_known_furries
 
+import prisma
 import server.database
 from server.database import Database, make_database_connection
 
@@ -109,6 +110,8 @@ def background_tasks(db: Database, services: Services) -> Callable[[web.Applicat
 def create_route_table(db: Database, *, admin_panel: bool=False):
 
     routes = web.RouteTableDef()
+
+    routes.static('/static', './static')
 
     @routes.get('/')
     async def index(request: web.Request) -> web.StreamResponse:
@@ -271,27 +274,23 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
         blob = await request.json()
         print(blob)
         did = blob['did']
-        in_fox_feed = blob['in_fox_feed']
-        in_vix_feed = blob['in_vix_feed']
         assert isinstance(did, str)
-        assert isinstance(in_fox_feed, bool)
-        assert isinstance(in_vix_feed, bool)
+        action: prisma.types.ActorUpdateInput = {'flagged_for_manual_review': False}
+        if 'include_in_fox_feed' in blob:
+            action['manual_include_in_fox_feed'] = blob['include_in_fox_feed']
+        if 'include_in_vix_feed' in blob:
+            action['manual_include_in_vix_feed'] = blob['include_in_vix_feed']
         updated = await db.actor.update(
             where={'did': did},
-            data={
-                'manual_include_in_fox_feed': in_fox_feed,
-                'manual_include_in_vix_feed': in_vix_feed,
-                # hmmmm.....
-                'flagged_for_manual_review': False,
-            }
+            data=action,
         )
         if updated is None:
             return web.HTTPNotFound(text='user not found')
         return web.HTTPOk(text=f'{updated.handle} assigned to fox:{updated.manual_include_in_fox_feed}, vix:{updated.manual_include_in_vix_feed}')
 
 
-    @routes.post('/admin/boost')
-    async def boost_post(request: web.Request) -> web.Response:
+    @routes.post('/admin/scan_likes')
+    async def scan_likes(request: web.Request) -> web.Response:
         if not admin_panel:
             return web.HTTPForbidden(text='admin tools currently disabled')
         blob = await request.json()
