@@ -54,13 +54,14 @@ img {
     margin-right: 0px;
     margin-left: 0px;
     padding: 2px 8px;
+    color: black;
 }
 
-.togglestrip:hover {
+.togglestrip:enabled:hover {
     background-color: lightgray;
 }
 
-.togglestrip:active {
+.togglestrip:enabled:active {
     background-color: orange;
 }
 

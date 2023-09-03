@@ -8,18 +8,21 @@ class UnescapedString:
 
 
 class Node:
-    def __init__(self, tag: str, children: List[Union['Node', str, UnescapedString, None]], attrs: Dict[str, Union[str, UnescapedString]]):
+    def __init__(self, tag: str, children: List[Union['Node', str, UnescapedString, None]], attrs: Dict[str, Union[str, UnescapedString, bool]]):
         self.tag = tag
         self.children = children
         self.attrs = attrs
 
-    def __call__(self, *children: Union['Node', str, UnescapedString, None], **attrs: Union[str, UnescapedString]) -> 'Node':
+    def __call__(self, *children: Union['Node', str, UnescapedString, None], **attrs: Union[str, UnescapedString, bool]) -> 'Node':
         return Node(self.tag, self.children + list(children), {**self.attrs, **attrs})
 
     def render(self) -> Iterator[str]:
         yield '<' + self.tag
         for k, v in self.attrs.items():
-            if isinstance(v, UnescapedString):
+            if isinstance(v, bool):
+                if v:
+                    yield f' {k.strip("_")} '
+            elif isinstance(v, UnescapedString):
                 yield f' {k.rstrip("_")}="{v.string}" '
             else:
                 yield f' {k.rstrip("_")}="{escape(v)}" '

@@ -1,9 +1,7 @@
 import asyncio
-import sys
 import os
-import signal
 import secrets
-    
+
 from server import config
 from server import data_stream
 import server.interface
@@ -117,12 +115,12 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
     routes.static('/static', './static')
 
     @routes.get('/')
-    async def index(request: web.Request) -> web.StreamResponse:
+    async def index(request: web.Request) -> web.StreamResponse: # pyright: ignore[reportUnusedFunction]
         return web.FileResponse('index.html')
 
 
     @routes.get('/stats')
-    async def stats(request: web.Request) -> web.Response:
+    async def stats(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         page = server.interface.stats_page([
             ('feeds', len(server.algos.algo_details)),
             ('users', await db.actor.count()),
@@ -137,20 +135,20 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
 
 
     @routes.get('/user/{handle}')
-    async def user_deets(request: web.Request) -> web.Response:
+    async def user_deets(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         handle = request.match_info['handle']
-        if not isinstance(handle, str):
-            return web.HTTPBadRequest(text='requires parameter "handle"')
+        # if not isinstance(handle, str):
+        #     return web.HTTPBadRequest(text='requires parameter "handle"')
         user = await db.actor.find_first(where={'handle': handle})
         if user is None:
             return web.HTTPNotFound(text='user not found')
         posts = await db.post.find_many(where={'authorId': user.did}, order={'indexed_at': 'desc'})
-        page = server.interface.user_page(user, posts)
+        page = server.interface.user_page(is_admin(request), user, posts)
         return web.Response(text=str(page), content_type='text/html')
 
 
     @routes.get('/.well-known/did.json')
-    async def did_json(request: web.Request) -> web.Response:
+    async def did_json(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         if not config.SERVICE_DID.endswith(config.HOSTNAME):
             return web.HTTPNotFound()
 
@@ -168,7 +166,7 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
 
 
     @routes.get('/xrpc/app.bsky.feed.describeFeedGenerator')
-    async def describe_feed_generator(request: web.Request) -> web.Response:
+    async def describe_feed_generator(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         feeds = [{'uri': uri} for uri in algos.keys()]
         response = {
             'encoding': 'application/json',
@@ -181,7 +179,7 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
 
 
     @routes.get('/xrpc/app.bsky.feed.getFeedSkeleton')
-    async def get_feed_skeleton(request: web.Request) -> web.Response:
+    async def get_feed_skeleton(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         feed = request.query.get('feed', default='')
         algo = algos.get(feed)
         if not algo:
@@ -206,13 +204,13 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
 
 
     @routes.get('/feed')
-    async def get_feeds(request: web.Request) -> web.Response:
+    async def get_feeds(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         page = server.interface.feeds_page([i['record_name'] for i in server.algos.algo_details])
         return web.Response(text=str(page), content_type='text/html')
 
     
     @routes.get('/feed/{feed}')
-    async def get_feed(request: web.Request) -> web.Response:
+    async def get_feed(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         feed_name = request.match_info.get('feed', '')
         algo = algos.get(feed_name)
         if algo is None:
@@ -221,7 +219,7 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
         posts = (await algo(db, None, 50))['feed']
         full_posts = [await db.post.find_unique_or_raise({'uri': i['post']}, include={'author': True}) for i in posts]
 
-        page = server.interface.feed_page(feed_name, full_posts)
+        page = server.interface.feed_page(is_admin(request), feed_name, full_posts)
 
         return web.Response(text=str(page), content_type='text/html')
 
@@ -234,7 +232,7 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
 
 
     @routes.get('/quickflag')
-    async def quickflag(request: web.Request) -> web.Response:
+    async def quickflag(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         # pick from feeds that are actually able to contain non-girls
         dids = (
             await quickflag_candidates_from_feed('vix-votes')
@@ -266,18 +264,18 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
                 }
             }
         )
-        page = server.interface.quickflag_page(users)
+        page = server.interface.quickflag_page(is_admin(request), users)
         return web.Response(text=str(page), content_type='text/html')
     
 
     @routes.get('/admin/login')
-    async def login_get(request: web.Request) -> web.Response:
+    async def login_get(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         page = server.interface.admin_login_page()
         return web.Response(text=str(page), content_type='text/html')
 
 
     @routes.post('/admin/login')
-    async def login_post(request: web.Request) -> web.Response:
+    async def login_post(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         if not admin_panel:
             return web.HTTPForbidden(text='admin tools currently disabled')
         data = await request.post()
@@ -285,28 +283,32 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
         assert isinstance(password, str)
         if password == 'super-fucking-ultra-password':
             response = web.HTTPSeeOther('/admin/done-login')
-            response.cookies['x-foxfeed-admin-login'] = admin_token
+            response.set_cookie('x-foxfeed-admin-login', admin_token)
             return response
         else:
             return web.HTTPForbidden(text='Incorrect password')
+
         
+    def is_admin(request: web.Request) -> bool:
+        r = admin_panel and (request.cookies.get('x-foxfeed-admin-login', '') == admin_token)
+        print('>>>>>>>>>>>>>>>>', r)
+        return r
+    
 
     def require_admin_login(request: web.Request):
-        if not admin_panel:
+        if not is_admin(request):
             raise web.HTTPForbidden(text='admin tools currently disabled')
-        if request.cookies.get('x-foxfeed-admin-login', '') != admin_token:
-            raise web.HTTPForbidden(text='not logged in')
         
     
     @routes.get('/admin/done-login')
-    async def done_login(request: web.Request) -> web.Response:
+    async def done_login(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         require_admin_login(request)
         page = server.interface.admin_done_login_page()
         return web.Response(text=str(page), content_type='text/html')
 
 
     @routes.post('/admin/mark')
-    async def mark_user(request: web.Request) -> web.Response:
+    async def mark_user(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         require_admin_login(request)
         blob = await request.json()
         print(blob)
@@ -327,7 +329,7 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
 
 
     @routes.post('/admin/scan_likes')
-    async def scan_likes(request: web.Request) -> web.Response:
+    async def scan_likes(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         require_admin_login(request)
         blob = await request.json()
         print(blob)

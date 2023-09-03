@@ -1,5 +1,5 @@
 from server import html
-from server.html import Node, head, style, img, div, h3, p, span, a, UnescapedString
+from server.html import Node, head, img, div, h3, p, span, a, UnescapedString
 import re
 from typing import List, Tuple, Union, TypeVar, Optional
 from prisma.models import Post, Actor
@@ -33,58 +33,65 @@ def wrap_body(*n: Union[Node, None]) -> Node:
 
 
 # TODO: I *really* don't like how this works, I think it's awful and I hate it
-def toggle_foxfeed(handle: str, did: str, current_value: Optional[bool]) -> Node:
+def toggle_foxfeed(enabled: bool, handle: str, did: str, current_value: Optional[bool]) -> Node:
+    print('!!!!!', enabled)
     return Node('span', [
         html.button(
             "Exclude",
             class_='togglestrip' + (' selected' if current_value is False else ''),
             id_=f'{handle}-ff-false',
+            disabled=not enabled,
             onclick=UnescapedString(f"set_include_in_fox_feed('{handle}', '{did}', false)")
         ),
         html.button(
             "Shrug",
             class_='togglestrip' + (' selected' if current_value is None else ''),
             id_=f'{handle}-ff-null',
+            disabled=not enabled,
             onclick=UnescapedString(f"set_include_in_fox_feed('{handle}', '{did}', null)")
         ),
         html.button(
             "Include",
             class_='togglestrip' + (' selected' if current_value is True else ''),
             id_=f'{handle}-ff-true',
+            disabled=not enabled,
             onclick=UnescapedString(f"set_include_in_fox_feed('{handle}', '{did}', true)")
         )
     ], {})
 
 
-def toggle_vixfeed(handle: str, did: str, current_value: Optional[bool]) -> Node:
+def toggle_vixfeed(enabled: bool, handle: str, did: str, current_value: Optional[bool]) -> Node:
     return Node('span', [
         html.button(
             "Exclude",
             class_='togglestrip' + (' selected' if current_value is False else ''),
             id_=f'{handle}-vf-false',
+            disabled=not enabled,
             onclick=UnescapedString(f"set_include_in_vix_feed('{handle}', '{did}', false)")
         ),
         html.button(
             "Shrug",
             class_='togglestrip' + (' selected' if current_value is None else ''),
             id_=f'{handle}-vf-null',
+            disabled=not enabled,
             onclick=UnescapedString(f"set_include_in_vix_feed('{handle}', '{did}', null)")
         ),
         html.button(
             "Include",
             class_='togglestrip' + (' selected' if current_value is True else ''),
             id_=f'{handle}-vf-true',
+            disabled=not enabled,
             onclick=UnescapedString(f"set_include_in_vix_feed('{handle}', '{did}', true)")
         )
     ], {})
 
 
-def post(post_: Post) -> Node:
+def post(enable_admin_controls: bool, post_: Post) -> Node:
     text = re.sub(r'\n+', ' • ', post_.text, re.MULTILINE)
     mainline = p(
         img(src=post_.author.avatar, width="30px", height="30px", class_="profile") if post_.author and post_.author.avatar else None,
-        html.button('scan', onclick=UnescapedString(f"scan_likes('{post_.uri}')")),
-        ' ',
+        html.button('scan', onclick=UnescapedString(f"scan_likes('{post_.uri}')")) if enable_admin_controls else None,
+        ' ' if enable_admin_controls else None,
         "?" if not post_.author else a(post_.author.handle, href='/user/' + post_.author.handle),
         ' - ',
         '[' + ' '.join(post_.labels) + ']',
@@ -100,8 +107,8 @@ def feeds_page(names: List[str]) -> Node:
     return wrap_body(h3('feeds'), *ls)
 
 
-def feed_page(feed_name: str, full_posts: List[Post]) -> Node:
-    return wrap_body(h3(feed_name), *[post(i) for i in full_posts])
+def feed_page(enable_admin_controls: bool, feed_name: str, full_posts: List[Post]) -> Node:
+    return wrap_body(h3(feed_name), *[post(enable_admin_controls, i) for i in full_posts])
 
 
 def stats_page(stats: List[Tuple[str, int]]) -> Node:
@@ -109,16 +116,7 @@ def stats_page(stats: List[Tuple[str, int]]) -> Node:
     return wrap_body(h3('stats'), *ls)
 
 
-def user_controls(did: str) -> Node:
-    return div(
-        # these are kind the only categories we "care about" right now
-        html.button('mark as nonfurry', onclick=UnescapedString(f"mark('{did}', false, false, 'non-furry')")),
-        html.button('mark as furry', onclick=UnescapedString(f"mark('{did}', true, false, 'unknown')")),
-        html.button('mark as furry girl', onclick=UnescapedString(f"mark('{did}', true, true, 'girl')")),
-    )
-
-
-def user_main(user: Actor, posts: List[Post]) -> Node:
+def user_main(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> Node:
     hline = [
         a('☁️', href='https://bsky.app/profile/' + user.handle, target="_blank"),
         '🚩' if user.flagged_for_manual_review else None,
@@ -135,21 +133,21 @@ def user_main(user: Actor, posts: List[Post]) -> Node:
             span('Verified', class_='pill') if user.is_furrylist_verified else None,
             span('Muted', class_='pill') if user.is_muted else None,
         ),
-        p(f'In fox feed: ', toggle_foxfeed(user.handle, user.did, user.manual_include_in_fox_feed)),
-        p(f'In vix feed: ', toggle_vixfeed(user.handle, user.did, user.manual_include_in_vix_feed)),
+        p(f'In fox feed: ', toggle_foxfeed(enable_admin_controls, user.handle, user.did, user.manual_include_in_fox_feed)),
+        p(f'In vix feed: ', toggle_vixfeed(enable_admin_controls, user.handle, user.did, user.manual_include_in_vix_feed)),
         h3(f'{len(posts)} posts') if posts else None,
-        *[post(i) for i in posts]
+        *[post(enable_admin_controls, i) for i in posts]
     )
 
 
-def user_page(user: Actor, posts: List[Post]) -> Node:
-    return wrap_body(user_main(user, posts))
+def user_page(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> Node:
+    return wrap_body(user_main(enable_admin_controls, user, posts))
 
 
-def quickflag_page(users: List[Actor]) -> Node:
+def quickflag_page(enable_admin_controls: bool, users: List[Actor]) -> Node:
     return wrap_body(
         h3('Quickflag'),
-        *[user_main(i, i.posts or []) for i in users],
+        *[user_main(enable_admin_controls, i, i.posts or []) for i in users],
         h3('(end)'),
         a('refresh page for more users', href='/quickflag')
     )
