@@ -34,7 +34,6 @@ def wrap_body(*n: Union[Node, None]) -> Node:
 
 # TODO: I *really* don't like how this works, I think it's awful and I hate it
 def toggle_foxfeed(enabled: bool, handle: str, did: str, current_value: Optional[bool]) -> Node:
-    print('!!!!!', enabled)
     return Node('span', [
         html.button(
             "Exclude",

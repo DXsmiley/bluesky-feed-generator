@@ -291,7 +291,6 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
         
     def is_admin(request: web.Request) -> bool:
         r = admin_panel and (request.cookies.get('x-foxfeed-admin-login', '') == admin_token)
-        print('>>>>>>>>>>>>>>>>', r)
         return r
     
 
@@ -311,7 +310,6 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
     async def mark_user(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         require_admin_login(request)
         blob = await request.json()
-        print(blob)
         did = blob['did']
         assert isinstance(did, str)
         action: prisma.types.ActorUpdateInput = {'flagged_for_manual_review': False}
@@ -332,7 +330,6 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
     async def scan_likes(request: web.Request) -> web.Response: # pyright: ignore[reportUnusedFunction]
         require_admin_login(request)
         blob = await request.json()
-        print(blob)
         uri = blob['uri']
         assert isinstance(uri, str)
         added_users, added_likes = await scripts.find_furry_girls.from_likes_of_post(db, uri)
