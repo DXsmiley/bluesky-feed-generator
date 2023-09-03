@@ -153,3 +153,17 @@ def quickflag_page(users: List[Actor]) -> Node:
         h3('(end)'),
         a('refresh page for more users', href='/quickflag')
     )
+
+
+def admin_login_page() -> Node:
+    return wrap_body(
+        h3('Admin Login'),
+        Node('form', [], {'method': 'post'})(
+            div(Node('input', [], {'type': 'password', 'name': 'password', 'required': '1'})),
+            div(Node('button', ['Login'], {'type': 'submit'}))
+        )
+    )
+
+
+def admin_done_login_page() -> Node:
+    return wrap_body(h3('Logged in'), p(':)'))

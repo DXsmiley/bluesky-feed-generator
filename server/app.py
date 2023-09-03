@@ -2,6 +2,7 @@ import asyncio
 import sys
 import os
 import signal
+import secrets
     
 from server import config
 from server import data_stream
@@ -108,6 +109,8 @@ def background_tasks(db: Database, services: Services) -> Callable[[web.Applicat
 
 
 def create_route_table(db: Database, *, admin_panel: bool=False):
+
+    admin_token = secrets.token_urlsafe()
 
     routes = web.RouteTableDef()
 
@@ -265,12 +268,46 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
         )
         page = server.interface.quickflag_page(users)
         return web.Response(text=str(page), content_type='text/html')
+    
+
+    @routes.get('/admin/login')
+    async def login_get(request: web.Request) -> web.Response:
+        page = server.interface.admin_login_page()
+        return web.Response(text=str(page), content_type='text/html')
+
+
+    @routes.post('/admin/login')
+    async def login_post(request: web.Request) -> web.Response:
+        if not admin_panel:
+            return web.HTTPForbidden(text='admin tools currently disabled')
+        data = await request.post()
+        password = data.get('password')
+        assert isinstance(password, str)
+        if password == 'super-fucking-ultra-password':
+            response = web.HTTPSeeOther('/admin/done-login')
+            response.cookies['x-foxfeed-admin-login'] = admin_token
+            return response
+        else:
+            return web.HTTPForbidden(text='Incorrect password')
+        
+
+    def require_admin_login(request: web.Request):
+        if not admin_panel:
+            raise web.HTTPForbidden(text='admin tools currently disabled')
+        if request.cookies.get('x-foxfeed-admin-login', '') != admin_token:
+            raise web.HTTPForbidden(text='not logged in')
+        
+    
+    @routes.get('/admin/done-login')
+    async def done_login(request: web.Request) -> web.Response:
+        require_admin_login(request)
+        page = server.interface.admin_done_login_page()
+        return web.Response(text=str(page), content_type='text/html')
 
 
     @routes.post('/admin/mark')
     async def mark_user(request: web.Request) -> web.Response:
-        if not admin_panel:
-            return web.HTTPForbidden(text='admin tools currently disabled')
+        require_admin_login(request)
         blob = await request.json()
         print(blob)
         did = blob['did']
@@ -291,8 +328,7 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
 
     @routes.post('/admin/scan_likes')
     async def scan_likes(request: web.Request) -> web.Response:
-        if not admin_panel:
-            return web.HTTPForbidden(text='admin tools currently disabled')
+        require_admin_login(request)
         blob = await request.json()
         print(blob)
         uri = blob['uri']
