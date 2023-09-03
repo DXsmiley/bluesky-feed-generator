@@ -513,24 +513,27 @@ async def load(db: Database, load_posts: bool = True, load_likes: bool = True) -
     cprint('Done scraping website :)', 'green', force_color=True)
 
 
+async def scan_once(db: Database, client: AsyncClient):
+    cprint('Loading list of furries', 'blue', force_color=True)
+    mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
+    all_furries = [i async for i in find_furries_clean(client)]
+    cprint('Storing furries', 'blue', force_color=True)
+    for user, verified in all_furries:
+        await store_user(db, user, is_furrylist_verified=verified, flag_for_manual_review=False, is_muted=(user.did in mutes))
+    # some accounts may have previously been in the dataset but are now excluded
+    await db.actor.update_many(
+        where={'did': {'in': list(mutes)}},
+        data={'is_muted': True},
+    )
+    cprint('Done', 'blue', force_color=True)
+
+
 async def rescan_furry_accounts_forever(db: Database):
     client = AsyncClient()
     await client.login(HANDLE, PASSWORD)
     while True:
         try:
-            cprint('Loading list of furries', 'blue', force_color=True)
-            mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
-            all_furries = [i async for i in find_furries_clean(client)]
-            cprint('Storing furries', 'blue', force_color=True)
-            for user, verified in all_furries:
-                await store_user(db, user, is_furrylist_verified=verified, flag_for_manual_review=False, is_muted=(user.did in mutes))
-            # some accounts may have previously been in the dataset but are now excluded
-            await db.actor.update_many(
-                where={'did': {'in': list(mutes)}},
-                data={'is_muted': True},
-            )
-            cprint('Done', 'blue', force_color=True)
-            await asyncio.sleep(60 * 30)
+            await scan_once(db, client)
         except asyncio.CancelledError:
             break
         except KeyboardInterrupt:
@@ -538,7 +541,7 @@ async def rescan_furry_accounts_forever(db: Database):
         except Exception:
             cprint(f'error while scanning furries', color='red', force_color=True)
             traceback.print_exc()
-            await asyncio.sleep(60 * 30)
+        await asyncio.sleep(60 * 30)
 
 
 async def main():
