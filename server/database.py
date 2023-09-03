@@ -32,26 +32,27 @@ care_about_storing_user_data_preemptively: ActorWhereInput = {
 
 
 user_is_in_fox_feed: ActorWhereInput = {
-    'is_muted':  False,
-    'flagged_for_manual_review': False,
-    'OR': [
-        {'manual_include_in_fox_feed': True},
-        {'manual_include_in_fox_feed': None}
+    'AND': [
+        care_about_storing_user_data_preemptively,
+        {'flagged_for_manual_review': False},
     ]
 }
 
 
 user_is_in_vix_feed: ActorWhereInput = {
-    'is_muted': False,
-    'flagged_for_manual_review': False,
-    'OR': [
+    'AND': [
+        user_is_in_fox_feed,
         {
-            'manual_include_in_vix_feed': True
-        },
-        {
-            'manual_include_in_vix_feed': None,
-            'autolabel_masc_vibes': False,
-            'autolabel_fem_vibes': True,
+            'OR': [
+                {
+                    'manual_include_in_vix_feed': True
+                },
+                {
+                    'manual_include_in_vix_feed': None,
+                    'autolabel_masc_vibes': False,
+                    'autolabel_fem_vibes': True,
+                }
+            ]
         }
     ]
 }

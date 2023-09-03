@@ -36,13 +36,13 @@ async def from_likes_of_post(db: Database, post_uri: str) -> Tuple[int, int]:
     client = AsyncClient()
     await client.login(HANDLE, PASSWORD)
     async for like in get_likes(client, post_uri):
-        if await store_like(db, post_uri, like) is not None:
-            added_likes += 1
         gender = guess_gender_reductive(like.actor.description or '')
         if gender == 'girl' and await db.actor.find_unique(where={'did': like.actor.did}) is None:
             # Can assume that this is a create
             await store_user(db, like.actor, flag_for_manual_review=True, is_furrylist_verified=False, is_muted=False)
             added_users += 1
+        if await store_like(db, post_uri, like) is not None:
+            added_likes += 1
     return (added_users, added_likes)
 
 if __name__ == '__main__':
