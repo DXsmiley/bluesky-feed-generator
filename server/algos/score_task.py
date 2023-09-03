@@ -5,6 +5,7 @@ from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
 
+import server.database
 from server.database import Database, make_database_connection
 from prisma.models import Post, Actor
 import prisma.errors
@@ -42,9 +43,9 @@ async def get_like_counts(db: Database, run_starttime: datetime, filter: prisma.
                 filter,
             ]
         },
-        sum={'counter': True}
+        count=True,
     )
-    return {i.get('post_uri', ''): i.get('_sum', {}).get('counter', 0) for i in likes_aggregated}
+    return {i.get('post_uri', ''): i.get('_count', {}).get('_all', 0) for i in likes_aggregated}
 
 
 @dataclass
@@ -56,14 +57,14 @@ class PostWithInfo:
 
 
 async def load_all_posts(db: Database, run_starttime: datetime) -> List[PostWithInfo]:
-    likes_by_furries = await get_like_counts(db, run_starttime, {'liker': {'is': {'in_fox_feed': True}}})
-    likes_by_girls = await get_like_counts(db, run_starttime, {'liker': {'is': {'in_vix_feed': True}}})
+    likes_by_furries = await get_like_counts(db, run_starttime, {'liker': {'is': server.database.user_is_in_fox_feed}})
+    likes_by_girls = await get_like_counts(db, run_starttime, {'liker': {'is': server.database.user_is_in_vix_feed}})
     posts = await db.post.find_many(
         order=[{'indexed_at': 'desc'}, {'cid': 'desc'}],
         where={
             'reply_root': None,
             'indexed_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT},
-            'author': {'is': {'in_fox_feed': True, 'flagged_for_manual_review': False}}
+            'author': {'is': server.database.user_is_in_fox_feed},
         },
         include={
             'author': True,
@@ -82,13 +83,13 @@ async def load_all_posts(db: Database, run_starttime: datetime) -> List[PostWith
 
 
 def penalty(p: PostWithInfo):
-    gender = server.gender.guess_gender_reductive(p.post.text)
+    vibes = server.gender.vibecheck(p.post.text)
     return (
         # Penalise people posting images without alt-text
         (0.7 if p.post.media_count > 0 and p.post.media_with_alt_text_count == 0 else 1.0)
         # TODO: boosting girl-vibes on the feed, assess the impact of this later
-        * (1.1 if gender == 'girl' else 1.0)
-        * (0.9 if gender == 'boy' else 1.0)
+        * (1.1 if vibes.fem and not vibes.masc else 1.0)
+        * (0.9 if vibes.masc and not vibes.fem else 1.0)
     )
 
 
@@ -96,7 +97,7 @@ def _raw_score(post_age: timedelta, like_count: int) -> float:
     # Number of likes, decaying over time
     # initial decay is much slower than the hacker news algo, but also decays to zero
     x = post_age / SCORING_CURVE_INFLECTION_POINT
-    return (like_count ** 0.9 + 5) * decay_curve(max(0, x))
+    return (like_count ** 0.9 + 2) * decay_curve(max(0, x))
 
 
 def raw_score(run_starttime: datetime, p: PostWithInfo) -> float:
@@ -105,7 +106,7 @@ def raw_score(run_starttime: datetime, p: PostWithInfo) -> float:
 
 def raw_vix_vote_score(run_starttime: datetime, p: PostWithInfo) -> float:
     return (
-        0 if p.like_count_girls < 5 and not p.author.in_vix_feed
+        0 if p.like_count_girls < 3
         else _raw_score(run_starttime - p.post.indexed_at, p.like_count_girls) * penalty(p)
     )
 
@@ -114,7 +115,7 @@ def _raw_freshness(post_age: timedelta, like_count: int) -> float:
     # Number of likes, decaying over time
     # initial decay is much slower than the hacker news algo, but also decays to zero
     x = post_age / FRESH_CURVE_INFLECTION_POINT
-    return (like_count ** 0.3 + 5) * decay_curve(max(0, x))
+    return (like_count ** 0.3 + 2) * decay_curve(max(0, x))
 
 
 def raw_freshness(run_starttime: datetime, p: PostWithInfo) -> float:
@@ -179,22 +180,22 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
 ALGORITHMIC_FEEDS = [
     FeedParameters(
         feed_name='fox-feed',
-        filter=lambda p: p.author.in_fox_feed,
+        filter=lambda p: p.author.manual_include_in_fox_feed in [None, True],
         score_func=raw_score,
     ),
     FeedParameters(
         feed_name='vix-feed',
-        filter=lambda p: p.author.in_vix_feed,
+        filter=lambda p: p.author.manual_include_in_vix_feed or (p.author.manual_include_in_vix_feed is None and p.author.autolabel_fem_vibes and not p.author.autolabel_masc_vibes),
         score_func=raw_score,
     ),
     FeedParameters(
         feed_name='fresh-feed',
-        filter=lambda p: p.author.in_vix_feed,
+        filter=lambda p: p.author.manual_include_in_vix_feed or (p.author.manual_include_in_vix_feed is None and p.author.autolabel_fem_vibes and not p.author.autolabel_masc_vibes),
         score_func=raw_freshness,
     ),
     FeedParameters(
         feed_name='vix-votes',
-        filter=lambda p: p.author.in_fox_feed,
+        filter=lambda p: p.author.manual_include_in_fox_feed in [None, True],
         score_func=raw_vix_vote_score,
     )
 ]

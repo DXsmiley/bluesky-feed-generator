@@ -20,15 +20,22 @@ model Actor {
   description String?
   displayName String?
   avatar String?
-  in_fox_feed Boolean
-  in_vix_feed Boolean
-  gender_label_auto String @default("unknown")
-  gender_label_manual String @default("not-looked-at")
   // This should allow us to pipe in a bunch of users without too much risk
   // They'll count for votes but not have their posts appear in feeds
-  flagged_for_manual_review Boolean @default(false)
   posts Post[]
   likes Like[]
+  // New things which are slightly more granular, allowing for computation on 
+  // database QUERY rather than database INSERT
+  is_muted Boolean @default(false)
+  is_furrylist_verified Boolean @default(false)
+  autolabel_masc_vibes Boolean @default(false)
+  autolabel_nb_vibes Boolean @default(false)
+  autolabel_fem_vibes Boolean @default(false)
+  manual_include_in_fox_feed Boolean?
+  manual_include_in_vix_feed Boolean?
+  flagged_for_manual_review Boolean @default(false)
+  // Whenever we push updates to things, we might want to reconsider what's in the database
+  rescan_version_number Int @default(0)
 }
 
 model Post {
@@ -63,7 +70,6 @@ model Like {
   post Post @relation(fields: [post_uri], references: [uri], onDelete: Cascade)
   post_cid String
   created_at DateTime
-  counter Int @default(1)
   @@index([post_uri])
   @@index([created_at])
   @@unique([post_uri, liker_id])

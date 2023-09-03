@@ -1,4 +1,10 @@
 from datetime import datetime
+from typing import List, TypeVar, Union
+from itertools import chain
+
+
+T = TypeVar('T')
+U = TypeVar('U')
 
 
 def mentions_fursuit(text: str) -> bool:
@@ -21,3 +27,10 @@ def parse_datetime(s: str) -> datetime:
         except ValueError:
             pass
     raise ValueError(f'failed to parse datetime string "{s}"')
+
+
+def interleave(sep: T, xs: List[U]) -> List[Union[U, T]]:
+    return (
+        [] if not xs else
+        [xs[0], *chain.from_iterable((sep, i) for i in xs[1:])]
+    )

@@ -28,8 +28,8 @@ import prisma.errors
 
 import server.algos.fox_feed
 import server.algos.score_task
-from server.gender import guess_gender_reductive
 from server.util import mentions_fursuit, parse_datetime
+from server import gender
 
 
 # TODO: Eeeeeeeh
@@ -223,8 +223,15 @@ class StoreLike:
 StoreThing = Union[StoreUser, StorePost, StoreLike]
 
 
-async def store_user(db: Database, user: ProfileView, *, flag_for_manual_review: bool = False) -> None:
-    gender = guess_gender_reductive(user.description) if user.description is not None else 'unknown'
+async def store_user(
+    db: Database,
+    user: ProfileView,
+    *,
+    is_muted: bool,
+    is_furrylist_verified: bool,
+    flag_for_manual_review: bool,
+) -> None:
+    gender_vibes = gender.vibecheck(user.description or '')
     await db.actor.upsert(
         where={'did': user.did},
         data={
@@ -233,21 +240,26 @@ async def store_user(db: Database, user: ProfileView, *, flag_for_manual_review:
                 'handle': user.handle,
                 'description': user.description,
                 'displayName': user.displayName,
-                'in_fox_feed': True,
-                'in_vix_feed': (gender == 'girl'),
-                'gender_label_auto': gender,
                 'avatar': user.avatar,
-                'flagged_for_manual_review': flag_for_manual_review
+                'flagged_for_manual_review': flag_for_manual_review,
+                'autolabel_fem_vibes': gender_vibes.fem,
+                'autolabel_nb_vibes': gender_vibes.enby,
+                'autolabel_masc_vibes': gender_vibes.masc,
+                'is_furrylist_verified': is_furrylist_verified, # TODO
+                'is_muted': is_muted,
             },
             'update': {
                 'did': user.did,
                 'handle': user.handle,
                 'description': user.description,
                 'displayName': user.displayName,
-                # 'in_fox_feed': True,
-                # 'in_vix_feed': (gender == 'girl'),
-                'gender_label_auto': gender,
                 'avatar': user.avatar,
+                'autolabel_fem_vibes': gender_vibes.fem,
+                'autolabel_nb_vibes': gender_vibes.enby,
+                'autolabel_masc_vibes': gender_vibes.masc,
+                'is_muted': is_muted,
+                'is_furrylist_verified': is_furrylist_verified,
+                # 'flagged_for_manual_review': flag_for_manual_review,
             }
         }
     )
@@ -414,7 +426,7 @@ async def log_queue_size_task(
         await asyncio.sleep(30)
 
 
-async def find_furries_raw(client: AsyncClient) -> AsyncIterable[ProfileView]:
+async def find_furries_raw(client: AsyncClient) -> AsyncIterable[Tuple[ProfileView, bool]]:
     known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
         (get_people_who_like_your_feeds, 'puppyfox.bsky.social'),
         (get_follows, 'puppyfox.bsky.social'),
@@ -427,29 +439,35 @@ async def find_furries_raw(client: AsyncClient) -> AsyncIterable[ProfileView]:
         (get_mutuals, 'zoeydogy.bsky.social'),
     ]
 
-    cprint('Loading furries from seed list', 'blue', force_color=True)
+    cprint('Loading furries from furrtli.st', 'blue', force_color=True)
+    furrylist = simplify_profile_view(await client.bsky.actor.get_profile({'actor': 'furryli.st'}))
+    yield (furrylist, True)
+    async for other in get_follows(client, furrylist.did):
+        yield (other, True)
 
+    cprint('Loading furries from seed list', 'blue', force_color=True)
     with gzip.open('./seed.json.gzip', 'rb') as sff:
         seed_list = json.loads(sff.read().decode('utf-8'))['seed']
 
     async for profile in get_many_profiles(client, seed_list):
-        yield profile
+        yield (profile, False)
 
     cprint('Grabbing furry-adjacent accounts', 'blue', force_color=True)
 
     for get_associations, handle in known_furries:
         profile = simplify_profile_view(await client.bsky.actor.get_profile({'actor': handle}))
-        yield profile
+        yield (profile, False)
         async for other in get_associations(client, profile.did):
-            yield other
+            yield (other, False)
 
 
-async def find_furries_clean(client: AsyncClient, mutes: Set[str]) -> AsyncIterable[ProfileView]:
+async def find_furries_clean(client: AsyncClient) -> AsyncIterable[Tuple[ProfileView, bool]]:
+    # Ok so we *know* that the furrylist verified ones are coming out first and we can exploit this to not miss anything
     seen: Set[str] = set()
-    async for profile in find_furries_raw(client):
-        if profile.did not in seen and profile.did not in mutes:
+    async for profile, is_furrylist_verified in find_furries_raw(client):
+        if profile.did not in seen and profile.did:
             seen.add(profile.did)
-            yield profile
+            yield (profile, is_furrylist_verified)
 
 
 async def load(db: Database, load_posts: bool = True, load_likes: bool = True) -> None:
@@ -502,17 +520,14 @@ async def rescan_furry_accounts_forever(db: Database):
         try:
             cprint('Loading list of furries', 'blue', force_color=True)
             mutes = {i.did async for _, i in get_all_mutes(client)} - {'' if client.me is None else client.me.did}
-            all_furries = [i async for i in find_furries_clean(client, mutes)]
+            all_furries = [i async for i in find_furries_clean(client)]
             cprint('Storing furries', 'blue', force_color=True)
-            for user in all_furries:
-                await store_user(db, user)
+            for user, verified in all_furries:
+                await store_user(db, user, is_furrylist_verified=verified, flag_for_manual_review=False, is_muted=(user.did in mutes))
             # some accounts may have previously been in the dataset but are now excluded
             await db.actor.update_many(
                 where={'did': {'in': list(mutes)}},
-                data={
-                    'in_fox_feed': False,
-                    'in_vix_feed': False,
-                }
+                data={'is_muted': True},
             )
             cprint('Done', 'blue', force_color=True)
             await asyncio.sleep(60 * 30)

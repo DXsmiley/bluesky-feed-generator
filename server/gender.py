@@ -1,11 +1,14 @@
-from typing import List, Literal, Union
+from typing import List, Union
 from dataclasses import dataclass
 import re
 import unicodedata
 
 
-Gender = Literal['unknown', 'non-furry', 'boy', 'enby', 'girl']
-ManualGender = Union[Gender, Literal['not-looked-at']]
+@dataclass
+class VibeCheck:
+    fem: bool
+    enby: bool
+    masc: bool
 
 
 @dataclass
@@ -111,7 +114,7 @@ def _test_vibes(vibes: Vibes, t: str) -> Union['re.Match[str]', str, None]:
     return None
 
 
-def guess_gender_reductive(text: str) -> Gender:
+def vibecheck(text: str) -> VibeCheck:
     t = (
         unicodedata.normalize('NFKC', text)
         .replace('\n', ' ')
@@ -121,15 +124,8 @@ def guess_gender_reductive(text: str) -> Gender:
         .replace('/', ' ')
         .lower()
     )
-    g = _test_vibes(girl_vibes, t) is not None
-    b = _test_vibes(boy_vibes, t) is not None
-    n = _test_vibes(enby_vibes, t) is not None
-    if g and b:
-        return 'enby'
-    if g:
-        return 'girl'
-    if b:
-        return 'boy'
-    if n:
-        return 'enby'
-    return 'unknown'
+    return VibeCheck(
+        fem = _test_vibes(girl_vibes, t) is not None,
+        enby = _test_vibes(enby_vibes, t) is not None,
+        masc = _test_vibes(boy_vibes, t) is not None
+    )

@@ -7,7 +7,7 @@ from typing import List
 from prisma.types import PostCreateWithoutRelationsInput
 import prisma.errors
 
-from server.database import Database
+from server.database import Database, care_about_storing_user_data_preemptively
 from server.load_known_furries import parse_datetime
 
 from server.util import mentions_fursuit, parse_datetime
@@ -52,7 +52,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         if reply_parent is not None or reply_root is not None:
             continue
 
-        if (await db.actor.find_unique({'did': author_did})) is not None:
+        if (await db.actor.find_first(where={'did': author_did, 'AND': [care_about_storing_user_data_preemptively]})) is not None:
             logger.info(f'New furry post (with images: {len(images)}): {inlined_text}')
             post_dict: PostCreateWithoutRelationsInput = {
                 'uri': created_post['uri'],
@@ -87,10 +87,11 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         liked_post = await db.post.find_unique({'uri': uri})
         if liked_post is None:
             continue
-        like_author = await db.actor.find_unique(where={'did': like['author']})
+        like_author = await db.actor.find_first(where={'did': like['author'], 'AND': [care_about_storing_user_data_preemptively]})
         if like_author is None:
             continue
-        print(f'{like_author.handle} ({like_author.gender_label_auto}) liked a post')
+        
+        print(f'{like_author.handle} ({like_author.autolabel_fem_vibes}) liked a post')
         try:
             await db.like.create(
                 data={

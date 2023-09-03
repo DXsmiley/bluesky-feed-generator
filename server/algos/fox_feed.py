@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Optional, List, Callable, Coroutine, Any
 
+import server.database
 from server.database import Database
 
 from typing_extensions import TypedDict
 
 from prisma.types import PostWhereInput
 from server.algos.feed_names import FeedName
-
 
 class FeedItem(TypedDict):
     post: str # ???
@@ -121,7 +121,7 @@ vix_votes = algorithmic_feed('vix-votes')
 fursuit_feed = chronological_feed(
     {
         'AND': [
-            {'author': {'is': {'in_vix_feed': {'equals': True}}}},
+            {'author': {'is': server.database.user_is_in_vix_feed}},
             {'media_count': {'gt': 0}},
             {'mentions_fursuit': True},
         ]

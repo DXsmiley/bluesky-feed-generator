@@ -3,6 +3,7 @@ from server.html import Node, head, style, img, div, h3, p, a, UnescapedString
 import re
 from typing import List, Tuple, Union
 from prisma.models import Post, Actor
+from server.util import interleave
 
 
 base_css = '''
@@ -96,13 +97,14 @@ async function boost(uri) {
 }
 '''
 
-
-navbar = div(
-    a(href='/')('home'), ' | ',
-    a(href='/stats')('stats'), ' | ',
-    a(href='/feed')('feeds'), ' | ',
+_navbar = [
+    a(href='/')('home'),
+    a(href='/stats')('stats'),
+    a(href='/feed')('feeds'),
     a(href='/quickflag')('quickflag'),
-)
+]
+
+navbar = div(*interleave(' | ', _navbar))
 
 
 def wrap_body(*n: Union[Node, None]) -> Node:
@@ -156,16 +158,20 @@ def user_controls(did: str) -> Node:
 
 
 def user_main(user: Actor, posts: List[Post]) -> Node:
-    name = f'{user.displayName} ({user.handle})' if user.displayName else user.handle
+    hline = [
+        a('☁️', href='https://bsky.app/profile/' + user.handle, target="_blank"),
+        '🚩' if user.flagged_for_manual_review else None,
+        f'{user.displayName} ({user.handle})' if user.displayName else user.handle
+    ]
     return div(
-        h3(a(href='https://bsky.app/profile/' + user.handle, target="_blank")('☁️'), ' • ', name),
+        h3(*interleave(' • ', [i for i in hline if i is not None])),
         (img(src=user.avatar, width="150px", height="150px", class_="profile") if user.avatar else None),
         p(user.description),
-        user_controls(user.did),
-        p(f'In fox feed: {user.in_fox_feed}'),
-        p(f'In vix feed: {user.in_vix_feed}'),
-        p(f'Auto gender: {user.gender_label_auto}'),
-        p(f'Manual gender: {user.gender_label_manual}'),
+        # user_controls(user.did),
+        p(f'Muted: {user.is_muted}'),
+        p(f'Furrylist verified: {user.is_furrylist_verified}'),
+        p(f'In fox feed: {user.manual_include_in_fox_feed}'),
+        p(f'In vix feed: {user.manual_include_in_vix_feed}'),
         h3(f'{len(posts)} posts') if posts else None,
         *[post(i) for i in posts]
     )

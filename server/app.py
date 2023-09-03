@@ -15,6 +15,7 @@ from server.algos.score_task import score_posts_forever
 
 import server.load_known_furries
 
+import server.database
 from server.database import Database, make_database_connection
 
 from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set
@@ -119,6 +120,9 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
         page = server.interface.stats_page([
             ('feeds', len(server.algos.algo_details)),
             ('users', await db.actor.count()),
+            ('in-fox-feed', await db.actor.count(where=server.database.user_is_in_fox_feed)),
+            ('in-vix-feed', await db.actor.count(where=server.database.user_is_in_vix_feed)),
+            ('storing-data-for', await db.actor.count(where=server.database.care_about_storing_user_data_preemptively)),
             ('posts', await db.post.count()),
             ('likes', await db.like.count()),
             ('postscores', await db.postscore.count()),
@@ -234,12 +238,18 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
             where={
                 'OR': [
                     {
+                        # People who have been marked for reivew, obviously
                         'flagged_for_manual_review': True,
                     },
                     {
+                        # People who are hitting the V^2 algo who we might want to include in the Vix Feed
+                        # but we can't really discern any information about
                         'did': {'in': list(dids)},
-                        'gender_label_auto': 'unknown',
-                        'gender_label_manual': 'not-looked-at',
+                        'autolabel_fem_vibes': False,
+                        'autolabel_masc_vibes': False,
+                        'autolabel_nb_vibes': False,
+                        'manual_include_in_fox_feed': None,
+                        'manual_include_in_vix_feed': None,
                     }
                 ]
             },
@@ -263,25 +273,21 @@ def create_route_table(db: Database, *, admin_panel: bool=False):
         did = blob['did']
         in_fox_feed = blob['in_fox_feed']
         in_vix_feed = blob['in_vix_feed']
-        gender = blob['gender']
         assert isinstance(did, str)
         assert isinstance(in_fox_feed, bool)
         assert isinstance(in_vix_feed, bool)
-        assert isinstance(gender, str)
-        assert gender in ['unknown', 'non-furry', 'boy', 'enby', 'girl', 'not-looked-at']
         updated = await db.actor.update(
             where={'did': did},
             data={
-                'in_fox_feed': in_fox_feed,
-                'in_vix_feed': in_vix_feed,
-                'gender_label_manual': gender,
+                'manual_include_in_fox_feed': in_fox_feed,
+                'manual_include_in_vix_feed': in_vix_feed,
                 # hmmmm.....
                 'flagged_for_manual_review': False,
             }
         )
         if updated is None:
             return web.HTTPNotFound(text='user not found')
-        return web.HTTPOk(text=f'{updated.handle} gender set to {updated.gender_label_manual}')
+        return web.HTTPOk(text=f'{updated.handle} assigned to fox:{updated.manual_include_in_fox_feed}, vix:{updated.manual_include_in_vix_feed}')
 
 
     @routes.post('/admin/boost')
