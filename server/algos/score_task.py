@@ -38,10 +38,9 @@ async def get_like_counts(db: Database, run_starttime: datetime, filter: prisma.
     likes_aggregated = await db.like.group_by(
         by=['post_uri'],
         where={
-            'AND': [
-                {'created_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT}},
-                filter,
-            ]
+            'created_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT},
+            'post': {'is': {'indexed_at': {'lt': run_starttime, 'gt': run_starttime - LOOKBACK_HARD_LIMIT}}},
+            'AND': [filter],
         },
         count=True,
     )

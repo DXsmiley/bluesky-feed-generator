@@ -24,6 +24,7 @@ model Actor {
   // They'll count for votes but not have their posts appear in feeds
   posts Post[]
   likes Like[]
+  // audit_log AuditLog[]
   // New things which are slightly more granular, allowing for computation on 
   // database QUERY rather than database INSERT
   is_muted Boolean @default(false)
@@ -52,6 +53,7 @@ model Post {
   authorId String
   author Actor @relation(fields: [authorId], references: [did], onDelete: Cascade)
   likes Like[]
+  // audit_log AuditLog[]
   // Media URLs
   m0 String?
   m1 String?
@@ -85,3 +87,13 @@ model PostScore {
   @@index([feed_name, version, score(sort: Desc)])
   @@index([created_at])
 }
+
+// model AuditLog {
+//   id Int @id @default(autoincrement())
+//   created_at DateTime @default(now())
+//   subject_id String
+//   subject Actor? @relation(fields: [subject_id], references: [did])
+//   post_id String
+//   post Post? @relation(fields: [post_id], references: [uri])
+//   description String
+// }
