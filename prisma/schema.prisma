@@ -53,6 +53,7 @@ model Post {
   authorId String
   author Actor @relation(fields: [authorId], references: [did], onDelete: Cascade)
   likes Like[]
+  labels String[]
   // audit_log AuditLog[]
   // Media URLs
   m0 String?

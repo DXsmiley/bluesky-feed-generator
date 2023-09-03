@@ -128,6 +128,8 @@ def post(post_: Post) -> Node:
         ' ',
         "?" if not post_.author else a(post_.author.handle, href='/user/' + post_.author.handle),
         ' - ',
+        '[' + ' '.join(post_.labels) + ']',
+        ' - ',
         text
     )
     images = div(*[a(href=url, target="_blank")(img(src=url, width='100px', height='80px')) for url in [post_.m0, post_.m1, post_.m2, post_.m3] if url is not None])

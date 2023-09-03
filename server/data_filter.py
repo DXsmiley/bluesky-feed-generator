@@ -48,12 +48,17 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         except AttributeError:
             continue
 
+        labels = (
+            [] if not isinstance(record.labels, models.ComAtprotoLabelDefs.SelfLabels)
+            else [i.val for i in record.labels.values]
+        )
+
         # We're not doing anything with replies right now so we'll just ignore them to save cycles
         if reply_parent is not None or reply_root is not None:
             continue
 
         if (await db.actor.find_first(where={'did': author_did, 'AND': [care_about_storing_user_data_preemptively]})) is not None:
-            logger.info(f'New furry post (with images: {len(images)}): {inlined_text}')
+            logger.info(f'New furry post (with images: {len(images)}, labels: {labels}): {inlined_text}')
             post_dict: PostCreateWithoutRelationsInput = {
                 'uri': created_post['uri'],
                 'cid': created_post['cid'],
@@ -68,6 +73,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                 'm1': image_urls.get(1, None),
                 'm2': image_urls.get(2, None),
                 'm3': image_urls.get(3, None),
+                'labels': labels,
             }
             posts_to_create.append(post_dict)
 
@@ -91,7 +97,8 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         if like_author is None:
             continue
         
-        print(f'{like_author.handle} ({like_author.autolabel_fem_vibes}) liked a post')
+        girl = (like_author.autolabel_fem_vibes and not like_author.autolabel_masc_vibes) or like_author.manual_include_in_vix_feed
+        print(f'{like_author.handle} ({girl}) liked a post')
         try:
             await db.like.create(
                 data={
