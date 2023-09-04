@@ -310,7 +310,7 @@ async def score_posts_forever(db: Database):
 
 
 async def main(forever: bool):
-    db = await make_database_connection()
+    db = await make_database_connection(timeout=30)
     if forever:
         await score_posts_forever(db)
     else:
