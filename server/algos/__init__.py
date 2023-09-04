@@ -37,7 +37,7 @@ algo_details: List[AlgorithmDetails] = [
     {
         'record_name': 'fresh-feed',
         'display_name': '🦊 Fresh',
-        'description': 'New and upcomming posts from furry bluesky.',
+        'description': 'New and upcomming posts from furry bluesky! Details at bsky.probablyaweb.site',
         'handler': fox_feed.fresh_feed
     },
     {
@@ -45,5 +45,11 @@ algo_details: List[AlgorithmDetails] = [
         'display_name': '🦊 V²',
         'description': 'Top furry posts, as *voted by* furry women! Details at bsky.probablyaweb.site',
         'handler': fox_feed.vix_votes,
+    },
+    {
+        'record_name': 'bisexy',
+        'display_name': '🔥 Bi',
+        'description': '(in development)',
+        'handler': fox_feed.bisexy
     }
 ]

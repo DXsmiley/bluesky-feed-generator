@@ -6,4 +6,5 @@ FeedName = Literal[
     'fresh-feed',
     'vix-votes',
     'fursuit-feed',
+    'bisexy',
 ]

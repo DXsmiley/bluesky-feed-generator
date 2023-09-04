@@ -1,6 +1,5 @@
 import asyncio
 import traceback
-from collections import defaultdict
 from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
@@ -11,7 +10,7 @@ from prisma.models import Post, Actor
 import prisma.errors
 import prisma.types
 
-from typing import List, Dict, Tuple, Callable
+from typing import List, Dict, Tuple, Callable, Iterator
 from .feed_names import FeedName
 
 import server.gender
@@ -19,6 +18,7 @@ import server.gender
 from termcolor import cprint
 from dataclasses import dataclass
 import gc
+from server.util import groupby
 
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
@@ -126,6 +126,7 @@ class FeedParameters:
     feed_name: FeedName
     filter: Callable[[PostWithInfo], bool]
     score_func: Callable[[datetime, PostWithInfo], float]
+    remix_func: Callable[[List[Tuple[float, PostWithInfo]]], List[PostWithInfo]] = lambda p: [i for _, i in p]
 
 
 @dataclass
@@ -135,30 +136,74 @@ class RunDetails:
     run_version: int
 
 
-async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
+def sorted_by_score_desc(posts: List[Tuple[float, PostWithInfo]]) -> List[Tuple[float, PostWithInfo]]:
+    return sorted(posts, key=lambda x: x[0], reverse=True)
 
-    posts_by_author: Dict[str, List[Tuple[float, PostWithInfo]]] = defaultdict(list)
-    for post in rd.candidate_posts:
-        if fp.filter(post):
-            rs = fp.score_func(rd.run_starttime, post)
-            posts_by_author[post.author.did].append((rs, post))
 
-    scored_posts = sorted(
-        [
-        (post_raw_score / (2 ** index), post)
-        for just_by_author in posts_by_author.values()
-        for index, (post_raw_score, post) in enumerate(sorted(just_by_author, key=lambda x: x[0], reverse=True))
-        if post_raw_score > 0
-        ],
-        key=lambda x: x[0],
-        reverse=True
+def has_trans_vibes(i: Actor) -> bool:
+    s = ((i.displayName or '') + ' ' + (i.description or '')).lower()
+    return '🏳️‍⚧️' in s or 'trans' in s
+
+
+def has_masc_vibes(i: Actor) -> bool:
+    return i.manual_include_in_vix_feed is not True and i.autolabel_masc_vibes and not i.autolabel_fem_vibes
+
+
+def has_fem_vibes(i: Actor) -> bool:
+    return (
+        i.manual_include_in_vix_feed is True
+        or (
+            i.manual_include_in_vix_feed is None
+            and i.autolabel_fem_vibes
+            and not i.autolabel_masc_vibes
+        )
     )
 
-    will_store = scored_posts[:500]
+
+def _gender_splitmix(p: List[Tuple[float, PostWithInfo]]) -> Iterator[PostWithInfo]:
+    # Not a huge fan of this approach but uhhhhhhhh
+    transfem = [i for _, i in p if has_trans_vibes(i.author) and has_fem_vibes(i.author)]
+    cisfem = [i for _, i in p if not has_trans_vibes(i.author) and has_fem_vibes(i.author)]
+    transmasc = [i for _, i in p if has_trans_vibes(i.author) and has_masc_vibes(i.author)]
+    cismasc = [i for _, i in p if not has_trans_vibes(i.author) and has_masc_vibes(i.author)]
+    other = [i for _, i in p if not has_fem_vibes(i.author) and not has_masc_vibes(i.author)]
+    lists = [transfem, cisfem, transmasc, cismasc, other]
+    for i in range(max(map(len, lists))):
+        for x in lists:
+            if i < len(x):
+                yield x[i]
+
+
+def gender_splitmix(p: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
+    return list(_gender_splitmix(p))
+
+
+async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
+
+    posts_with_scores = [
+        (fp.score_func(rd.run_starttime, p), p)
+        for p in rd.candidate_posts
+        if fp.filter(p)
+    ]
+
+    posts_by_author: Dict[str, List[Tuple[float, PostWithInfo]]] = groupby(
+        lambda t: t[1].author.did, posts_with_scores
+    )
+
+    scored_posts = sorted_by_score_desc(
+        [
+            (post_raw_score / (2 ** index), post)
+            for just_by_author in posts_by_author.values()
+            for index, (post_raw_score, post) in enumerate(sorted_by_score_desc(just_by_author))
+            if post_raw_score > 0
+        ]
+    )
+
+    will_store = fp.remix_func(scored_posts)[:500]
 
     cprint(f'Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts', 'yellow', force_color=True)
 
-    for i, (score, post) in enumerate(will_store):
+    for i, post in enumerate(will_store):
         if i % 20 == 0:
             await asyncio.sleep(0.01)
         try:
@@ -166,7 +211,8 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
                 data={
                     'uri': post.post.uri,
                     'version': rd.run_version,
-                    'score': score,
+                    # This is actually "rank"
+                    'score': len(will_store) - i,
                     'created_at': rd.run_starttime,
                     'feed_name': fp.feed_name,
                 }
@@ -174,6 +220,16 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
         except prisma.errors.UniqueViolationError:
             uri_count = sum(i.post.uri == post.post.uri for _, i in will_store)
             cprint(f'Unique PostScore violation error on {post.post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
+
+
+def post_is_nsfw(p: PostWithInfo) -> bool:
+    t = p.post.text.lower()
+    return (
+        len(set(p.post.labels) & {'nudity', 'suggestive', 'porn'}) > 0
+        or 'nsfw' in t
+        or 'murrsuit' in t
+        or 'porn' in t
+    )
 
 
 ALGORITHMIC_FEEDS = [
@@ -196,6 +252,12 @@ ALGORITHMIC_FEEDS = [
         feed_name='vix-votes',
         filter=lambda p: p.author.manual_include_in_fox_feed in [None, True],
         score_func=raw_vix_vote_score,
+    ),
+    FeedParameters(
+        feed_name='bisexy',
+        filter=lambda p: post_is_nsfw(p) and p.post.media_count > 0,
+        score_func=raw_score,
+        remix_func=gender_splitmix
     )
 ]
 

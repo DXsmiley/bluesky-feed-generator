@@ -1,8 +1,10 @@
 from datetime import datetime
-from typing import List, TypeVar, Union
+from typing import List, TypeVar, Union, Callable, Dict
 from itertools import chain
+from collections import defaultdict
 
 
+K = TypeVar('K')
 T = TypeVar('T')
 U = TypeVar('U')
 
@@ -34,3 +36,10 @@ def interleave(sep: T, xs: List[U]) -> List[Union[U, T]]:
         [] if not xs else
         [xs[0], *chain.from_iterable((sep, i) for i in xs[1:])]
     )
+
+
+def groupby(f: Callable[[T], K], ts: List[T]) -> Dict[K, List[T]]:
+    d: Dict[K, List[T]] = defaultdict(list)
+    for i in ts:
+        d[f(i)].append(i)
+    return d
