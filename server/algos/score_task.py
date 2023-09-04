@@ -222,13 +222,17 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
             cprint(f'Unique PostScore violation error on {post.post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
 
 
-def post_is_nsfw(p: PostWithInfo) -> bool:
+def post_is_irl_nsfw(p: PostWithInfo) -> bool:
     t = p.post.text.lower()
     return (
         len(set(p.post.labels) & {'nudity', 'suggestive', 'porn'}) > 0
         or 'nsfw' in t
         or 'murrsuit' in t
         or 'porn' in t
+    ) and not (
+        'art' in t
+        or 'commission' in t
+        or 'drawing' in t
     )
 
 
@@ -255,7 +259,7 @@ ALGORITHMIC_FEEDS = [
     ),
     FeedParameters(
         feed_name='bisexy',
-        filter=lambda p: post_is_nsfw(p) and p.post.media_count > 0,
+        filter=lambda p: post_is_irl_nsfw(p) and p.post.media_count > 0,
         score_func=raw_score,
         remix_func=gender_splitmix
     )
