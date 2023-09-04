@@ -218,7 +218,7 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
                 }
             )
         except prisma.errors.UniqueViolationError:
-            uri_count = sum(i.post.uri == post.post.uri for _, i in will_store)
+            uri_count = sum(i.post.uri == post.post.uri for i in will_store)
             cprint(f'Unique PostScore violation error on {post.post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)', 'red', force_color=True)
 
 
