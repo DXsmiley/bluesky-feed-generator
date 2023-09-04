@@ -1,3 +1,0 @@
-#!/bin/bash
-
-prisma db push --accept-data-loss
