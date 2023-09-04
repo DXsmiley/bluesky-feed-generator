@@ -19,6 +19,7 @@ from termcolor import cprint
 from dataclasses import dataclass
 import gc
 from server.util import groupby
+import sys
 
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
@@ -308,10 +309,14 @@ async def score_posts_forever(db: Database):
         await asyncio.sleep(60)
 
 
-async def main():
+async def main(forever: bool):
     db = await make_database_connection()
-    await score_posts(db)
+    if forever:
+        await score_posts_forever(db)
+    else:
+        await score_posts(db)
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    forever = '--forever' in sys.argv
+    asyncio.run(main(forever))
