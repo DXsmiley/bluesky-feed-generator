@@ -51,5 +51,11 @@ algo_details: List[AlgorithmDetails] = [
         'display_name': '🔥 Bi',
         'description': '(in development)',
         'handler': fox_feed.bisexy
+    },
+    {
+        'record_name': 'top-feed',
+        'display_name': '🦊 Top',
+        'description': '(in development)',
+        'handler': fox_feed.top_feed,
     }
 ]

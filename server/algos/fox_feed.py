@@ -118,6 +118,7 @@ vix_feed = algorithmic_feed('vix-feed')
 fresh_feed = algorithmic_feed('fresh-feed')
 vix_votes = algorithmic_feed('vix-votes')
 bisexy = algorithmic_feed('bisexy')
+top_feed = algorithmic_feed('top-feed')
 
 fursuit_feed = chronological_feed(
     {

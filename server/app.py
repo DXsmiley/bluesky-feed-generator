@@ -31,7 +31,8 @@ import scripts.find_furry_girls
 
 algos = {
     **{
-        (os.environ[server.algos.environment_variable_name_for(i['record_name'])]): i['handler']
+        # TODO: make this slightly less hard-coded
+        ('at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.generator/' + i['record_name']): i['handler']
         for i in server.algos.algo_details
     },
     **{

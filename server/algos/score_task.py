@@ -179,6 +179,14 @@ def gender_splitmix(p: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
     return list(_gender_splitmix(p))
 
 
+def top_100_chronological(p: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
+    return sorted(
+        [i for _, i in p][:100],
+        key=lambda p: p.post.indexed_at,
+        reverse=True
+    )
+
+
 async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
 
     posts_with_scores = [
@@ -263,6 +271,12 @@ ALGORITHMIC_FEEDS = [
         filter=lambda p: post_is_irl_nsfw(p) and p.post.media_count > 0,
         score_func=raw_score,
         remix_func=gender_splitmix
+    ),
+    FeedParameters(
+        feed_name='top-feed',
+        filter=lambda p: p.author.manual_include_in_vix_feed or (p.author.manual_include_in_vix_feed is None and p.author.autolabel_fem_vibes and not p.author.autolabel_masc_vibes),
+        score_func=lambda _, p: p.like_count_furries,
+        remix_func=top_100_chronological,
     )
 ]
 
