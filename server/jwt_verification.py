@@ -15,11 +15,11 @@ async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
 
     did = jwt.decode(token, algorithms=['ES256K'], options={'verify_signature': False}).get('iss')
 
-    session = aiohttp.ClientSession()
-    response = await session.get(f'https://plc.directory/{did}')
-    blob = await response.json()
-    # TODO: allow multiple keys
-    pubkey_multibase = blob['verificationMethod'][0]['publicKeyMultibase']
+    async with aiohttp.ClientSession() as session:
+        response = await session.get(f'https://plc.directory/{did}')
+        blob = await response.json()
+        # TODO: allow multiple keys
+        pubkey_multibase = blob['verificationMethod'][0]['publicKeyMultibase']
 
     decoded = multibase.decode(pubkey_multibase)
     assert isinstance(decoded, bytes)
