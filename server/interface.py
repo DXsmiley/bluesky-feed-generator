@@ -195,9 +195,17 @@ def feed_metrics_page(metrics: FeedMetrics) -> Node:
     )
 
 
-def stats_page(stats: List[Tuple[str, int]]) -> Node:
+def stats_page(stats: List[Tuple[str, int]], metrics: FeedMetrics) -> Node:
     ls = [p(f"{n} {s}") for n, s in stats]
-    return wrap_body(h3("stats"), *ls)
+    return wrap_body(
+        h3("stats"),
+        *ls,
+        h3("accumulated feed metrics"),
+        feed_metric_row("attributed likes", metrics, lambda x: x.attributed_likes),
+        feed_metric_row("requests", metrics, lambda x: x.num_requests),
+        feed_metric_row("posts served", metrics, lambda x: x.posts_served),
+        feed_metric_row("unique viewers", metrics, lambda x: x.unique_viewers),
+    )
 
 
 def user_main(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> Node:

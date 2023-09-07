@@ -2,14 +2,17 @@ import math
 from server.database import Database
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import Literal, Iterator, List
+from typing import Literal, Iterator, List, Optional
+import prisma.types
+
+
+METRICS_MAXIMUM_LOOKBACK = timedelta(days=3)
 
 
 @dataclass
 class FeedMetricsSlice:
     start: datetime
     end: datetime
-    feed_name: str
     attributed_likes: int
     num_requests: int
     posts_served: int
@@ -20,39 +23,41 @@ class FeedMetricsSlice:
 class FeedMetrics:
     start: datetime
     end: datetime
-    feed_name: str
+    feed_name: Optional[str]
     timesliced: List[FeedMetricsSlice]
 
 
 async def feed_metrics_for_timeslice(
     db: Database,
-    feed_name: str,
+    feed_name: Optional[str],
     start: datetime,
     end: datetime,
 ) -> FeedMetricsSlice:
+    feedname_filter: prisma.types.StringFilter = {"endswith": feed_name or ''}
     attributed_likes = await db.like.count(
         where={
-            "attributed_feed": {"endswith": feed_name},
-            "created_at": {"gte": start, "lte": end},
+            "NOT": [{"attributed_feed": None}],
+            "attributed_feed": feedname_filter,
+            "created_at": {"gte": start, "lt": end},
         }
     )
     num_requests = await db.servedblock.count(
         where={
-            "feed_name": {"endswith": feed_name},
-            "when": {"gte": start, "lte": end},
+            "feed_name": feedname_filter,
+            "when": {"gte": start, "lt": end},
         }
     )
     posts_served = await db.servedpost.count(
         where={
-            "feed_name": {"endswith": feed_name},
-            "when": {"gte": start, "lte": end},
+            "feed_name": feedname_filter,
+            "when": {"gte": start, "lt": end},
         }
     )
     unique_viewers = len(
         await db.servedblock.find_many(
             where={
-                "feed_name": {"endswith": feed_name},
-                "when": {"gte": start, "lte": end},
+                "feed_name": feedname_filter,
+                "when": {"gte": start, "lt": end},
             },
             distinct=["client_did"],
         )
@@ -60,7 +65,6 @@ async def feed_metrics_for_timeslice(
     return FeedMetricsSlice(
         start=start,
         end=end,
-        feed_name=feed_name,
         attributed_likes=attributed_likes,
         num_requests=num_requests,
         posts_served=posts_served,
@@ -70,7 +74,7 @@ async def feed_metrics_for_timeslice(
 
 async def feed_metrics_for_time_range(
     db: Database,
-    feed_name: str,
+    feed_name: Optional[str],
     start: datetime,
     end: datetime,
     interval: timedelta,

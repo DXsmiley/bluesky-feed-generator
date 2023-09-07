@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from server.database import make_database_connection
 from server.algos.score_task import LOOKBACK_HARD_LIMIT
+from server.metrics import METRICS_MAXIMUM_LOOKBACK
 
 async def main():
     now = datetime.utcnow()
@@ -13,6 +14,16 @@ async def main():
     if postscore_max_version is not None:
         c = await db.postscore.delete_many(where={'version': {'not': postscore_max_version.version}})
         print('Deleted', c, 'postscores')
+
+    c = await db.servedblock.delete_many(
+        where={'when': {'lt': now - METRICS_MAXIMUM_LOOKBACK}}
+    )
+    print('Deleted', c, 'servedblocks')
+
+    c = await db.servedpost.delete_many(
+        where={'when': {'lt': now - METRICS_MAXIMUM_LOOKBACK}}
+    )
+    print('Deleted', c, 'servedposts')
 
     # c = await db.post.delete_many(where={'indexed_at': {'lt': now - LOOKBACK_HARD_LIMIT}})
     # print('Deleted', c, 'posts')

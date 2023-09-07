@@ -154,6 +154,14 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
     async def stats(
         request: web.Request,
     ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+        now = datetime.now()
+        metrics = await server.metrics.feed_metrics_for_time_range(
+            db,
+            None,
+            now - server.metrics.METRICS_MAXIMUM_LOOKBACK,
+            now,
+            timedelta(hours=1),
+        )
         page = server.interface.stats_page(
             [
                 ("feeds", len(server.algos.algo_details)),
@@ -175,7 +183,8 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
                 ("posts", await db.post.count()),
                 ("likes", await db.like.count()),
                 ("postscores", await db.postscore.count()),
-            ]
+            ],
+            metrics
         )
         return web.Response(text=str(page), content_type="text/html")
 
@@ -337,7 +346,7 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         now = datetime.now()
 
         metrics = await server.metrics.feed_metrics_for_time_range(
-            db, feed_name, now - timedelta(days=4), now, timedelta(hours=1)
+            db, feed_name, now - server.metrics.METRICS_MAXIMUM_LOOKBACK, now, timedelta(hours=1)
         )
 
         page = server.interface.feed_metrics_page(metrics)
