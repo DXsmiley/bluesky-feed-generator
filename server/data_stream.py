@@ -8,10 +8,14 @@ import traceback
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError, UnexpectedFieldError
-from atproto.firehose import AsyncFirehoseSubscribeReposClient, parse_subscribe_repos_message
+from atproto.firehose import (
+    AsyncFirehoseSubscribeReposClient,
+    parse_subscribe_repos_message,
+)
 from atproto.xrpc_client.models import get_or_create, is_record_type
 from atproto.xrpc_client.models.common import XrpcError
 from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
+
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
 from httpx import ConnectError
@@ -23,7 +27,7 @@ if t.TYPE_CHECKING:
     from atproto.firehose import MessageFrame
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class CreateOp(TypedDict, Generic[T]):
@@ -54,25 +58,25 @@ OPERATIONS_CALLBACK_TYPE = Callable[[Database, OpsByType], Coroutine[Any, Any, N
 
 def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsByType:
     operation_by_type: OpsByType = {
-        'posts': {'created': [], 'deleted': []},
-        'reposts': {'created': [], 'deleted': []},
-        'likes': {'created': [], 'deleted': []},
-        'follows': {'created': [], 'deleted': []},
+        "posts": {"created": [], "deleted": []},
+        "reposts": {"created": [], "deleted": []},
+        "likes": {"created": [], "deleted": []},
+        "follows": {"created": [], "deleted": []},
     }
 
     assert isinstance(commit.blocks, bytes)
 
     car = CAR.from_bytes(commit.blocks)
     for op in commit.ops:
-        uri = AtUri.from_str(f'at://{commit.repo}/{op.path}')
+        uri = AtUri.from_str(f"at://{commit.repo}/{op.path}")
 
         # print(uri.collection, op.action)
 
-        if op.action == 'update':
+        if op.action == "update":
             # not supported yet
             continue
 
-        if op.action == 'create':
+        if op.action == "create":
             if not op.cid:
                 continue
 
@@ -83,28 +87,60 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             record = get_or_create(record_raw_data, strict=False)
             # assert isinstance(record, ModelBase)
 
-            if uri.collection == models.ids.AppBskyFeedLike and is_record_type(record, models.AppBskyFeedLike):
+            if uri.collection == models.ids.AppBskyFeedLike and is_record_type(
+                record, models.AppBskyFeedLike
+            ):
                 # assert isinstance(record, models.AppBskyFeedLike.Main)
-                operation_by_type['likes']['created'].append({'uri': str(uri), 'cid': str(op.cid), 'author': commit.repo, 'record': record})
-            elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(record, models.AppBskyFeedPost):
+                operation_by_type["likes"]["created"].append(
+                    {
+                        "uri": str(uri),
+                        "cid": str(op.cid),
+                        "author": commit.repo,
+                        "record": record,
+                    }
+                )
+            elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(
+                record, models.AppBskyFeedPost
+            ):
                 # assert isinstance(record, models.AppBskyFeedPost.Main)
-                operation_by_type['posts']['created'].append({'uri': str(uri), 'cid': str(op.cid), 'author': commit.repo, 'record': record})
-            elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(record, models.AppBskyGraphFollow):
+                operation_by_type["posts"]["created"].append(
+                    {
+                        "uri": str(uri),
+                        "cid": str(op.cid),
+                        "author": commit.repo,
+                        "record": record,
+                    }
+                )
+            elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(
+                record, models.AppBskyGraphFollow
+            ):
                 # assert isinstance(record, models.AppBskyGraphFollow.Main)
-                operation_by_type['follows']['created'].append({'uri': str(uri), 'cid': str(op.cid), 'author': commit.repo, 'record': record})
+                operation_by_type["follows"]["created"].append(
+                    {
+                        "uri": str(uri),
+                        "cid": str(op.cid),
+                        "author": commit.repo,
+                        "record": record,
+                    }
+                )
 
-        if op.action == 'delete':
+        if op.action == "delete":
             if uri.collection == models.ids.AppBskyFeedLike:
-                operation_by_type['likes']['deleted'].append({'uri': str(uri)})
+                operation_by_type["likes"]["deleted"].append({"uri": str(uri)})
             if uri.collection == models.ids.AppBskyFeedPost:
-                operation_by_type['posts']['deleted'].append({'uri': str(uri)})
+                operation_by_type["posts"]["deleted"].append({"uri": str(uri)})
             if uri.collection == models.ids.AppBskyGraphFollow:
-                operation_by_type['follows']['deleted'].append({'uri': str(uri)})
+                operation_by_type["follows"]["deleted"].append({"uri": str(uri)})
 
     return operation_by_type
 
 
-async def run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[None] = None) -> None:
+async def run(
+    db: Database,
+    name: str,
+    operations_callback: OPERATIONS_CALLBACK_TYPE,
+    stream_stop_event: Optional[None] = None,
+) -> None:
     while stream_stop_event is None or not stream_stop_event.is_set():
         try:
             await _run(db, name, operations_callback, stream_stop_event)
@@ -113,29 +149,36 @@ async def run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_
         except KeyboardInterrupt:
             raise
         except FirehoseError as e:
-            logger.info(f'Got FirehoseError: {e}')
+            logger.info(f"Got FirehoseError: {e}")
             if e.__context__ and e.__context__.args:
                 xrpc_error = e.__context__.args[0]
-                if isinstance(xrpc_error, XrpcError) and xrpc_error.error == 'ConsumerTooSlow':
-                    logger.warn('Reconnecting to Firehose due to ConsumerTooSlow...')
+                if (
+                    isinstance(xrpc_error, XrpcError)
+                    and xrpc_error.error == "ConsumerTooSlow"
+                ):
+                    logger.warn("Reconnecting to Firehose due to ConsumerTooSlow...")
                     continue
 
             raise e
-    print('Finished run(...) due to stream stop event')
+    print("Finished run(...) due to stream stop event")
 
 
-async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK_TYPE, stream_stop_event: Optional[None] = None) -> None:
-    print('Getting subscription state...')
-    state = await db.subscriptionstate.find_first(where={'service': {'equals': name}})
-    print('Done')
+async def _run(
+    db: Database,
+    name: str,
+    operations_callback: OPERATIONS_CALLBACK_TYPE,
+    stream_stop_event: Optional[None] = None,
+) -> None:
+    print("Getting subscription state...")
+    state = await db.subscriptionstate.find_first(where={"service": {"equals": name}})
+    print("Done")
 
     params = subscribe_repos.Params(cursor=state.cursor) if state else None
 
     # passing params causes it to loop???
     client = AsyncFirehoseSubscribeReposClient(None)
 
-    async def on_message_handler(message: 'MessageFrame') -> None:
-
+    async def on_message_handler(message: "MessageFrame") -> None:
         # stop on next message if requested
         if stream_stop_event is not None and stream_stop_event.is_set():
             await client.stop()
@@ -159,7 +202,7 @@ async def _run(db: Database, name: str, operations_callback: OPERATIONS_CALLBACK
         await asyncio.sleep(0)
 
     def on_error_handler(exception: BaseException) -> None:
-        print('Error in data stream message handler:', file=sys.stderr)
+        print("Error in data stream message handler:", file=sys.stderr)
         traceback.print_exception(type(exception), exception, exception.__traceback__)
 
     await client.start(on_message_handler, on_error_handler)

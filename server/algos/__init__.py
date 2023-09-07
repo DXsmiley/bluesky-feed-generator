@@ -5,7 +5,7 @@ from typing import TypedDict, List
 
 
 def environment_variable_name_for(record_name: FeedName) -> str:
-    return 'FEED_URI_' + record_name.upper().replace('-', '_')
+    return "FEED_URI_" + record_name.upper().replace("-", "_")
 
 
 class AlgorithmDetails(TypedDict):
@@ -17,45 +17,45 @@ class AlgorithmDetails(TypedDict):
 
 algo_details: List[AlgorithmDetails] = [
     {
-        'record_name': 'fox-feed',
-        'display_name': '🦊 Furry',
-        'description': 'Algorithmic feed for furry posts! Details at bsky.probablyaweb.site',
-        'handler': fox_feed.fox_feed,
+        "record_name": "fox-feed",
+        "display_name": "🦊 Furry",
+        "description": "Algorithmic feed for furry posts! Details at bsky.probablyaweb.site",
+        "handler": fox_feed.fox_feed,
     },
     {
-        'record_name': 'vix-feed',
-        'display_name': '🦊 Vix',
-        'description': 'Algorithmic feed for posts from furry women! Details at bsky.probablyaweb.site',
-        'handler': fox_feed.vix_feed,
+        "record_name": "vix-feed",
+        "display_name": "🦊 Vix",
+        "description": "Algorithmic feed for posts from furry women! Details at bsky.probablyaweb.site",
+        "handler": fox_feed.vix_feed,
     },
     {
-        'record_name': 'fursuit-feed',
-        'display_name': '🦊 Fursuits',
-        'description': '(in development)',
-        'handler': fox_feed.fursuit_feed,
+        "record_name": "fursuit-feed",
+        "display_name": "🦊 Fursuits",
+        "description": "(in development)",
+        "handler": fox_feed.fursuit_feed,
     },
     {
-        'record_name': 'fresh-feed',
-        'display_name': '🦊 Fresh',
-        'description': 'New and upcomming posts from furry bluesky! Details at bsky.probablyaweb.site',
-        'handler': fox_feed.fresh_feed
+        "record_name": "fresh-feed",
+        "display_name": "🦊 Fresh",
+        "description": "New and upcomming posts from furry bluesky! Details at bsky.probablyaweb.site",
+        "handler": fox_feed.fresh_feed,
     },
     {
-        'record_name': 'vix-votes',
-        'display_name': '🦊 V²',
-        'description': 'Top furry posts, as *voted by* furry women! Details at bsky.probablyaweb.site',
-        'handler': fox_feed.vix_votes,
+        "record_name": "vix-votes",
+        "display_name": "🦊 V²",
+        "description": "Top furry posts, as *voted by* furry women! Details at bsky.probablyaweb.site",
+        "handler": fox_feed.vix_votes,
     },
     {
-        'record_name': 'bisexy',
-        'display_name': '🔥 Bi',
-        'description': '(in development)',
-        'handler': fox_feed.bisexy
+        "record_name": "bisexy",
+        "display_name": "🔥 Bi",
+        "description": "(in development)",
+        "handler": fox_feed.bisexy,
     },
     {
-        'record_name': 'top-feed',
-        'display_name': '🦊 Top',
-        'description': '(in development)',
-        'handler': fox_feed.top_feed,
-    }
+        "record_name": "top-feed",
+        "display_name": "🦊 Top",
+        "description": "(in development)",
+        "handler": fox_feed.top_feed,
+    },
 ]

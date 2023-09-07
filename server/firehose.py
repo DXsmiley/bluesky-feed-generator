@@ -9,5 +9,5 @@ async def main():
     await data_stream.run(db, config.SERVICE_DID, operations_callback, None)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
