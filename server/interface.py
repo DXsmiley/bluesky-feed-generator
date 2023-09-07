@@ -1,10 +1,10 @@
 from server import html
-from server.html import Node, head, img, div, h3, p, span, a, UnescapedString
+from server.html import Node, head, img, div, h3, h4, p, span, a, UnescapedString
 import re
-from typing import List, Tuple, Union, TypeVar, Optional
+from typing import List, Tuple, Union, TypeVar, Optional, Callable
 from prisma.models import Post, Actor
 from server.util import interleave
-
+from server.metrics import FeedMetrics, FeedMetricsSlice
 
 T = TypeVar("T")
 
@@ -145,7 +145,53 @@ def feed_page(
     enable_admin_controls: bool, feed_name: str, full_posts: List[Post]
 ) -> Node:
     return wrap_body(
-        h3(feed_name), *[post(enable_admin_controls, i) for i in full_posts]
+        h3(feed_name),
+        a(href=f"/feed/{feed_name}/stats")(p("stats")),
+        *[post(enable_admin_controls, i) for i in full_posts],
+    )
+
+
+def feed_metric_row(
+    name: str,
+    metrics: FeedMetrics,
+    value: Callable[[FeedMetricsSlice], Union[int, float]],
+) -> Node:
+    values = [(i.start, value(i)) for i in metrics.timesliced]
+    maximum = max([v for _, v in values] + [1])
+    return div(
+        h4(name),
+        div(class_="column-graph-row")(
+            *[
+                div(
+                    class_="column-graph-bar",
+                    id_=f"col-{metrics.feed_name}-{hash(name)}-{i}",
+                )
+                for i, (_, _) in enumerate(values)
+            ]
+        ),
+        *[
+            html.style(
+                f"""
+                #col-{metrics.feed_name}-{hash(name)}-{i} {{
+                    height: {int(40 * v / maximum)}px;
+                }}
+                #col-{metrics.feed_name}-{hash(name)}-{i}:hover::after {{
+                    content: "{v} - {s}";
+                }}
+                """
+            )
+            for i, (s, v) in enumerate(values)
+        ],
+    )
+
+
+def feed_metrics_page(metrics: FeedMetrics) -> Node:
+    return wrap_body(
+        h3(metrics.feed_name),
+        feed_metric_row("attributed likes", metrics, lambda x: x.attributed_likes),
+        feed_metric_row("requests", metrics, lambda x: x.num_requests),
+        feed_metric_row("posts served", metrics, lambda x: x.posts_served),
+        feed_metric_row("unique viewers", metrics, lambda x: x.unique_viewers),
     )
 
 

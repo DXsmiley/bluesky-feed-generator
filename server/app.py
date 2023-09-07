@@ -9,6 +9,7 @@ import server.interface
 from aiohttp import web
 import aiojobs.aiohttp
 import server.jwt_verification
+import server.metrics
 
 import server.algos
 from server.data_filter import operations_callback
@@ -20,12 +21,12 @@ import prisma
 import server.database
 from server.database import Database, make_database_connection
 
-from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set
+from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set, List
 
 import traceback
 import termcolor
 from termcolor import cprint
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 import scripts.find_furry_girls
@@ -234,7 +235,7 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         algo = algos.get(feed)
         if not algo:
             return web.HTTPBadRequest(text="Unsupported algorithm")
-        
+
         cprint(f"Getting feed {feed}", "magenta", force_color=True)
 
         s = datetime.now()
@@ -252,33 +253,43 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
 
         await aiojobs.aiohttp.spawn(
             request,
-            store_served_posts(request.headers.get('Authorization'), s, feed, cursor, limit, body)
+            store_served_posts(
+                request.headers.get("Authorization"), s, feed, cursor, limit, body
+            ),
         )
 
         return web.json_response(body)
-    
-    async def store_served_posts(auth: Optional[str], now: datetime, feed_name: str, cursor: Optional[str], limit: int, served: server.algos.fox_feed.HandlerResult) -> None:
+
+    async def store_served_posts(
+        auth: Optional[str],
+        now: datetime,
+        feed_name: str,
+        cursor: Optional[str],
+        limit: int,
+        served: server.algos.fox_feed.HandlerResult,
+    ) -> None:
         did = await server.jwt_verification.verify_jwt(auth)
-        print('store_served_posts', feed_name, did)
+        print("store_served_posts", feed_name, did)
         if did is not None:
             await db.servedblock.create(
                 data={
-                    'when': now,
-                    'cursor': cursor,
-                    'limit': limit,
-                    'served': len(served['feed']),
-                    'feed_name': feed_name
+                    "when": now,
+                    "cursor": cursor,
+                    "limit": limit,
+                    "served": len(served["feed"]),
+                    "feed_name": feed_name,
+                    "client_did": did,
                 }
             )
             await db.servedpost.create_many(
                 data=[
                     {
-                        'when': now,
-                        'post_uri': i['post'],
-                        'client_did': did,
-                        'feed_name': feed_name
+                        "when": now,
+                        "post_uri": i["post"],
+                        "client_did": did,
+                        "feed_name": feed_name,
                     }
-                    for i in served['feed']
+                    for i in served["feed"]
                 ]
             )
 
@@ -310,6 +321,24 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
 
         page = server.interface.feed_page(is_admin(request), feed_name, full_posts)
 
+        return web.Response(text=str(page), content_type="text/html")
+
+    @routes.get("/feed/{feed}/stats")
+    async def get_feed_stats(
+        request: web.Request,
+    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+        feed_name = request.match_info.get("feed", "")
+        algo = algos.get(feed_name)
+        if algo is None:
+            return web.HTTPNotFound(text="Feed not found")
+
+        now = datetime.now()
+
+        metrics = await server.metrics.feed_metrics_for_time_range(
+            db, feed_name, now - timedelta(days=4), now, timedelta(hours=1)
+        )
+
+        page = server.interface.feed_metrics_page(metrics)
         return web.Response(text=str(page), content_type="text/html")
 
     async def quickflag_candidates_from_feed(

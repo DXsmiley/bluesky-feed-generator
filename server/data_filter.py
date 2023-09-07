@@ -121,9 +121,9 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         served_post = await db.servedpost.find_first(
             where={
-                'when': {'gt': datetime.now() - timedelta(minutes=5)},
-                'post_uri': like['record'].subject.uri,
-                'client_did': like['author'],
+                "when": {"gt": datetime.now() - timedelta(minutes=5)},
+                "post_uri": like["record"].subject.uri,
+                "client_did": like["author"],
             }
         )
 
@@ -138,7 +138,9 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                     "post_uri": like["record"].subject.uri,
                     "post_cid": like["record"].subject.cid,
                     "created_at": parse_datetime(like["record"].createdAt),
-                    "attributed_feed": None if served_post is None else served_post.feed_name
+                    "attributed_feed": None
+                    if served_post is None
+                    else served_post.feed_name,
                 }
             )
         except prisma.errors.UniqueViolationError:

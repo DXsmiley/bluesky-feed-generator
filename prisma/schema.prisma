@@ -107,6 +107,7 @@ model ServedBlock {
   limit Int
   served Int
   feed_name String
+  client_did String?
 }
 
 model ServedPost {
