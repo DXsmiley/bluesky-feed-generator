@@ -4,3 +4,4 @@ prisma==0.9.1
 typing_extensions==4.5.0
 termcolor==2.3.0
 aiohttp==3.8.5
+aiojobs==1.2.0
