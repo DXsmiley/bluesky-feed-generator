@@ -32,26 +32,26 @@ async def feed_metrics_for_timeslice(
 ) -> FeedMetricsSlice:
     attributed_likes = await db.like.count(
         where={
-            "attributed_feed": feed_name,
+            "attributed_feed": {"endswith": feed_name},
             "created_at": {"gte": start, "lte": end},
         }
     )
     num_requests = await db.servedblock.count(
         where={
-            "feed_name": feed_name,
+            "feed_name": {"endswith": feed_name},
             "when": {"gte": start, "lte": end},
         }
     )
     posts_served = await db.servedpost.count(
         where={
-            "feed_name": feed_name,
+            "feed_name": {"endswith": feed_name},
             "when": {"gte": start, "lte": end},
         }
     )
     unique_viewers = len(
         await db.servedblock.find_many(
             where={
-                "feed_name": feed_name,
+                "feed_name": {"endswith": feed_name},
                 "when": {"gte": start, "lte": end},
             },
             distinct=["client_did"],

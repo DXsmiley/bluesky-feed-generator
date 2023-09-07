@@ -235,8 +235,10 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         algo = algos.get(feed)
         if not algo:
             return web.HTTPBadRequest(text="Unsupported algorithm")
+        
+        feed_record_name = feed.split('/')[-1]
 
-        cprint(f"Getting feed {feed}", "magenta", force_color=True)
+        cprint(f"Getting feed {feed_record_name}", "magenta", force_color=True)
 
         s = datetime.now()
 
@@ -254,7 +256,7 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         await aiojobs.aiohttp.spawn(
             request,
             store_served_posts(
-                request.headers.get("Authorization"), s, feed, cursor, limit, body
+                request.headers.get("Authorization"), s, feed_record_name, cursor, limit, body
             ),
         )
 
