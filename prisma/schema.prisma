@@ -73,6 +73,7 @@ model Like {
   post Post @relation(fields: [post_uri], references: [uri], onDelete: Cascade)
   post_cid String
   created_at DateTime
+  attributed_feed String? // Tracks if we think the like came from a user using our feed
   @@index([post_uri])
   @@index([created_at])
   @@unique([post_uri, liker_id])
@@ -98,3 +99,22 @@ model PostScore {
 //   post Post? @relation(fields: [post_id], references: [uri])
 //   description String
 // }
+
+model ServedBlock {
+  id Int @id @default(autoincrement())
+  when DateTime
+  cursor String?
+  limit Int
+  served Int
+  feed_name String
+}
+
+model ServedPost {
+  id Int @id @default(autoincrement())
+  when DateTime
+  post_uri String
+  client_did String?
+  feed_name String
+  @@index([when])
+}
+

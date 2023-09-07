@@ -7,6 +7,7 @@ from server import data_stream
 import server.interface
 
 from aiohttp import web
+import aiojobs.aiohttp
 
 import server.algos
 from server.data_filter import operations_callback
@@ -85,6 +86,7 @@ def create_web_application(db: Database, services: Services) -> web.Application:
     app = web.Application()
     app.add_routes(create_route_table(db, admin_panel=services.admin_panel))
     app.cleanup_ctx.append(background_tasks(db, services))
+    aiojobs.aiohttp.setup(app)
     return app
 
 
@@ -231,6 +233,8 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         algo = algos.get(feed)
         if not algo:
             return web.HTTPBadRequest(text="Unsupported algorithm")
+        
+        print(request.headers)
 
         cprint(f"Getting feed {feed}", "magenta", force_color=True)
 
@@ -238,8 +242,8 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
 
         try:
             cursor = request.query.get("cursor", default=None)
-            limit = request.query.get("limit", default=20)
-            body = await algo(db, cursor, int(limit))
+            limit = int(request.query.get("limit", default=20))
+            body = await algo(db, cursor, limit)
         except ValueError:
             return web.HTTPBadRequest(text="Malformed Cursor")
 
@@ -247,7 +251,33 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
 
         cprint(f"Done in {int(d.total_seconds())}", "magenta", force_color=True)
 
+        await aiojobs.aiohttp.spawn(request,
+            store_served_posts(s, feed, cursor, limit, body)
+        )
+
         return web.json_response(body)
+    
+    async def store_served_posts(now: datetime, feed_name: str, cursor: Optional[str], limit: int, served: server.algos.fox_feed.HandlerResult) -> None:
+        await db.servedblock.create(
+            data={
+                'when': now,
+                'cursor': cursor,
+                'limit': limit,
+                'served': len(served['feed']),
+                'feed_name': feed_name
+            }
+        )
+        await db.servedpost.create_many(
+            data=[
+                {
+                    'when': now,
+                    'post_uri': i['post'],
+                    'client_did': None,
+                    'feed_name': feed_name
+                }
+                for i in served['feed']
+            ]
+        )
 
     @routes.get("/feed")
     async def get_feeds(

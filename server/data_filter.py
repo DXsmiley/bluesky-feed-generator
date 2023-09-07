@@ -12,6 +12,8 @@ from server.load_known_furries import parse_datetime
 
 from server.util import mentions_fursuit, parse_datetime
 
+from datetime import datetime, timedelta
+
 
 async def operations_callback(db: Database, ops: OpsByType) -> None:
     # Here we can filter, process, run ML classification, etc.
@@ -116,7 +118,17 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         girl = (
             like_author.autolabel_fem_vibes and not like_author.autolabel_masc_vibes
         ) or like_author.manual_include_in_vix_feed
-        print(f"{like_author.handle} ({girl}) liked a post")
+
+        served_post = await db.servedpost.find_first(
+            where={
+                'when': {'gt': datetime.now() - timedelta(minutes=5)},
+                'post_uri': like['record'].subject.uri,
+                'client_did': like['author'],
+            }
+        )
+
+        print(f"{like_author.handle} ({girl}, {served_post is not None}) liked a post")
+
         try:
             await db.like.create(
                 data={
@@ -126,6 +138,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                     "post_uri": like["record"].subject.uri,
                     "post_cid": like["record"].subject.cid,
                     "created_at": parse_datetime(like["record"].createdAt),
+                    "attributed_feed": None if served_post is None else served_post.feed_name
                 }
             )
         except prisma.errors.UniqueViolationError:
