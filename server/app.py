@@ -183,6 +183,8 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
                 ("posts", await db.post.count()),
                 ("likes", await db.like.count()),
                 ("postscores", await db.postscore.count()),
+                ("servedblock", await db.servedblock.count()),
+                ("servedpost", await db.servedpost.count()),
             ],
             metrics
         )
