@@ -33,20 +33,22 @@
             background-color: rgb(223, 14, 136);
             color: white;
         }
-        .top div {
-            max-width: 600px;
+        .top > div {
+            max-width: 700px;
             margin: 0px auto;
-            padding: 40px 40px 20px 40px;
+            padding: 30px 40px 20px 40px;
         }
-        .circle {
+        .logo {
+            background-image: url("/static/logo.png");
+            background-size: contain;
             background-color: white;
             border-radius: 50%;
-            text-align: center;
-            padding: 15px 0px 0px 0px;
             margin-right: 10px;
             width: 60px;
             height: 60px;
             display: inline-block;
+            position: relative;
+            top: 18px;
         }
         .main {
             max-width: 700px;
@@ -108,7 +110,7 @@
 <body>
     <div class="top">
         <div>
-            <h1><span class="circle">🦊</span> Fox Feed</h1>
+            <h1><div class="logo"></div> Fox Feed</h1>
         </div>
     </div>
     <div class="main">

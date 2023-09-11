@@ -59,7 +59,7 @@ def main():
     client.login(HANDLE, PASSWORD)
 
     for i in algo_details:
-        uri = register(client, i['record_name'], i['display_name'], i['description'], './fox.png')
+        uri = register(client, i['record_name'], i['display_name'], i['description'], './foxfeed-logo.png')
         env_variable_name = environment_variable_name_for(i['record_name'])
         print(f'{env_variable_name}="{uri}"')
 
