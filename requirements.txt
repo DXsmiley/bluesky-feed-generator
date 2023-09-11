@@ -9,3 +9,12 @@ pyjwt[crypto]==2.7.0
 py-multibase==1.0.3
 pydantic==2.3.0
 pydantic_core==2.6.3
+
+# Fursuit Detection Model
+tensorflow-object-detection-api
+tensorflow==2.10.0
+protobuf
+opencv-python==4.6.0.66
+opencv-contrib-python==4.6.0.66
+filetype==1.1.0
+Pillow==9.5.0

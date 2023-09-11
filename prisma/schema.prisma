@@ -60,6 +60,10 @@ model Post {
   m1 String?
   m2 String?
   m3 String?
+  // Computer vision stuff
+  cv_has_fursuit Boolean?
+  cv_bounding_boxes Json?
+  cv_model_name String?
   @@index([uri])
   @@index([indexed_at])
 }

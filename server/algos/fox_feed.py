@@ -128,7 +128,12 @@ fursuit_feed = chronological_feed(
         "AND": [
             {"author": {"is": server.database.user_is_in_vix_feed}},
             {"media_count": {"gt": 0}},
-            {"mentions_fursuit": True},
+            {
+                "OR": [
+                    {"mentions_fursuit": True},
+                    {"cv_has_fursuit": True}
+                ]
+            }
         ]
     }
 )

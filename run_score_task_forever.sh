@@ -5,5 +5,7 @@
 while true
 do
     python -m server.algos.score_task
-    sleep 60
+    sleep 5
+    python -m scripts.cv_images
+    sleep 5
 done
