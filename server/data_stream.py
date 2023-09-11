@@ -7,24 +7,23 @@ from typing_extensions import TypedDict
 import traceback
 
 from atproto import CAR, AtUri, models
-from atproto.exceptions import FirehoseError, UnexpectedFieldError
+from atproto.exceptions import FirehoseError
 from atproto.firehose import (
     AsyncFirehoseSubscribeReposClient,
     parse_subscribe_repos_message,
 )
-from atproto.xrpc_client.models import get_or_create, is_record_type
+from atproto.xrpc_client.models.utils import get_or_create, is_record_type
 from atproto.xrpc_client.models.common import XrpcError
 from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
+from atproto.xrpc_client.models.base import ModelBase
 
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
-
-from httpx import ConnectError
 
 from server.logger import logger
 from server.database import Database
 
 if t.TYPE_CHECKING:
-    from atproto.firehose import MessageFrame
+    from atproto.firehose.models import MessageFrame
 
 
 T = TypeVar("T")
@@ -87,7 +86,7 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             record = get_or_create(record_raw_data, strict=False)
             # assert isinstance(record, ModelBase)
 
-            if uri.collection == models.ids.AppBskyFeedLike and is_record_type(
+            if uri.collection == models.ids.AppBskyFeedLike and isinstance(record, ModelBase) and is_record_type(
                 record, models.AppBskyFeedLike
             ):
                 # assert isinstance(record, models.AppBskyFeedLike.Main)
@@ -99,7 +98,7 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                         "record": record,
                     }
                 )
-            elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(
+            elif uri.collection == models.ids.AppBskyFeedPost and isinstance(record, ModelBase) and is_record_type(
                 record, models.AppBskyFeedPost
             ):
                 # assert isinstance(record, models.AppBskyFeedPost.Main)
@@ -111,7 +110,7 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                         "record": record,
                     }
                 )
-            elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(
+            elif uri.collection == models.ids.AppBskyGraphFollow and isinstance(record, ModelBase) and is_record_type(
                 record, models.AppBskyGraphFollow
             ):
                 # assert isinstance(record, models.AppBskyGraphFollow.Main)

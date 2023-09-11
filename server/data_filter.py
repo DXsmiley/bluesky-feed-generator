@@ -137,7 +137,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                     "liker_id": like["author"],
                     "post_uri": like["record"].subject.uri,
                     "post_cid": like["record"].subject.cid,
-                    "created_at": parse_datetime(like["record"].createdAt),
+                    "created_at": parse_datetime(like["record"].created_at),
                     "attributed_feed": None
                     if served_post is None
                     else served_post.feed_name,
