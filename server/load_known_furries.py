@@ -238,6 +238,8 @@ KNOWN_FURRIES_AND_CONNECTIONS = List[
 @dataclass
 class StoreUser:
     user: ProfileView
+    is_furrlist_verified: bool
+    is_muted: bool
 
 
 @dataclass
@@ -326,7 +328,7 @@ async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):
         item = await q.get()
         try:
             if isinstance(item, StoreUser):
-                await store_user(db, item.user)
+                await store_user(db, item.user, is_muted=item.is_muted, is_furrylist_verified=item.is_furrlist_verified, flag_for_manual_review=False)
             elif isinstance(item, StorePost):
                 # print('Storing post', item.post.post.uri, '/', q.qsize())
                 post = item.post
@@ -337,38 +339,40 @@ async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):
                 media_with_alt_text = sum(i.alt != "" for i in media)
                 # if verbose:
                 #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
+                create: prisma.types.PostCreateInput = {
+                    "uri": p.uri,
+                    "cid": p.cid,
+                    # TODO: Fix these
+                    "reply_parent": reply_parent,
+                    "reply_root": reply_root,
+                    "indexed_at": parse_datetime(p.record.created_at),
+                    "like_count": p.like_count or 0,
+                    "authorId": p.author.did,
+                    "mentions_fursuit": mentions_fursuit(p.record.text),
+                    "media_count": len(media),
+                    "media_with_alt_text_count": media_with_alt_text,
+                    "text": p.record.text,
+                    "m0": None if len(media) <= 0 else media[0].thumb,
+                    "m1": None if len(media) <= 1 else media[1].thumb,
+                    "m2": None if len(media) <= 2 else media[2].thumb,
+                    "m3": None if len(media) <= 3 else media[3].thumb,
+                }
+                update: prisma.types.PostUpdateInput = {
+                    "like_count": p.like_count or 0,
+                    "media_count": len(media),
+                    "media_with_alt_text_count": media_with_alt_text,
+                    "mentions_fursuit": mentions_fursuit(p.record.text),
+                    "text": p.record.text,
+                    "m0": None if len(media) <= 0 else media[0].thumb,
+                    "m1": None if len(media) <= 1 else media[1].thumb,
+                    "m2": None if len(media) <= 2 else media[2].thumb,
+                    "m3": None if len(media) <= 3 else media[3].thumb,
+                }
                 await db.post.upsert(
                     where={"uri": p.uri},
                     data={
-                        "create": {
-                            "uri": p.uri,
-                            "cid": p.cid,
-                            # TODO: Fix these
-                            "reply_parent": reply_parent,
-                            "reply_root": reply_root,
-                            "indexed_at": parse_datetime(p.record["createdAt"]),
-                            "like_count": p.like_count or 0,
-                            "authorId": p.author.did,
-                            "mentions_fursuit": mentions_fursuit(p.record["text"]),
-                            "media_count": len(media),
-                            "media_with_alt_text_count": media_with_alt_text,
-                            "text": p.record["text"],
-                            "m0": None if len(media) <= 0 else media[0].thumb,
-                            "m1": None if len(media) <= 1 else media[1].thumb,
-                            "m2": None if len(media) <= 2 else media[2].thumb,
-                            "m3": None if len(media) <= 3 else media[3].thumb,
-                        },
-                        "update": {
-                            "like_count": p.like_count or 0,
-                            "media_count": len(media),
-                            "media_with_alt_text_count": media_with_alt_text,
-                            "mentions_fursuit": mentions_fursuit(p.record["text"]),
-                            "text": p.record["text"],
-                            "m0": None if len(media) <= 0 else media[0].thumb,
-                            "m1": None if len(media) <= 1 else media[1].thumb,
-                            "m2": None if len(media) <= 2 else media[2].thumb,
-                            "m3": None if len(media) <= 3 else media[3].thumb,
-                        },
+                        "create": create,
+                        "update": update,
                     },
                 )
             elif isinstance(item, StoreLike):
@@ -521,10 +525,7 @@ async def find_furries_clean(
             yield (profile, is_furrylist_verified)
 
 
-async def load(db: Database, load_posts: bool = True, load_likes: bool = True) -> None:
-    client = AsyncClient()
-    await client.login(HANDLE, PASSWORD)
-
+async def load(db: Database, client: AsyncClient, load_posts: bool = True, load_likes: bool = True) -> None:
     only_posts_after = datetime.now() - server.algos.score_task.LOOKBACK_HARD_LIMIT
 
     cprint("Getting muted accounts", "blue", force_color=True)
@@ -532,7 +533,7 @@ async def load(db: Database, load_posts: bool = True, load_likes: bool = True) -
         "" if client.me is None else client.me.did
     }
 
-    queue_size_limit = 500
+    queue_size_limit = 20_000
 
     storage_queue: "asyncio.Queue[StoreThing]" = asyncio.Queue(maxsize=queue_size_limit)
     post_load_queue: "asyncio.Queue[ProfileView]" = asyncio.Queue(
@@ -562,11 +563,13 @@ async def load(db: Database, load_posts: bool = True, load_likes: bool = True) -
         log_queue_size_task(storage_queue, post_load_queue, like_load_queue)
     )
 
-    async for furry in find_furries_clean(client, mutes):
+    async for furry, is_furrlist_verified in find_furries_clean(client):
         # The posts for a user can be loaded before the user is stored, however the StoreUser will always be ahead of the relevant
         # StorePosts, so this will never break the DB foreign keys
-        await storage_queue.put(StoreUser(furry))
-        await post_load_queue.put(furry)
+        muted = furry.did in mutes
+        await storage_queue.put(StoreUser(furry, is_furrlist_verified, muted))
+        if not muted:
+            await post_load_queue.put(furry)
 
     cprint("Waiting for workers to finish...", "blue", force_color=True)
 
@@ -617,6 +620,8 @@ async def scan_once(db: Database, client: AsyncClient):
 async def rescan_furry_accounts_forever(db: Database):
     client = AsyncClient()
     await client.login(HANDLE, PASSWORD)
+    # Do this ONCE
+    await load(db, client)
     while True:
         try:
             await scan_once(db, client)
