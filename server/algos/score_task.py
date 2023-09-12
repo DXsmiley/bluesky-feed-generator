@@ -10,7 +10,7 @@ from prisma.models import Post, Actor
 import prisma.errors
 import prisma.types
 
-from typing import List, Dict, Tuple, Callable, Iterator
+from typing import List, Dict, Tuple, Callable, Iterator, Literal
 from .feed_names import FeedName
 
 import server.gender
@@ -219,8 +219,41 @@ def _gender_splitmix(p: List[Tuple[float, PostWithInfo]]) -> Iterator[PostWithIn
                 yield x[i]
 
 
-def gender_splitmix(p: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
-    return list(_gender_splitmix(p))
+def gender_splitmix(ps: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
+    return list(_gender_splitmix(ps))
+
+
+def actor_is_fem(actor: Actor):
+    return actor.manual_include_in_vix_feed is True or (
+        actor.manual_include_in_vix_feed is None
+        and actor.autolabel_fem_vibes is True
+        and actor.autolabel_masc_vibes is False
+    )
+
+
+def post_is_masc_nsfw(p: PostWithInfo):
+    return p.post.labels != [] and not actor_is_fem(p.author)
+
+
+def _masc_nsfw_limiter(ratio: int, ps: List[Tuple[float, PostWithInfo]]) -> Iterator[PostWithInfo]:
+    masc_nsfw = [i for i in ps if post_is_masc_nsfw(i[1])][::-1]
+    other = [i for i in ps if not post_is_masc_nsfw(i[1])][::-1]
+    while other and masc_nsfw:
+        for _ in range(ratio):
+            if other:
+                yield other.pop()[1]
+        if other and masc_nsfw and masc_nsfw[-1][0] > other[-1][0]:
+            yield masc_nsfw.pop()[1]
+    while other:
+        yield other.pop()[1]
+    while masc_nsfw:
+        yield masc_nsfw.pop()[1]
+
+
+def masc_nsfw_limiter(ratio: Literal[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) -> Callable[[List[Tuple[float, PostWithInfo]]], List[PostWithInfo]]:
+    def _f(ps: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
+        return list(_masc_nsfw_limiter(ratio, ps))
+    return _f
 
 
 def top_100_chronological(p: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
@@ -297,31 +330,23 @@ ALGORITHMIC_FEEDS = [
         feed_name="fox-feed",
         filter=lambda p: p.author.manual_include_in_fox_feed in [None, True],
         score_func=raw_score,
+        remix_func=masc_nsfw_limiter(4),
     ),
     FeedParameters(
         feed_name="vix-feed",
-        filter=lambda p: p.author.manual_include_in_vix_feed
-        or (
-            p.author.manual_include_in_vix_feed is None
-            and p.author.autolabel_fem_vibes
-            and not p.author.autolabel_masc_vibes
-        ),
+        filter=lambda p: actor_is_fem(p.author),
         score_func=raw_score,
     ),
     FeedParameters(
         feed_name="fresh-feed",
-        filter=lambda p: p.author.manual_include_in_vix_feed
-        or (
-            p.author.manual_include_in_vix_feed is None
-            and p.author.autolabel_fem_vibes
-            and not p.author.autolabel_masc_vibes
-        ),
+        filter=lambda p: actor_is_fem(p.author),
         score_func=raw_freshness,
     ),
     FeedParameters(
         feed_name="vix-votes",
         filter=lambda p: p.author.manual_include_in_fox_feed in [None, True],
         score_func=raw_vix_vote_score,
+        remix_func=masc_nsfw_limiter(2),
     ),
     FeedParameters(
         feed_name="bisexy",
@@ -331,12 +356,7 @@ ALGORITHMIC_FEEDS = [
     ),
     FeedParameters(
         feed_name="top-feed",
-        filter=lambda p: p.author.manual_include_in_vix_feed
-        or (
-            p.author.manual_include_in_vix_feed is None
-            and p.author.autolabel_fem_vibes
-            and not p.author.autolabel_masc_vibes
-        ),
+        filter=lambda p: actor_is_fem(p.author),
         score_func=lambda _, p: p.like_count_furries,
         remix_func=top_100_chronological,
     ),
