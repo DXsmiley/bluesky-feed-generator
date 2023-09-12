@@ -78,9 +78,9 @@ model Like {
   post_cid String
   created_at DateTime
   attributed_feed String? // Tracks if we think the like came from a user using our feed
-  @@index([post_uri])
   @@index([created_at])
   @@index([attributed_feed, created_at])
+  @@index([post_uri, liker_id])
   @@unique([post_uri, liker_id])
 }
 

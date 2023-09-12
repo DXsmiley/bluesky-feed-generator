@@ -322,6 +322,52 @@ async def store_like(
     return None
 
 
+async def store_post(db: Database, post: FeedViewPost) -> None:
+    p = post.post
+    reply_parent = None if post.reply is None else post.reply.parent.uri
+    reply_root = None if post.reply is None else post.reply.root.uri
+    media = p.embed.images if isinstance(p.embed, images.View) else []
+    media_with_alt_text = sum(i.alt != "" for i in media)
+    # if verbose:
+    #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
+    create: prisma.types.PostCreateInput = {
+        "uri": p.uri,
+        "cid": p.cid,
+        # TODO: Fix these
+        "reply_parent": reply_parent,
+        "reply_root": reply_root,
+        "indexed_at": parse_datetime(p.indexed_at),
+        "like_count": p.like_count or 0,
+        "authorId": p.author.did,
+        "mentions_fursuit": mentions_fursuit(p.record.text),
+        "media_count": len(media),
+        "media_with_alt_text_count": media_with_alt_text,
+        "text": p.record.text,
+        "m0": None if len(media) <= 0 else media[0].thumb,
+        "m1": None if len(media) <= 1 else media[1].thumb,
+        "m2": None if len(media) <= 2 else media[2].thumb,
+        "m3": None if len(media) <= 3 else media[3].thumb,
+    }
+    update: prisma.types.PostUpdateInput = {
+        "like_count": p.like_count or 0,
+        "media_count": len(media),
+        "media_with_alt_text_count": media_with_alt_text,
+        "mentions_fursuit": mentions_fursuit(p.record.text),
+        "text": p.record.text,
+        "m0": None if len(media) <= 0 else media[0].thumb,
+        "m1": None if len(media) <= 1 else media[1].thumb,
+        "m2": None if len(media) <= 2 else media[2].thumb,
+        "m3": None if len(media) <= 3 else media[3].thumb,
+    }
+    await db.post.upsert(
+        where={"uri": p.uri},
+        data={
+            "create": create,
+            "update": update,
+        },
+    )
+
+
 async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):
     while True:
         await asyncio.sleep(0.001)
@@ -330,51 +376,7 @@ async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):
             if isinstance(item, StoreUser):
                 await store_user(db, item.user, is_muted=item.is_muted, is_furrylist_verified=item.is_furrlist_verified, flag_for_manual_review=False)
             elif isinstance(item, StorePost):
-                # print('Storing post', item.post.post.uri, '/', q.qsize())
-                post = item.post
-                p = post.post
-                reply_parent = None if post.reply is None else post.reply.parent.uri
-                reply_root = None if post.reply is None else post.reply.root.uri
-                media = p.embed.images if isinstance(p.embed, images.View) else []
-                media_with_alt_text = sum(i.alt != "" for i in media)
-                # if verbose:
-                #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
-                create: prisma.types.PostCreateInput = {
-                    "uri": p.uri,
-                    "cid": p.cid,
-                    # TODO: Fix these
-                    "reply_parent": reply_parent,
-                    "reply_root": reply_root,
-                    "indexed_at": parse_datetime(p.record.created_at),
-                    "like_count": p.like_count or 0,
-                    "authorId": p.author.did,
-                    "mentions_fursuit": mentions_fursuit(p.record.text),
-                    "media_count": len(media),
-                    "media_with_alt_text_count": media_with_alt_text,
-                    "text": p.record.text,
-                    "m0": None if len(media) <= 0 else media[0].thumb,
-                    "m1": None if len(media) <= 1 else media[1].thumb,
-                    "m2": None if len(media) <= 2 else media[2].thumb,
-                    "m3": None if len(media) <= 3 else media[3].thumb,
-                }
-                update: prisma.types.PostUpdateInput = {
-                    "like_count": p.like_count or 0,
-                    "media_count": len(media),
-                    "media_with_alt_text_count": media_with_alt_text,
-                    "mentions_fursuit": mentions_fursuit(p.record.text),
-                    "text": p.record.text,
-                    "m0": None if len(media) <= 0 else media[0].thumb,
-                    "m1": None if len(media) <= 1 else media[1].thumb,
-                    "m2": None if len(media) <= 2 else media[2].thumb,
-                    "m3": None if len(media) <= 3 else media[3].thumb,
-                }
-                await db.post.upsert(
-                    where={"uri": p.uri},
-                    data={
-                        "create": create,
-                        "update": update,
-                    },
-                )
+                await store_post(db, item.post)
             elif isinstance(item, StoreLike):
                 await store_like(db, item.post_uri, item.like)
         except asyncio.CancelledError:
@@ -384,7 +386,7 @@ async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):
         except Exception:
             cprint(f"Error during handling item: {item}", color="red", force_color=True)
             traceback.print_exc()
-            await asyncio.sleep(30)
+            await asyncio.sleep(1)
         finally:
             q.task_done()
 
@@ -426,7 +428,7 @@ async def load_posts_task(
                 force_color=True,
             )
             traceback.print_exc()
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
         finally:
             input_queue.task_done()
 
@@ -456,7 +458,7 @@ async def load_likes_task(
                 force_color=True,
             )
             traceback.print_exc()
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
         finally:
             input_queue.task_done()
 
