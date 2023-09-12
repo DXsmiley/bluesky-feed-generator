@@ -322,6 +322,11 @@ async def store_like(
     return None
 
 
+def ensure_string(s: str) -> str:
+    assert isinstance(s, str)
+    return s
+
+
 async def store_post(db: Database, post: FeedViewPost) -> None:
     p = post.post
     reply_parent = None if post.reply is None else post.reply.parent.uri
@@ -330,6 +335,7 @@ async def store_post(db: Database, post: FeedViewPost) -> None:
     media_with_alt_text = sum(i.alt != "" for i in media)
     # if verbose:
     #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
+    text = ensure_string(p.record.text or '')
     create: prisma.types.PostCreateInput = {
         "uri": p.uri,
         "cid": p.cid,
@@ -339,10 +345,11 @@ async def store_post(db: Database, post: FeedViewPost) -> None:
         "indexed_at": parse_datetime(p.indexed_at),
         "like_count": p.like_count or 0,
         "authorId": p.author.did,
-        "mentions_fursuit": mentions_fursuit(p.record.text),
+        "mentions_fursuit": mentions_fursuit(text),
         "media_count": len(media),
         "media_with_alt_text_count": media_with_alt_text,
-        "text": p.record.text,
+        "text": text,
+        "labels": [i.val for i in p.labels or []],
         "m0": None if len(media) <= 0 else media[0].thumb,
         "m1": None if len(media) <= 1 else media[1].thumb,
         "m2": None if len(media) <= 2 else media[2].thumb,
@@ -352,8 +359,9 @@ async def store_post(db: Database, post: FeedViewPost) -> None:
         "like_count": p.like_count or 0,
         "media_count": len(media),
         "media_with_alt_text_count": media_with_alt_text,
-        "mentions_fursuit": mentions_fursuit(p.record.text),
-        "text": p.record.text,
+        "mentions_fursuit": mentions_fursuit(text),
+        "text": text,
+        "labels": [i.val for i in p.labels or []],
         "m0": None if len(media) <= 0 else media[0].thumb,
         "m1": None if len(media) <= 1 else media[1].thumb,
         "m2": None if len(media) <= 2 else media[2].thumb,
