@@ -7,10 +7,8 @@ from server.database import make_database_connection
 from PIL import Image
 from aiohttp import ClientSession
 from fursuit_model.model import FursuitModel
-import json
 import io
 import numpy as np
-from dataclasses import asdict
 from typing import List, TypedDict
 from prisma.fields import Json
 import traceback
