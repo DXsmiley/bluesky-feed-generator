@@ -131,7 +131,7 @@ fursuit_feed = chronological_feed(
             {
                 "OR": [
                     {"mentions_fursuit": True},
-                    {"cv_has_fursuit": True}
+                    # {"cv_has_fursuit": True}
                 ]
             }
         ]
