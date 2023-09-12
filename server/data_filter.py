@@ -1,4 +1,5 @@
-from atproto import models
+from atproto.xrpc_client import models
+from atproto.xrpc_client.models.utils import is_record_type
 
 from server.logger import logger
 from server.data_stream import OpsByType
@@ -27,15 +28,19 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         author_did = created_post["author"]
         record = created_post["record"]
 
+        # if record.embed is not None:
+        #     print(type(record.embed))
+        #     print(record.embed)
+
         inlined_text = record.text.replace("\n", " ")
         images = (
             record.embed.images
-            if isinstance(record.embed, models.AppBskyEmbedImages.Main)
+            if record.embed is not None and is_record_type(record.embed, models.AppBskyEmbedImages)
             else []
         )
-        images_with_alt_text = [i for i in images if i.alt.strip() != ""]
+        images_with_alt_text = [i for i in images if (i.alt or '').strip() != ""]
         image_urls = {
-            index: f"https://av-cdn.bsky.app/img/feed_thumbnail/plain/{author_did}/{image.image.cid}@jpeg"
+            index: f"https://av-cdn.bsky.app/img/feed_thumbnail/plain/{author_did}/{image.image.ref}@jpeg"
             for index, image in enumerate(images)
         }
 

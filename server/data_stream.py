@@ -86,10 +86,9 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             record = get_or_create(record_raw_data, strict=False)
             # assert isinstance(record, ModelBase)
 
-            if uri.collection == models.ids.AppBskyFeedLike and isinstance(record, ModelBase) and is_record_type(
+            if uri.collection == models.ids.AppBskyFeedLike and is_record_type(
                 record, models.AppBskyFeedLike
             ):
-                # assert isinstance(record, models.AppBskyFeedLike.Main)
                 operation_by_type["likes"]["created"].append(
                     {
                         "uri": str(uri),
@@ -98,10 +97,9 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                         "record": record,
                     }
                 )
-            elif uri.collection == models.ids.AppBskyFeedPost and isinstance(record, ModelBase) and is_record_type(
+            elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(
                 record, models.AppBskyFeedPost
             ):
-                # assert isinstance(record, models.AppBskyFeedPost.Main)
                 operation_by_type["posts"]["created"].append(
                     {
                         "uri": str(uri),
@@ -110,10 +108,9 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                         "record": record,
                     }
                 )
-            elif uri.collection == models.ids.AppBskyGraphFollow and isinstance(record, ModelBase) and is_record_type(
+            elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(
                 record, models.AppBskyGraphFollow
             ):
-                # assert isinstance(record, models.AppBskyGraphFollow.Main)
                 operation_by_type["follows"]["created"].append(
                     {
                         "uri": str(uri),
