@@ -24,6 +24,7 @@ import sys
 
 from server.store import store_post2
 from atproto import AsyncClient
+from server.bsky import make_bsky_client
 
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
@@ -437,10 +438,11 @@ async def score_posts_forever(db: Database, client: AsyncClient):
 
 async def main(forever: bool):
     db = await make_database_connection(timeout=30)
+    client = await make_bsky_client()
     if forever:
-        await score_posts_forever(db)
+        await score_posts_forever(db, client)
     else:
-        await score_posts(db)
+        await score_posts(db, client, do_refresh_posts=True)
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ from dataclasses import dataclass
 import scripts.find_furry_girls
 
 from atproto import AsyncClient
-from publish_feed import HANDLE, PASSWORD # TODO: Bleh
+from server.bsky import make_bsky_client
 
 
 algos = {
@@ -77,8 +77,7 @@ async def _create_and_run_webapp(
     port: int, db_url: Optional[str], services: Services
 ) -> None:
     db = await make_database_connection(db_url, log_queries=services.log_db_queries)
-    client = AsyncClient()
-    await client.login(HANDLE, PASSWORD)
+    client = await make_bsky_client()
     app = create_web_application(db, client, services)
     runner = web.AppRunner(app)
     await runner.setup()
