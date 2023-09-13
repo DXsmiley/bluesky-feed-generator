@@ -21,7 +21,7 @@ import prisma
 import server.database
 from server.database import Database, make_database_connection
 
-from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set, List
+from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set
 
 import traceback
 import termcolor
@@ -30,6 +30,9 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 import scripts.find_furry_girls
+
+from atproto import AsyncClient
+from publish_feed import HANDLE, PASSWORD # TODO: Bleh
 
 
 algos = {
@@ -74,7 +77,9 @@ async def _create_and_run_webapp(
     port: int, db_url: Optional[str], services: Services
 ) -> None:
     db = await make_database_connection(db_url, log_queries=services.log_db_queries)
-    app = create_web_application(db, services)
+    client = AsyncClient()
+    await client.login(HANDLE, PASSWORD)
+    app = create_web_application(db, client, services)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
@@ -84,16 +89,16 @@ async def _create_and_run_webapp(
         await asyncio.sleep(10)
 
 
-def create_web_application(db: Database, services: Services) -> web.Application:
+def create_web_application(db: Database, client: AsyncClient, services: Services) -> web.Application:
     app = web.Application()
     app.add_routes(create_route_table(db, admin_panel=services.admin_panel))
-    app.cleanup_ctx.append(background_tasks(db, services))
+    app.cleanup_ctx.append(background_tasks(db, client, services))
     aiojobs.aiohttp.setup(app)
     return app
 
 
 def background_tasks(
-    db: Database, services: Services
+    db: Database, client: AsyncClient, services: Services
 ) -> Callable[[web.Application], AsyncIterator[None]]:
     async def catch(name: str, c: Coroutine[Any, Any, None]) -> None:
         try:
@@ -124,7 +129,7 @@ def background_tasks(
                 )
             )
         if services.scores:
-            asyncio.create_task(catch("SCORES", score_posts_forever(db)))
+            asyncio.create_task(catch("SCORES", score_posts_forever(db, client)))
         if services.firehose:
             asyncio.create_task(
                 catch(

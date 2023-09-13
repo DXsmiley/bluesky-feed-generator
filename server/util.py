@@ -40,3 +40,8 @@ def groupby(f: Callable[[T], K], ts: List[T]) -> Dict[K, List[T]]:
     for i in ts:
         d[f(i)].append(i)
     return d
+
+
+def ensure_string(s: str) -> str:
+    assert isinstance(s, str)
+    return s

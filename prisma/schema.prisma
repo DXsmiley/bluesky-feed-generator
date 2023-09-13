@@ -54,6 +54,7 @@ model Post {
   author Actor @relation(fields: [authorId], references: [did], onDelete: Cascade)
   likes Like[]
   labels String[]
+  last_rescan DateTime?
   // audit_log AuditLog[]
   // Media URLs
   m0 String?

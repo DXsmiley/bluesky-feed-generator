@@ -10,7 +10,7 @@ from prisma.models import Post, Actor
 import prisma.errors
 import prisma.types
 
-from typing import List, Dict, Tuple, Callable, Iterator, Literal
+from typing import List, Dict, Tuple, Callable, Iterator, Literal, Set
 from .feed_names import FeedName
 
 import server.gender
@@ -20,6 +20,10 @@ from dataclasses import dataclass
 import gc
 from server.util import groupby
 import sys
+
+
+from server.store import store_post2
+from atproto import AsyncClient
 
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
@@ -262,7 +266,7 @@ def top_100_chronological(p: List[Tuple[float, PostWithInfo]]) -> List[PostWithI
     )
 
 
-async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
+async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[str]:
     posts_with_scores = [
         (fp.score_func(rd.run_starttime, p), p)
         for p in rd.candidate_posts
@@ -314,6 +318,8 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> None:
                 force_color=True,
             )
 
+    return {i.post.uri for i in will_store}
+
 
 def post_is_irl_nsfw(p: PostWithInfo) -> bool:
     t = p.post.text.lower()
@@ -363,7 +369,7 @@ ALGORITHMIC_FEEDS = [
 ]
 
 
-async def score_posts(db: Database) -> None:
+async def score_posts(db: Database, client: AsyncClient, do_refresh_posts: bool = False) -> None:
     run_starttime = datetime.now(tz=timezone.utc)
     run_version = int(run_starttime.timestamp())
 
@@ -383,8 +389,9 @@ async def score_posts(db: Database) -> None:
         candidate_posts=all_posts, run_starttime=run_starttime, run_version=run_version
     )
 
+    all_uris_in_feeds: Set[str] = set()
     for algo in ALGORITHMIC_FEEDS:
-        await create_feed(db, algo, rd)
+        all_uris_in_feeds |= await create_feed(db, algo, rd)
 
     run_endtime = datetime.now(tz=timezone.utc)
 
@@ -398,16 +405,34 @@ async def score_posts(db: Database) -> None:
         where={"created_at": {"lt": run_starttime - timedelta(hours=1)}}
     )
 
+    if do_refresh_posts:
+        posts_to_refresh = await db.post.find_many(
+            take=500,
+            where={
+                'uri': {'in': list(all_uris_in_feeds)},
+                'indexed_at': {'lt': run_endtime - timedelta(minutes=20)},
+                'last_rescan': None,
+            }
+        )
+        if posts_to_refresh:
+            print(f'Refreshing {len(posts_to_refresh)} posts')
+            for i in range(0, len(posts_to_refresh), 25):
+                block = posts_to_refresh[i:i+25]
+                refreshed = await client.app.bsky.feed.get_posts({'uris': [i.uri for i in block]})
+                for i in refreshed.posts:
+                    await store_post2(db, i, None, None, now=run_endtime)
+            print('Refresh done')
 
-async def score_posts_forever(db: Database):
+
+async def score_posts_forever(db: Database, client: AsyncClient):
     while True:
         try:
-            await score_posts(db)
+            await score_posts(db, client, do_refresh_posts=True)
             cprint(f"gc-d {gc.collect()} objects", "yellow", force_color=True)
         except Exception:
             cprint(f"Error during score_posts", color="red", force_color=True)
             traceback.print_exc()
-        await asyncio.sleep(60)
+        await asyncio.sleep(0)
 
 
 async def main(forever: bool):

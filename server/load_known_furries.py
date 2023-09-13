@@ -30,21 +30,19 @@ from atproto.xrpc_client.models.app.bsky.feed.defs import (
 )
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView
 from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
-from atproto.xrpc_client.models.app.bsky.embed import images
 
 import gzip
 import json
 import traceback
 from termcolor import cprint
 from dataclasses import dataclass
-import random
-import prisma.errors
 
 
 import server.algos.fox_feed
 import server.algos.score_task
-from server.util import mentions_fursuit, parse_datetime
-from server import gender
+from server.util import parse_datetime
+
+from server.store import store_like, store_post, store_user
 
 
 # TODO: Eeeeeeeh
@@ -254,126 +252,6 @@ class StoreLike:
 
 
 StoreThing = Union[StoreUser, StorePost, StoreLike]
-
-
-async def store_user(
-    db: Database,
-    user: ProfileView,
-    *,
-    is_muted: bool,
-    is_furrylist_verified: bool,
-    flag_for_manual_review: bool,
-) -> None:
-    gender_vibes = gender.vibecheck(user.description or "")
-    await db.actor.upsert(
-        where={"did": user.did},
-        data={
-            "create": {
-                "did": user.did,
-                "handle": user.handle,
-                "description": user.description,
-                "displayName": user.display_name,
-                "avatar": user.avatar,
-                "flagged_for_manual_review": flag_for_manual_review,
-                "autolabel_fem_vibes": gender_vibes.fem,
-                "autolabel_nb_vibes": gender_vibes.enby,
-                "autolabel_masc_vibes": gender_vibes.masc,
-                "is_furrylist_verified": is_furrylist_verified,  # TODO
-                "is_muted": is_muted,
-            },
-            "update": {
-                "did": user.did,
-                "handle": user.handle,
-                "description": user.description,
-                "displayName": user.display_name,
-                "avatar": user.avatar,
-                "autolabel_fem_vibes": gender_vibes.fem,
-                "autolabel_nb_vibes": gender_vibes.enby,
-                "autolabel_masc_vibes": gender_vibes.masc,
-                "is_muted": is_muted,
-                "is_furrylist_verified": is_furrylist_verified,
-                # 'flagged_for_manual_review': flag_for_manual_review,
-            },
-        },
-    )
-
-
-async def store_like(
-    db: Database, post_uri: str, like: Like
-) -> Optional[prisma.models.Like]:
-    ugh = datetime.utcnow().isoformat()
-    blh = random.randint(0, 1 << 32)
-    uri = f"fuck://{ugh}-{blh}"
-    try:
-        return await db.like.create(
-            data={
-                "uri": uri,  # TODO
-                "cid": "",  # TODO
-                "post_uri": post_uri,
-                "post_cid": "",  # TODO
-                "liker_id": like.actor.did,
-                "created_at": parse_datetime(like.created_at),
-            }
-        )
-    except prisma.errors.UniqueViolationError:
-        pass
-    except prisma.errors.ForeignKeyViolationError:
-        pass
-    return None
-
-
-def ensure_string(s: str) -> str:
-    assert isinstance(s, str)
-    return s
-
-
-async def store_post(db: Database, post: FeedViewPost) -> None:
-    p = post.post
-    reply_parent = None if post.reply is None else post.reply.parent.uri
-    reply_root = None if post.reply is None else post.reply.root.uri
-    media = p.embed.images if isinstance(p.embed, images.View) else []
-    media_with_alt_text = sum(i.alt != "" for i in media)
-    # if verbose:
-    #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
-    text = ensure_string(p.record.text or '')
-    create: prisma.types.PostCreateInput = {
-        "uri": p.uri,
-        "cid": p.cid,
-        # TODO: Fix these
-        "reply_parent": reply_parent,
-        "reply_root": reply_root,
-        "indexed_at": parse_datetime(p.indexed_at),
-        "like_count": p.like_count or 0,
-        "authorId": p.author.did,
-        "mentions_fursuit": mentions_fursuit(text),
-        "media_count": len(media),
-        "media_with_alt_text_count": media_with_alt_text,
-        "text": text,
-        "labels": [i.val for i in p.labels or []],
-        "m0": None if len(media) <= 0 else media[0].thumb,
-        "m1": None if len(media) <= 1 else media[1].thumb,
-        "m2": None if len(media) <= 2 else media[2].thumb,
-        "m3": None if len(media) <= 3 else media[3].thumb,
-    }
-    update: prisma.types.PostUpdateInput = {
-        "like_count": p.like_count or 0,
-        "media_count": len(media),
-        "media_with_alt_text_count": media_with_alt_text,
-        "mentions_fursuit": mentions_fursuit(text),
-        "text": text,
-        "labels": [i.val for i in p.labels or []],
-        "m0": None if len(media) <= 0 else media[0].thumb,
-        "m1": None if len(media) <= 1 else media[1].thumb,
-        "m2": None if len(media) <= 2 else media[2].thumb,
-        "m3": None if len(media) <= 3 else media[3].thumb,
-    }
-    await db.post.upsert(
-        where={"uri": p.uri},
-        data={
-            "create": create,
-            "update": update,
-        },
-    )
 
 
 async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):

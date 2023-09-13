@@ -17,6 +17,8 @@ from atproto.xrpc_client.models.common import XrpcError
 from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
 from atproto.xrpc_client.models.base import ModelBase
 
+from termcolor import cprint
+
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
 from server.logger import logger
@@ -73,9 +75,23 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
 
         if op.action == "update":
             # not supported yet
-            continue
+            # print('update!!!')
+            record_raw_data = car.blocks.get(op.cid)
+            if not record_raw_data:
+                continue
+            record = get_or_create(record_raw_data, strict=False)
+            # print(record)
+            if uri.collection == models.ids.AppBskyActorProfile and is_record_type(
+                record, models.AppBskyActorProfile
+            ):
+                # print('profile update!')
+                # print(record)
+                pass
+            else:
+                cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
+                print(record)
 
-        if op.action == "create":
+        elif op.action == "create":
             if not op.cid:
                 continue
 
@@ -119,14 +135,42 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                         "record": record,
                     }
                 )
+            elif uri.collection == models.ids.AppBskyFeedRepost and is_record_type(
+                record, models.AppBskyFeedRepost
+            ):
+                pass
+            elif uri.collection == models.ids.AppBskyGraphBlock and is_record_type(
+                record, models.AppBskyGraphBlock
+            ):
+                pass
+            elif uri.collection == models.ids.AppBskyGraphListitem and is_record_type(
+                record, models.AppBskyGraphListitem
+            ):
+                pass
+            elif uri.collection == models.ids.AppBskyActorProfile and is_record_type(
+                record, models.AppBskyActorProfile
+            ):
+                pass
+            else:
+                cprint('created something else idk', 'red', force_color=True)
+                print(record)
 
-        if op.action == "delete":
+        elif op.action == "delete":
             if uri.collection == models.ids.AppBskyFeedLike:
                 operation_by_type["likes"]["deleted"].append({"uri": str(uri)})
-            if uri.collection == models.ids.AppBskyFeedPost:
+            elif uri.collection == models.ids.AppBskyFeedPost:
                 operation_by_type["posts"]["deleted"].append({"uri": str(uri)})
-            if uri.collection == models.ids.AppBskyGraphFollow:
+            elif uri.collection == models.ids.AppBskyGraphFollow:
                 operation_by_type["follows"]["deleted"].append({"uri": str(uri)})
+            elif uri.collection == models.ids.AppBskyFeedRepost:
+                pass
+            elif uri.collection == models.ids.AppBskyGraphListitem:
+                pass
+            else:
+                cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
+
+        else:
+            cprint(f'Unknown op.action {op.action}', 'red', force_color=True)
 
     return operation_by_type
 
