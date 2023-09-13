@@ -412,7 +412,10 @@ async def score_posts(db: Database, client: AsyncClient, do_refresh_posts: bool 
             where={
                 'uri': {'in': list(all_uris_in_feeds)},
                 'indexed_at': {'lt': run_endtime - timedelta(minutes=20)},
-                'last_rescan': None,
+                'OR': [
+                    {'last_rescan': None},
+                    {'last_rescan': {'lt': run_endtime - timedelta(hours=6)}},
+                ]
             }
         )
         if posts_to_refresh:

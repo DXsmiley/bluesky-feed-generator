@@ -9,10 +9,11 @@ import random
 import prisma.errors
 from atproto.xrpc_client.models.app.bsky.embed import images
 from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
+from atproto.xrpc_client.models.com.atproto.label.defs import Label
 from server.util import parse_datetime, ensure_string, mentions_fursuit
 from datetime import datetime
 
-from typing import Optional
+from typing import Optional, List
 
 
 async def store_user(
@@ -91,12 +92,20 @@ async def store_post(db: Database, post: FeedViewPost, *, now: Optional[datetime
     )
 
 
+def labels_to_strings(labels: List[Label]) -> List[str]:
+    return [
+        ('-' if i.neg else '') + i.val
+        for i in sorted(labels, key=lambda l: l.cts)
+    ]
+
+
 async def store_post2(db: Database, p: PostView, reply_parent: Optional[str], reply_root: Optional[str], now: datetime) -> None:
     media = p.embed.images if isinstance(p.embed, images.View) else []
     media_with_alt_text = sum(i.alt != "" for i in media)
     # if verbose:
     #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
     text = ensure_string(p.record.text or '')
+    labels = labels_to_strings(p.labels or [])
     create: prisma.types.PostCreateInput = {
         "uri": p.uri,
         "cid": p.cid,
@@ -110,7 +119,7 @@ async def store_post2(db: Database, p: PostView, reply_parent: Optional[str], re
         "media_count": len(media),
         "media_with_alt_text_count": media_with_alt_text,
         "text": text,
-        "labels": [i.val for i in p.labels or []],
+        "labels": labels,
         "m0": None if len(media) <= 0 else media[0].thumb,
         "m1": None if len(media) <= 1 else media[1].thumb,
         "m2": None if len(media) <= 2 else media[2].thumb,
@@ -123,7 +132,7 @@ async def store_post2(db: Database, p: PostView, reply_parent: Optional[str], re
         "media_with_alt_text_count": media_with_alt_text,
         "mentions_fursuit": mentions_fursuit(text),
         "text": text,
-        "labels": [i.val for i in p.labels or []],
+        "labels": labels,
         "m0": None if len(media) <= 0 else media[0].thumb,
         "m1": None if len(media) <= 1 else media[1].thumb,
         "m2": None if len(media) <= 2 else media[2].thumb,
