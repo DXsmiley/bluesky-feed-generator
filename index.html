@@ -16,7 +16,7 @@
         }
         h2 {
             text-decoration-style: solid; 
-            text-decoration-color: rgb(223, 14, 136);
+            text-decoration-color: #ff1ea0;
             text-decoration-thickness: 5px;
             text-decoration-line: underline;
             position: relative;
@@ -30,7 +30,7 @@
             color: rgb(223, 14, 136);
         } */
         .top {
-            background-color: rgb(223, 14, 136);
+            background-color: #ff1ea0;
             color: white;
         }
         .top > div {
@@ -105,22 +105,36 @@
         a, a:visited {
             color:rgb(223, 14, 136);
         }
+        .top a, .top a:visited {
+            color: white;
+        }
+        .top > div {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+        }
     </style>
 </head>
 <body>
     <div class="top">
         <div>
-            <h1><div class="logo"></div> Fox Feed</h1>
+            <div><h1><div class="logo"></div> Fox Feed</h1></div>
+            <div>
+                <p>
+                    <a href="https://discord.gg/ebPkThzPGk" target="_blank">Discord</a> |
+                    <a href="https://github.com/DXsmiley/bluesky-feed-generator" target="_blank">GitHub</a>
+                </p>
+            </div>
         </div>
     </div>
     <div class="main">
 
-        <p>Heeeeey~! My name's <a target="_blank" href="https://bsky.app/profile/puppyfox.bsky.social">Paf</a> and I've been working on making a few furry-focussed feeds for <a target="_black" href="https://bsky.app/">BlueSky</a>.</p>
+        <p>Heeeeey~! My name's <a target="_blank" href="https://bsky.app/profile/puppyfox.bsky.social">Paf</a> and I've been working on making a few furry-focussed feeds for <a target="_blank" href="https://bsky.app/">BlueSky</a>.</p>
 
         <p>A "Feed" is similar to a twitter timeline, such as "For You" or "Following", but much more customizable! Here's a few that I've made for myself that I want to share with other people :&rpar;</p>
         
         <h2 id="#feeds">Available Feeds</h2>
-        <p>All feeds contain a mix of SFW and NSFW content, use your in-client settings to filter it.</p>
+        <p>All feeds contain a mix of SFW and NSFW content, use your in-client settings to filter them.</p>
         <div class="feeds">
             <div class="feed">
                 <h3><a target="_blank" href="https://bsky.app/profile/did:plc:j7jc2j2htz5gxuxi2ilhbqka/feed/fox-feed">Main Feed</a></h3>
@@ -156,7 +170,6 @@
             <math><mi>y</mi><mo>=</mo><mrow><mo>(</mo><mrow><msup><mi>L</mi><mi>γ</mi></msup><mo>+</mo><mn>2</mn></mrow><mo>)</mo></mrow><mo>∙</mo><mrow><mo>&#123;</mo><mrow><mtable><mtr><mtd><mfrac><mn>1</mn><msup><mi>x</mi><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&geq;</mo><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn><mo>-</mo><mfrac><mn>1</mn><msup><mrow><mo>(</mo><mrow><mn>2</mn><mo>-</mo><mi>x</mi></mrow><mo>)</mo></mrow><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&lt;</mo><mn>1</mn></mtd></mtr></mtable></mrow></mrow></math>
         </div>
         <p>Where <i>L</i> is the number of likes and <i>T</i> is the age of the post.</p>
-        <p>The V<sup>2</sup> feed will not contain any post with <i>L</i> &lt; 3.
         <div class="center">
             <table>
                 <thead>
@@ -195,6 +208,7 @@
         </div>
         <p>Multiple posts by the same author will occur a penalty. An author's highest-scoring post on a feed will receive a multiplier of 1, the second highest-scoring a multiplier of &half;, the third a multiplier of &frac14;, and so on.</p>
         <p>Posts with images but no alt-text will incur a penalty of 0.7.</p>
+        <p>After posts are scored, they are then reordered to limit the frequency of male-centric NSFW content.</p>
 
         <h2>What else is out there?</h2>
         <p><a href="https://furryli.st/" target="_blank">Furryli.st</a> also runs a number of furry-focussed feeds.</p>

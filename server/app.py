@@ -153,6 +153,12 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         request: web.Request,
     ) -> web.StreamResponse:
         return web.FileResponse("index.html")
+    
+    @routes.get("/favicon.ico")
+    async def favicon(  # pyright: ignore[reportUnusedFunction]
+        request: web.Request,
+    ) -> web.StreamResponse:
+        return web.FileResponse("./static/logo.png")
 
     @routes.get("/stats")
     async def stats(  # pyright: ignore[reportUnusedFunction]
