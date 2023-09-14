@@ -1,7 +1,8 @@
 import prisma
 from prisma.types import HttpConfig, DatasourceOverride, ActorWhereInput
-
-from typing import Optional, Tuple
+from pydantic import BaseModel
+from typing import Optional, Tuple, List
+from datetime import datetime
 
 
 Database = prisma.Prisma
@@ -53,3 +54,12 @@ user_is_in_vix_feed: ActorWhereInput = {
         },
     ]
 }
+
+
+class ScorePostsOutputModel(BaseModel):
+    uri: str
+    author: str
+    indexed_at: datetime
+    score: float
+    labels: Optional[List[str]]
+    author_is_fem: bool

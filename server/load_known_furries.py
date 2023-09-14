@@ -45,12 +45,6 @@ from server.util import parse_datetime
 from server.store import store_like, store_post, store_user
 
 
-# TODO: Eeeeeeeh
-SCORE_REQUIREMENT = server.algos.score_task._raw_score(
-    server.algos.score_task.SCORING_CURVE_INFLECTION_POINT, 0
-)
-
-
 def simplify_profile_view(p: ProfileViewDetailed) -> ProfileView:
     return ProfileView(
         did=p.did,
@@ -294,11 +288,7 @@ async def load_posts_task(
             if actually_do_shit:
                 # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
                 async for post in get_posts(client, user.did, after=only_posts_after):
-                    score = server.algos.score_task._raw_score(
-                        datetime.now() - parse_datetime(post.post.indexed_at),
-                        post.post.like_count or 0,
-                    )
-                    if post.reply is None and score > SCORE_REQUIREMENT:
+                    if post.reply is None:
                         await output_queue.put(StorePost(post))
                         await llq.put((-(post.post.like_count or 0), unique, post))
                         # hack to prevent post objects being compared against each other
