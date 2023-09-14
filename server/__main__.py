@@ -1,9 +1,9 @@
 import server.monkeypatch
 
 import sys
-import os
 from server.app import create_and_run_webapp, Services
 from typing import List
+from server import config
 
 ARGS = {
     "--no-scraper": "Disable the website scraper",
@@ -29,11 +29,9 @@ def main(args: List[str]) -> int:
     if error:
         return 1
 
-    port = int(os.environ.get("PORT", 8000))
-    db_url = os.environ.get("DATABASE_URL", None)
     create_and_run_webapp(
-        port=port,
-        db_url=db_url,
+        port=config.PORT,
+        db_url=config.DB_URL,
         services=Services(
             scraper="--no-scraper" not in args,
             firehose="--no-firehose" not in args,
