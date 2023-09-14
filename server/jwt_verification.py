@@ -1,6 +1,7 @@
 import jwt
 import multibase
 import aiohttp
+from server.config import SERVICE_DID
 from typing import Optional
 
 from cryptography.hazmat.primitives import serialization
@@ -8,8 +9,6 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     SECP256K1,
     EllipticCurvePublicKey,
 )
-
-AUDIENCE = "did:web:foxfeed-c4d9f83ffd06.herokuapp.com"
 
 
 async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
@@ -36,4 +35,4 @@ async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
 
-    return jwt.decode(token, key, audience=AUDIENCE, algorithms=["ES256K"]).get("iss")
+    return jwt.decode(token, key, audience=SERVICE_DID, algorithms=["ES256K"]).get("iss")
