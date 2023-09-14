@@ -5,7 +5,7 @@ import server.monkeypatch
 
 from server.database import Database, make_database_connection
 
-from atproto import AsyncClient
+from server.bsky import AsyncClient, make_bsky_client
 
 from publish_feed import HANDLE, PASSWORD
 
@@ -495,9 +495,7 @@ async def scan_once(db: Database, client: AsyncClient):
     cprint("Done", "blue", force_color=True)
 
 
-async def rescan_furry_accounts_forever(db: Database):
-    client = AsyncClient()
-    await client.login(HANDLE, PASSWORD)
+async def rescan_furry_accounts_forever(db: Database, client: AsyncClient):
     # Do this ONCE
     await load(db, client)
     while True:
@@ -515,7 +513,8 @@ async def rescan_furry_accounts_forever(db: Database):
 
 async def main():
     db = await make_database_connection()
-    await load(db, load_posts=True)
+    client = await make_bsky_client()
+    await load(db, client, load_posts=True)
 
 
 if __name__ == "__main__":

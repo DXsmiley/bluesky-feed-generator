@@ -1,5 +1,5 @@
 import atproto
-from publish_feed import HANDLE, PASSWORD # TODO: Bleh
+from server.config import HANDLE, PASSWORD
 
 AsyncClient = atproto.AsyncClient
 

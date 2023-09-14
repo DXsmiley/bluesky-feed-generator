@@ -90,7 +90,7 @@ async def _create_and_run_webapp(
 
 def create_web_application(db: Database, client: AsyncClient, services: Services) -> web.Application:
     app = web.Application()
-    app.add_routes(create_route_table(db, admin_panel=services.admin_panel))
+    app.add_routes(create_route_table(db, client, admin_panel=services.admin_panel))
     app.cleanup_ctx.append(background_tasks(db, client, services))
     aiojobs.aiohttp.setup(app)
     return app
@@ -124,7 +124,7 @@ def background_tasks(
             asyncio.create_task(
                 catch(
                     "LOADDB",
-                    server.load_known_furries.rescan_furry_accounts_forever(db),
+                    server.load_known_furries.rescan_furry_accounts_forever(db, client),
                 )
             )
         if services.scores:
@@ -141,7 +141,7 @@ def background_tasks(
     return f
 
 
-def create_route_table(db: Database, *, admin_panel: bool = False):
+def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool = False):
     admin_token = secrets.token_urlsafe()
 
     routes = web.RouteTableDef()
@@ -149,15 +149,15 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
     routes.static("/static", "./static")
 
     @routes.get("/")
-    async def index(
+    async def index(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.StreamResponse:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.StreamResponse:
         return web.FileResponse("index.html")
 
     @routes.get("/stats")
-    async def stats(
+    async def stats(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         now = datetime.now()
         metrics = await server.metrics.feed_metrics_for_time_range(
             db,
@@ -195,9 +195,9 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/user/{handle}")
-    async def user_deets(
+    async def user_deets(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         handle = request.match_info["handle"]
         # if not isinstance(handle, str):
         #     return web.HTTPBadRequest(text='requires parameter "handle"')
@@ -211,9 +211,9 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/.well-known/did.json")
-    async def did_json(
+    async def did_json(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         if not config.SERVICE_DID.endswith(config.HOSTNAME):
             return web.HTTPNotFound()
 
@@ -232,9 +232,9 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         )
 
     @routes.get("/xrpc/app.bsky.feed.describeFeedGenerator")
-    async def describe_feed_generator(
+    async def describe_feed_generator(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         feeds = [{"uri": uri} for uri in algos.keys()]
         response = {
             "encoding": "application/json",
@@ -243,9 +243,9 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         return web.json_response(response)
 
     @routes.get("/xrpc/app.bsky.feed.getFeedSkeleton")
-    async def get_feed_skeleton(
+    async def get_feed_skeleton(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         feed = request.query.get("feed", default="")
         algo = algos.get(feed)
         if not algo:
@@ -311,18 +311,18 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
             )
 
     @routes.get("/feed")
-    async def get_feeds(
+    async def get_feeds(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         page = server.interface.feeds_page(
             [i["record_name"] for i in server.algos.algo_details]
         )
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/feed/{feed}")
-    async def get_feed(
+    async def get_feed(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         feed_name = request.match_info.get("feed", "")
         algo = algos.get(feed_name)
         if algo is None:
@@ -341,9 +341,9 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/feed/{feed}/stats")
-    async def get_feed_stats(
+    async def get_feed_stats(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         feed_name = request.match_info.get("feed", "")
         algo = algos.get(feed_name)
         if algo is None:
@@ -373,13 +373,14 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         return set(i.authorId for i in posts)
 
     @routes.get("/quickflag")
-    async def quickflag(
+    async def quickflag(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         # pick from feeds that are actually able to contain non-girls
         dids = await quickflag_candidates_from_feed("vix-votes")
         users = await db.actor.find_many(
             take=10,
+            order={"flagged_for_manual_review": "desc"},
             where={
                 "OR": [
                     {
@@ -409,22 +410,22 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/admin/login")
-    async def login_get(
+    async def login_get(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         page = server.interface.admin_login_page()
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/login")
-    async def login_post(
+    async def login_post(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
-        if not admin_panel:
+    ) -> web.Response:
+        if not admin_panel or not config.ADMIN_PANEL_PASSWORD:
             return web.HTTPForbidden(text="admin tools currently disabled")
         data = await request.post()
         password = data.get("password")
         assert isinstance(password, str)
-        if password == "super-fucking-ultra-password":
+        if password == config.ADMIN_PANEL_PASSWORD:
             response = web.HTTPSeeOther("/admin/done-login")
             response.set_cookie("x-foxfeed-admin-login", admin_token)
             return response
@@ -442,17 +443,17 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
             raise web.HTTPForbidden(text="admin tools currently disabled")
 
     @routes.get("/admin/done-login")
-    async def done_login(
+    async def done_login(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         require_admin_login(request)
         page = server.interface.admin_done_login_page()
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/mark")
-    async def mark_user(
+    async def mark_user(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         require_admin_login(request)
         blob = await request.json()
         did = blob["did"]
@@ -473,15 +474,15 @@ def create_route_table(db: Database, *, admin_panel: bool = False):
         )
 
     @routes.post("/admin/scan_likes")
-    async def scan_likes(
+    async def scan_likes(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
-    ) -> web.Response:  # pyright: ignore[reportUnusedFunction]
+    ) -> web.Response:
         require_admin_login(request)
         blob = await request.json()
         uri = blob["uri"]
         assert isinstance(uri, str)
         added_users, added_likes = await scripts.find_furry_girls.from_likes_of_post(
-            db, uri
+            db, client, uri
         )
         return web.HTTPOk(
             text=f"Found {added_users} new candidate furries and {added_likes} new likes"

@@ -2,10 +2,11 @@ import asyncio
 from atproto import AsyncClient
 import server.database
 from server.database import make_database_connection, Database
-from server.load_known_furries import HANDLE, PASSWORD, get_actor_likes, get_likes, store_user, store_like
+from server.load_known_furries import get_actor_likes, get_likes, store_user, store_like
 # from server.gender import guess_gender_reductive
 from typing import Set, Tuple, Literal
 from server import gender
+from server.bsky import AsyncClient, make_bsky_client
 
 
 def guess_gender_reductive(s: str) -> Literal['girl', 'not-girl']:
@@ -15,9 +16,8 @@ def guess_gender_reductive(s: str) -> Literal['girl', 'not-girl']:
 
 async def main() -> None:
     db = await make_database_connection()
-    client = AsyncClient()
+    client = await make_bsky_client()
     seen: Set[str] = set()
-    await client.login(HANDLE, PASSWORD)
     async for post in get_actor_likes(client, client.me.did):
         if await db.actor.find_first(where={'did': post.post.author.did, 'AND': [server.database.user_is_in_fox_feed]}) is not None:
             async for like in get_likes(client, post.post.uri):
@@ -30,11 +30,9 @@ async def main() -> None:
                             await store_user(db, like.actor)
 
 
-async def from_likes_of_post(db: Database, post_uri: str) -> Tuple[int, int]:
+async def from_likes_of_post(db: Database, client: AsyncClient, post_uri: str) -> Tuple[int, int]:
     added_users = 0
     added_likes = 0
-    client = AsyncClient()
-    await client.login(HANDLE, PASSWORD)
     async for like in get_likes(client, post_uri):
         gender = guess_gender_reductive(like.actor.description or '')
         if gender == 'girl' and await db.actor.find_unique(where={'did': like.actor.did}) is None:
