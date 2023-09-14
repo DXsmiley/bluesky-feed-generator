@@ -199,7 +199,7 @@ ALGORITHMIC_FEEDS = [
         decay=score_time_decay,
         include_guy_posts=True,
         include_guy_votes=False,
-        remix_func=masc_nsfw_limiter(2),
+        remix_func=masc_nsfw_limiter(4),
     ),
     # FeedParameters(
     #     feed_name="bisexy",
@@ -227,7 +227,7 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[s
         do_time_decay=fp.decay is not None,
         include_guy_posts=fp.include_guy_posts,
         include_guy_votes=fp.include_guy_votes,
-        lmt=500,
+        lmt=1000,
     )
 
     will_store = fp.remix_func(scored_posts)[:500]
@@ -238,27 +238,22 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[s
         force_color=True,
     )
 
-    for i, post in enumerate(will_store):
-        if i % 20 == 0:
-            await asyncio.sleep(0.01)
-        try:
-            await db.postscore.create(
-                data={
-                    "uri": post.uri,
-                    "version": rd.run_version,
-                    # This is actually "rank"
-                    "score": len(will_store) - i,
-                    "created_at": rd.run_starttime,
-                    "feed_name": fp.feed_name,
-                }
-            )
-        except prisma.errors.UniqueViolationError:
-            uri_count = sum(i.uri == post.uri for i in will_store)
-            cprint(
-                f"Unique PostScore violation error on {post.uri}::{fp.feed_name}::{rd.run_version} ({uri_count} instances of this URI)",
-                "red",
-                force_color=True,
-            )
+    blob: List[prisma.types.PostScoreCreateWithoutRelationsInput] = [
+        {
+            "uri": post.uri,
+            "version": rd.run_version,
+            # This is actually "rank"
+            "score": len(will_store) - i,
+            "created_at": rd.run_starttime,
+            "feed_name": fp.feed_name,
+        }
+        for i, post in enumerate(will_store)
+    ]
+
+    try:
+        await db.postscore.create_many(data=blob)
+    except prisma.errors.UniqueViolationError:
+        cprint(f"Unique violation when creating PostScores on {fp.feed_name}::{rd.run_version}", 'red', force_color=True)
 
     return {i.uri for i in will_store}
 
