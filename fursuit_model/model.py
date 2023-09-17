@@ -4,7 +4,7 @@ import pathlib
 import six
 import tensorflow as tf
 
-from object_detection.utils import label_map_util
+from fursuit_model.object_detection.utils import label_map_util
 
 from typing import Optional
 

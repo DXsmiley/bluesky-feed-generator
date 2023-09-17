@@ -7,8 +7,6 @@ from server.database import Database, make_database_connection
 
 from server.bsky import AsyncClient, make_bsky_client
 
-from publish_feed import HANDLE, PASSWORD
-
 from typing import (
     AsyncIterable,
     Optional,
