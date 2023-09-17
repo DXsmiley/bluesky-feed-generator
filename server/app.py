@@ -21,7 +21,7 @@ import prisma
 import server.database
 from server.database import Database, make_database_connection
 
-from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set
+from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set, List, Tuple
 
 import traceback
 import termcolor
@@ -152,7 +152,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
     async def index(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.StreamResponse:
-        return web.FileResponse("index.html")
+        return web.FileResponse("./static/index.html")
     
     @routes.get("/favicon.ico")
     async def favicon(  # pyright: ignore[reportUnusedFunction]
@@ -413,6 +413,42 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             },
         )
         page = server.interface.quickflag_page(is_admin(request), users)
+        return web.Response(text=str(page), content_type="text/html")
+    
+    @routes.get('/experiment/{name}')
+    async def experiment_results(  # pyright: ignore[reportUnusedFunction]
+        request: web.Request,
+    ):
+        experiment = request.match_info.get("name", "")
+        media: List[Tuple[float, str, Optional[str]]] = []
+        highest_version = await db.experimentresult.find_first(
+            order={'experiment_version': 'desc'},
+            where={
+                'experiment_name': experiment,
+                'did_error': False,
+            }
+        )
+        if highest_version is not None:
+            sample = await db.experimentresult.find_many(
+                take=50,
+                where={
+                    'experiment_version': highest_version.experiment_version,
+                    'experiment_name': experiment,
+                    'did_error': False,
+                },
+                include={'post': True}
+            )
+            sample.sort(key=lambda x: x.result_score, reverse=True)
+            media = [
+                (
+                    i.result_score,
+                    i.result_comment,
+                    [i.post.m0, i.post.m1, i.post.m2, i.post.m3][i.media_index]
+                )
+                for i in sample
+                if i.post is not None
+            ]
+        page = server.interface.media_experiment_page(experiment, media)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/admin/login")

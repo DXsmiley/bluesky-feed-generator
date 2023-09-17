@@ -259,6 +259,22 @@ def user_page(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> No
     return wrap_body(user_main(enable_admin_controls, user, posts))
 
 
+def media_experiment_page(name: str, media: List[Tuple[float, str, Optional[str]]]):
+    return wrap_body(
+        h3("Experiment results for ", name),
+        div(
+            *[
+                div(
+                    a(href=(url or ''), target="_blank")(img(src=(url or ''), width="100px", height="80px")),
+                    p(f'{score:.3f} : {comment}')
+                )
+                for score, comment, url in media
+            ],
+            style='display: flex; flex-wrap: wrap;'
+        )
+    )
+
+
 def quickflag_page(enable_admin_controls: bool, users: List[Actor]) -> Node:
     return wrap_body(
         h3("Quickflag"),

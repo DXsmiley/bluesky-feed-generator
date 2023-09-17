@@ -65,6 +65,8 @@ model Post {
   cv_has_fursuit Boolean?
   cv_bounding_boxes Json?
   cv_model_name String?
+  // CV stuff but better format
+  experiment_results ExperimentResult[]
   @@index([uri])
   @@index([indexed_at])
 }
@@ -126,3 +128,14 @@ model ServedPost {
   @@index([when])
 }
 
+model ExperimentResult {
+  id Int @id @default(autoincrement())
+  post_uri String
+  post Post @relation(fields: [post_uri], references: [uri], onDelete: Cascade)
+  experiment_name String
+  experiment_version Int
+  result_score Float
+  result_comment String
+  media_index Int
+  did_error Boolean
+}
