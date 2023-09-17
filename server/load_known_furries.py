@@ -512,7 +512,7 @@ async def rescan_furry_accounts_forever(db: Database, client: AsyncClient):
 
 async def main():
     db = await make_database_connection()
-    client = await make_bsky_client()
+    client = await make_bsky_client(db)
     await load(db, client, load_posts=True)
 
 

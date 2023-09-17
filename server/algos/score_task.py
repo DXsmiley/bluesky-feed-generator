@@ -319,7 +319,7 @@ async def score_posts_forever(db: Database, client: AsyncClient):
 
 async def main(forever: bool):
     db = await make_database_connection(timeout=30)
-    client = await make_bsky_client()
+    client = await make_bsky_client(db)
     if forever:
         await score_posts_forever(db, client)
     else:

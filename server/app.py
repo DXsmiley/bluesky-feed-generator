@@ -76,7 +76,7 @@ async def _create_and_run_webapp(
     port: int, db_url: Optional[str], services: Services
 ) -> None:
     db = await make_database_connection(db_url, log_queries=services.log_db_queries)
-    client = await make_bsky_client()
+    client = await make_bsky_client(db)
     app = create_web_application(db, client, services)
     runner = web.AppRunner(app)
     await runner.setup()
