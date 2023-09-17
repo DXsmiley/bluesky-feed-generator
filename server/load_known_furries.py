@@ -28,6 +28,7 @@ from atproto.xrpc_client.models.app.bsky.feed.defs import (
 )
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView
 from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
+from atproto import models
 
 import gzip
 import json

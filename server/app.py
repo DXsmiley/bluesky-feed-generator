@@ -1,5 +1,4 @@
 import asyncio
-import os
 import secrets
 
 from server import config

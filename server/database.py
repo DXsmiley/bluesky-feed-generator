@@ -1,7 +1,7 @@
 import prisma
 from prisma.types import HttpConfig, DatasourceOverride, ActorWhereInput
 from pydantic import BaseModel
-from typing import Optional, Tuple, List
+from typing import Optional, List
 from datetime import datetime
 
 

@@ -2,7 +2,7 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic
+from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic, Set
 from typing_extensions import TypedDict
 import traceback
 
@@ -102,58 +102,59 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             record = get_or_create(record_raw_data, strict=False)
             # assert isinstance(record, ModelBase)
 
-            if uri.collection == models.ids.AppBskyFeedLike and is_record_type(
-                record, models.AppBskyFeedLike
+            if record is not None:
+                if uri.collection == models.ids.AppBskyFeedLike and is_record_type(
+                    record, models.AppBskyFeedLike
             ):
-                operation_by_type["likes"]["created"].append(
-                    {
-                        "uri": str(uri),
-                        "cid": str(op.cid),
-                        "author": commit.repo,
-                        "record": record,
-                    }
-                )
-            elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(
-                record, models.AppBskyFeedPost
-            ):
-                operation_by_type["posts"]["created"].append(
-                    {
-                        "uri": str(uri),
-                        "cid": str(op.cid),
-                        "author": commit.repo,
-                        "record": record,
-                    }
-                )
-            elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(
-                record, models.AppBskyGraphFollow
-            ):
-                operation_by_type["follows"]["created"].append(
-                    {
-                        "uri": str(uri),
-                        "cid": str(op.cid),
-                        "author": commit.repo,
-                        "record": record,
-                    }
-                )
-            elif uri.collection == models.ids.AppBskyFeedRepost and is_record_type(
-                record, models.AppBskyFeedRepost
-            ):
-                pass
-            elif uri.collection == models.ids.AppBskyGraphBlock and is_record_type(
-                record, models.AppBskyGraphBlock
-            ):
-                pass
-            elif uri.collection == models.ids.AppBskyGraphListitem and is_record_type(
-                record, models.AppBskyGraphListitem
-            ):
-                pass
-            elif uri.collection == models.ids.AppBskyActorProfile and is_record_type(
-                record, models.AppBskyActorProfile
-            ):
-                pass
-            else:
-                cprint('created something else idk', 'red', force_color=True)
-                print(record)
+                    operation_by_type["likes"]["created"].append(
+                        {
+                            "uri": str(uri),
+                            "cid": str(op.cid),
+                            "author": commit.repo,
+                            "record": record,
+                        }
+                    )
+                elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(
+                    record, models.AppBskyFeedPost
+                ):
+                    operation_by_type["posts"]["created"].append(
+                        {
+                            "uri": str(uri),
+                            "cid": str(op.cid),
+                            "author": commit.repo,
+                            "record": record,
+                        }
+                    )
+                elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(
+                    record, models.AppBskyGraphFollow
+                ):
+                    operation_by_type["follows"]["created"].append(
+                        {
+                            "uri": str(uri),
+                            "cid": str(op.cid),
+                            "author": commit.repo,
+                            "record": record,
+                        }
+                    )
+                elif uri.collection == models.ids.AppBskyFeedRepost and is_record_type(
+                    record, models.AppBskyFeedRepost
+                ):
+                    pass
+                elif uri.collection == models.ids.AppBskyGraphBlock and is_record_type(
+                    record, models.AppBskyGraphBlock
+                ):
+                    pass
+                elif uri.collection == models.ids.AppBskyGraphListitem and is_record_type(
+                    record, models.AppBskyGraphListitem
+                ):
+                    pass
+                elif uri.collection == models.ids.AppBskyActorProfile and is_record_type(
+                    record, models.AppBskyActorProfile
+                ):
+                    pass
+                else:
+                    cprint('created something else idk', 'red', force_color=True)
+                    print(record)
 
         elif op.action == "delete":
             if uri.collection == models.ids.AppBskyFeedLike:
@@ -209,14 +210,10 @@ async def _run(
     operations_callback: OPERATIONS_CALLBACK_TYPE,
     stream_stop_event: Optional[None] = None,
 ) -> None:
-    print("Getting subscription state...")
-    state = await db.subscriptionstate.find_first(where={"service": {"equals": name}})
-    print("Done")
-
-    params = subscribe_repos.Params(cursor=state.cursor) if state else None
-
-    # passing params causes it to loop???
-    client = AsyncFirehoseSubscribeReposClient(None)
+    state = await db.subscriptionstate.find_first(where={"service": name})
+    print('Starting firehose state:', None if state is None else state.model_dump_json())
+    params = subscribe_repos.Params(cursor=state.cursor if state else None)
+    client = AsyncFirehoseSubscribeReposClient(params)
 
     async def on_message_handler(message: "MessageFrame") -> None:
         # stop on next message if requested
@@ -225,21 +222,31 @@ async def _run(
             return
 
         commit = parse_subscribe_repos_message(message)
-        if not isinstance(commit, subscribe_repos.Commit):
-            return
 
-        # update stored state every ~20 events
-        if commit.seq % 500 == 0:
-            print(commit.seq)
-            # ok so I think name should probably be unique or something????
-            # await db.subscriptionstate.update(
-            #     where={'service': name},
-            #     data={'cursor': commit.seq}
-            # )
-
-        ops = _get_ops_by_type(commit)
-        await operations_callback(db, ops)
-        await asyncio.sleep(0)
+        if isinstance(commit, subscribe_repos.Info):
+            print('Info', commit.model_dump_json())
+        else:
+            if commit.seq % 500 == 0:
+                client.update_params({'cursor': commit.seq})
+                await db.subscriptionstate.upsert(
+                    where={'service': name},
+                    data={
+                        'create': {'service': name, 'cursor': commit.seq},
+                        'update': {'cursor': commit.seq},
+                    }
+                )
+            if isinstance(commit, subscribe_repos.Tombstone):
+                print('Tombstone', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Handle):
+                print('Handle', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Migrate):
+                print('Migrate', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Commit):
+                ops = _get_ops_by_type(commit)
+                await operations_callback(db, ops)
+            else:
+                # Should never reach here
+                assert False
 
     def on_error_handler(exception: BaseException) -> None:
         print("Error in data stream message handler:", file=sys.stderr)

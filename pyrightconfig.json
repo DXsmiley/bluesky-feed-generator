@@ -1,0 +1,4 @@
+{
+    "reportPrivateImportUsage": false,
+    "reportUnnecessaryIsInstance": false,
+}
