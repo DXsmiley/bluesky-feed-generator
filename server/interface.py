@@ -110,17 +110,6 @@ def toggle_vixfeed(
 
 def post(enable_admin_controls: bool, post_: Post) -> Node:
     text = re.sub(r"\n+", " • ", post_.text, re.MULTILINE)
-    boxes_i_think = (
-        [] if post_.cv_bounding_boxes is None else
-        [] if not isinstance(post_.cv_bounding_boxes.data, dict) else
-        [] if 'boxes' not in post_.cv_bounding_boxes.data else
-        post_.cv_bounding_boxes.data['boxes']
-    )
-    max_cv_fursuit_score = max([
-        (box['score'] if isinstance(box, dict) else 0)
-        for img in boxes_i_think
-        for box in (img if isinstance(img, list) else [])
-    ], default=-0.01)
     mainline = p(
         img(src=post_.author.avatar, width="30px", height="30px", class_="profile")
         if post_.author and post_.author.avatar
@@ -132,7 +121,7 @@ def post(enable_admin_controls: bool, post_: Post) -> Node:
         "?"
         if not post_.author
         else a(post_.author.handle, href="/user/" + post_.author.handle),
-        " - [" + " ".join(post_.labels) + f' / {max_cv_fursuit_score*100:.0f}] - ',
+        " - [" + " ".join(post_.labels) + '] - ',
         text,
     )
     images = div(
