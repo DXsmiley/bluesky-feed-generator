@@ -4,7 +4,7 @@ from atproto.xrpc_client.models.utils import is_record_type
 from server.logger import logger
 from server.data_stream import OpsByType
 
-from typing import List
+from typing import List, Callable, Coroutine, Any
 from prisma.types import PostCreateWithoutRelationsInput
 import prisma.errors
 
@@ -15,15 +15,61 @@ from server.util import mentions_fursuit, parse_datetime
 
 from datetime import datetime, timedelta
 
+from collections import OrderedDict
+
+import time
+
+
+class CachedQuery:
+
+    def __init__(self, function: Callable[[Database, str], Coroutine[Any, Any, bool]]):
+        self.function = function
+        self.hits = 1
+        self.misses = 1
+        self.name = function.__name__
+        self.cache: 'OrderedDict[str, bool]' = OrderedDict()
+        self.last_log = time.time()
+
+    async def __call__(self, db: Database, key: str) -> bool:
+        curtime = time.time()
+        if curtime - self.last_log > 60:
+            self.log_stats()
+            self.last_log = curtime
+        if key in self.cache:
+            self.hits += 1
+            return self.cache[key]
+        self.misses += 1
+        result = await self.function(db, key)
+        self.cache[key] = result
+        while len(self.cache) > 5_000:
+            self.cache.popitem(False)
+        return result
+    
+    def log_stats(self):
+        ratio = 100 * (self.hits / (self.hits + self.misses))
+        print(f'Cache: {self.name} | {len(self.cache)} | {self.hits} {self.misses} | {ratio:.1f}%')
+
+
+@CachedQuery
+async def user_exists_cached(db: Database, did: str) -> bool:
+    user = await db.actor.find_first(
+        where={
+            "did": did,
+            "AND": [care_about_storing_user_data_preemptively],
+        }
+    )
+    return user is not None
+
+
+@CachedQuery
+async def post_exists_cached(db: Database, uri: str) -> bool:
+    return (await db.post.find_first(where={'uri': uri})) is not None
+
+
 
 async def operations_callback(db: Database, ops: OpsByType) -> None:
-    # Here we can filter, process, run ML classification, etc.
-    # After our feed alg we can save posts into our DB
-    # Also, we should process deleted posts to remove them from our DB and keep it in sync
-
-    # for example, let's create our custom feed that will contain all posts that contains fox related text
-
     posts_to_create: List[PostCreateWithoutRelationsInput] = []
+
     for created_post in ops["posts"]["created"]:
         author_did = created_post["author"]
         record = created_post["record"]
@@ -68,14 +114,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         if reply_parent is not None or reply_root is not None:
             continue
 
-        if (
-            await db.actor.find_first(
-                where={
-                    "did": author_did,
-                    "AND": [care_about_storing_user_data_preemptively],
-                }
-            )
-        ) is not None:
+        if await user_exists_cached(db, author_did):
             logger.info(
                 f"New furry post (with images: {len(images)}, labels: {labels}): {inlined_text}"
             )
@@ -98,7 +137,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             posts_to_create.append(post_dict)
 
     if posts_to_create:
-        await db.post.create_many(posts_to_create)
+        await db.post.create_many(posts_to_create, skip_duplicates=True)
 
     posts_to_delete = [p["uri"] for p in ops["posts"]["deleted"]]
     if posts_to_delete:
@@ -108,21 +147,12 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
     for like in ops["likes"]["created"]:
         uri = like["record"]["subject"]["uri"]
-        liked_post = await db.post.find_unique({"uri": uri})
-        if liked_post is None:
-            continue
-        like_author = await db.actor.find_first(
-            where={
-                "did": like["author"],
-                "AND": [care_about_storing_user_data_preemptively],
-            }
-        )
-        if like_author is None:
-            continue
 
-        girl = (
-            like_author.autolabel_fem_vibes and not like_author.autolabel_masc_vibes
-        ) or like_author.manual_include_in_vix_feed
+        # Placing user before post here results in a much better cache hit rate
+        if not await user_exists_cached(db, like['author']):
+            continue
+        if not await post_exists_cached(db, uri):
+            continue
 
         served_post = await db.servedpost.find_first(
             where={
@@ -132,7 +162,10 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             }
         )
 
-        print(f"{like_author.handle} ({girl}, {served_post is not None}) liked a post")
+        if served_post is None:
+            print(f"Someone liked a post")
+        else:
+            print(f"Someone liked a post, attirbuted to", served_post.feed_name)
 
         try:
             await db.like.create(

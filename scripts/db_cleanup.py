@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from server.database import make_database_connection
 from server.algos.score_task import LOOKBACK_HARD_LIMIT
 from server.metrics import METRICS_MAXIMUM_LOOKBACK
@@ -24,6 +24,11 @@ async def main():
         where={'when': {'lt': now - METRICS_MAXIMUM_LOOKBACK}}
     )
     print('Deleted', c, 'servedposts')
+
+    c = await db.blueskyclientsession.delete_many(
+        where={'created_at': {'lt': now - timedelta(days=7)}}
+    )
+    print('Deleted', c, 'blueskyclientsessions')
 
     # c = await db.post.delete_many(where={'indexed_at': {'lt': now - LOOKBACK_HARD_LIMIT}})
     # print('Deleted', c, 'posts')

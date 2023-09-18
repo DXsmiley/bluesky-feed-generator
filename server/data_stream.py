@@ -2,9 +2,10 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic, Set
+from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic, Set, Union, Literal
 from typing_extensions import TypedDict
 import traceback
+from datetime import datetime
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
@@ -18,6 +19,8 @@ from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
 from atproto.xrpc_client.models.base import ModelBase
 
 from termcolor import cprint
+
+from server.util import parse_datetime
 
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
@@ -74,6 +77,8 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
         # print(uri.collection, op.action)
 
         if op.action == "update":
+            if not op.cid:
+                continue
             # not supported yet
             # print('update!!!')
             record_raw_data = car.blocks.get(op.cid)
@@ -81,15 +86,24 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                 continue
             record = get_or_create(record_raw_data, strict=False)
             # print(record)
-            if uri.collection == models.ids.AppBskyActorProfile and is_record_type(
-                record, models.AppBskyActorProfile
-            ):
-                # print('profile update!')
-                # print(record)
-                pass
-            else:
-                cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
-                print(record)
+            if record is not None:
+                if uri.collection == models.ids.AppBskyActorProfile and is_record_type(
+                    record, models.AppBskyActorProfile
+                ):
+                    # print('profile update!')
+                    # print(record)
+                    pass
+                elif uri.collection == models.ids.AppBskyFeedGenerator and is_record_type(
+                    record, models.AppBskyFeedGenerator
+                ):
+                    pass
+                elif uri.collection == models.ids.AppBskyGraphList and is_record_type(
+                    record, models.AppBskyGraphList
+                ):
+                    pass
+                else:
+                    cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
+                    print(record)
 
         elif op.action == "create":
             if not op.cid:
@@ -105,7 +119,7 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             if record is not None:
                 if uri.collection == models.ids.AppBskyFeedLike and is_record_type(
                     record, models.AppBskyFeedLike
-            ):
+                ):
                     operation_by_type["likes"]["created"].append(
                         {
                             "uri": str(uri),
@@ -144,6 +158,10 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                     record, models.AppBskyGraphBlock
                 ):
                     pass
+                elif uri.collection == models.ids.AppBskyGraphList and is_record_type(
+                    record, models.AppBskyGraphList
+                ):
+                    pass
                 elif uri.collection == models.ids.AppBskyGraphListitem and is_record_type(
                     record, models.AppBskyGraphListitem
                 ):
@@ -152,8 +170,12 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                     record, models.AppBskyActorProfile
                 ):
                     pass
+                elif uri.collection == models.ids.AppBskyFeedGenerator and is_record_type(
+                    record, models.AppBskyFeedGenerator
+                ):
+                    pass
                 else:
-                    cprint('created something else idk', 'red', force_color=True)
+                    cprint(f'created something else idk {uri.collection}', 'red', force_color=True)
                     print(record)
 
         elif op.action == "delete":
@@ -166,6 +188,8 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             elif uri.collection == models.ids.AppBskyFeedRepost:
                 pass
             elif uri.collection == models.ids.AppBskyGraphListitem:
+                pass
+            elif uri.collection == models.ids.AppBskyGraphBlock:
                 pass
             else:
                 cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
@@ -180,9 +204,10 @@ async def run(
     db: Database,
     name: str,
     operations_callback: OPERATIONS_CALLBACK_TYPE,
-    stream_stop_event: Optional[None] = None,
+    _: None,
 ) -> None:
-    while stream_stop_event is None or not stream_stop_event.is_set():
+    stream_stop_event = asyncio.Event()
+    while not stream_stop_event.is_set():
         try:
             await _run(db, name, operations_callback, stream_stop_event)
         except asyncio.CancelledError:
@@ -208,7 +233,7 @@ async def _run(
     db: Database,
     name: str,
     operations_callback: OPERATIONS_CALLBACK_TYPE,
-    stream_stop_event: Optional[None] = None,
+    stream_stop_event: asyncio.Event,
 ) -> None:
     state = await db.subscriptionstate.find_first(where={"service": name})
     print('Starting firehose state:', None if state is None else state.model_dump_json())
@@ -217,7 +242,7 @@ async def _run(
 
     async def on_message_handler(message: "MessageFrame") -> None:
         # stop on next message if requested
-        if stream_stop_event is not None and stream_stop_event.is_set():
+        if stream_stop_event.is_set():
             await client.stop()
             return
 
@@ -235,6 +260,10 @@ async def _run(
                         'update': {'cursor': commit.seq},
                     }
                 )
+                lag = datetime.now() - parse_datetime(commit.time)
+                lag_minutes = lag.total_seconds() // 60
+                if lag_minutes != 0:
+                    print(f'Firehose is lagging | commit {commit.seq} | {lag_minutes // 60} hours {lag_minutes % 60} minutes')
             if isinstance(commit, subscribe_repos.Tombstone):
                 print('Tombstone', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Handle):
@@ -249,7 +278,11 @@ async def _run(
                 assert False
 
     def on_error_handler(exception: BaseException) -> None:
-        print("Error in data stream message handler:", file=sys.stderr)
-        traceback.print_exception(type(exception), exception, exception.__traceback__)
+        if isinstance(exception, KeyboardInterrupt):
+            print('KeyboardInterrupt during data stream message handler, shutting down')
+            stream_stop_event.set()
+        else:
+            print("Error in data stream message handler:", file=sys.stderr)
+            traceback.print_exception(type(exception), exception, exception.__traceback__)
 
     await client.start(on_message_handler, on_error_handler)

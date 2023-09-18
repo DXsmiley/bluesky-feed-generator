@@ -1,18 +1,21 @@
 import atproto
+import atproto.exceptions
 from server.config import HANDLE, PASSWORD
 from server.database import Database
-from typing import Optional
+
 
 AsyncClient = atproto.AsyncClient
 
 
 async def _login_from_handle_and_password() -> AsyncClient:
+    print('Attempting login with handle and password')
     client = AsyncClient()
     await client.login(login=HANDLE, password=PASSWORD)
     return client
 
 
 async def _login_from_session_string(string: str) -> AsyncClient:
+    print('Attempting login using session string')
     client = AsyncClient()
     await client.login(session_string=string)
     return client

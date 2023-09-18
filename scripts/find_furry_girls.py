@@ -16,7 +16,7 @@ def guess_gender_reductive(s: str) -> Literal['girl', 'not-girl']:
 
 async def main() -> None:
     db = await make_database_connection()
-    client = await make_bsky_client()
+    client = await make_bsky_client(db)
     seen: Set[str] = set()
     async for post in get_actor_likes(client, client.me.did):
         if await db.actor.find_first(where={'did': post.post.author.did, 'AND': [server.database.user_is_in_fox_feed]}) is not None:

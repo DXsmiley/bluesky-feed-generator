@@ -1,4 +1,5 @@
 import asyncio
+import server.logger
 from server import data_stream, config
 from server.database import make_database_connection
 from server.data_filter import operations_callback
