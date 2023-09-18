@@ -182,7 +182,7 @@ def feed_metric_row(
             html.style(
                 f"""
                 #col-{metrics.feed_name}-{hash(name)}-{i} {{
-                    height: {int(40 * v / maximum)}px;
+                    height: {0 if v == 0 else max(2, int(40 * v / maximum))}px;
                 }}
                 #col-{metrics.feed_name}-{hash(name)}-{i}:hover::after {{
                     content: "{v} - {s}";
