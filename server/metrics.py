@@ -7,6 +7,7 @@ import prisma.types
 
 
 METRICS_MAXIMUM_LOOKBACK = timedelta(days=3)
+DIDS_TO_IGNORE = ['did:plc:j7jc2j2htz5gxuxi2ilhbqka']
 
 
 @dataclass
@@ -39,18 +40,21 @@ async def feed_metrics_for_timeslice(
             "NOT": [{"attributed_feed": None}],
             "attributed_feed": feedname_filter,
             "created_at": {"gte": start, "lt": end},
+            "liker_id": {"not_in": DIDS_TO_IGNORE},
         }
     )
     num_requests = await db.servedblock.count(
         where={
             "feed_name": feedname_filter,
             "when": {"gte": start, "lt": end},
+            "client_did": {"not_in": DIDS_TO_IGNORE},
         }
     )
     posts_served = await db.servedpost.count(
         where={
             "feed_name": feedname_filter,
             "when": {"gte": start, "lt": end},
+            "client_did": {"not_in": DIDS_TO_IGNORE},
         }
     )
     unique_viewers = len(
@@ -58,6 +62,7 @@ async def feed_metrics_for_timeslice(
             where={
                 "feed_name": feedname_filter,
                 "when": {"gte": start, "lt": end},
+                "client_did": {"not_in": DIDS_TO_IGNORE},
             },
             distinct=["client_did"],
         )
