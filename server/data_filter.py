@@ -2,10 +2,10 @@ from atproto.xrpc_client import models
 from atproto.xrpc_client.models.utils import is_record_type
 
 from server.logger import logger
-from server.data_stream import OpsByType
+from server.firehose.data_stream import OpsByType
 
 from typing import List, Callable, Coroutine, Any
-from prisma.types import PostCreateWithoutRelationsInput
+from prisma.types import PostCreateWithoutRelationsInput, LikeCreateWithoutRelationsInput
 import prisma.errors
 
 from server.database import Database, care_about_storing_user_data_preemptively
@@ -145,6 +145,8 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         if deleted_rows:
             logger.info(f"Deleted from feed: {deleted_rows}")
 
+    likes_to_create: List[LikeCreateWithoutRelationsInput] = []
+
     for like in ops["likes"]["created"]:
         uri = like["record"]["subject"]["uri"]
 
@@ -163,25 +165,24 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         )
 
         if served_post is None:
-            print(f"Someone liked a post")
+            # print(f"Someone liked a post")
+            pass
         else:
             print(f"Someone liked a post, attirbuted to", served_post.feed_name)
 
-        try:
-            await db.like.create(
-                data={
-                    "uri": like["uri"],
-                    "cid": like["cid"],
-                    "liker_id": like["author"],
-                    "post_uri": like["record"].subject.uri,
-                    "post_cid": like["record"].subject.cid,
-                    "created_at": parse_datetime(like["record"].created_at),
-                    "attributed_feed": None
-                    if served_post is None
-                    else served_post.feed_name,
-                }
-            )
-        except prisma.errors.UniqueViolationError:
-            pass
+        likes_to_create.append({
+            "uri": like["uri"],
+            "cid": like["cid"],
+            "liker_id": like["author"],
+            "post_uri": like["record"].subject.uri,
+            "post_cid": like["record"].subject.cid,
+            "created_at": parse_datetime(like["record"].created_at),
+            "attributed_feed": None
+            if served_post is None
+            else served_post.feed_name,
+        })
+
+    if likes_to_create:
+        await db.like.create_many(data=likes_to_create, skip_duplicates=True)
 
     # TODO: Handle deleted likes lmao

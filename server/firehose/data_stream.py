@@ -2,25 +2,22 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, Optional, TypeVar, Generic, Set, Union, Literal
+from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Optional
 from typing_extensions import TypedDict
 import traceback
 from datetime import datetime
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
-from atproto.firehose import (
-    AsyncFirehoseSubscribeReposClient,
-    parse_subscribe_repos_message,
-)
+from server.firehose.client import AsyncFirehoseSubscribeReposClient
+from atproto.firehose import parse_subscribe_repos_message
 from atproto.xrpc_client.models.utils import get_or_create, is_record_type
 from atproto.xrpc_client.models.common import XrpcError
 from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
-from atproto.xrpc_client.models.base import ModelBase
 
 from termcolor import cprint
 
-from server.util import parse_datetime
+from server.util import parse_datetime, wait_interruptable
 
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
@@ -204,9 +201,8 @@ async def run(
     db: Database,
     name: str,
     operations_callback: OPERATIONS_CALLBACK_TYPE,
-    _: None,
+    stream_stop_event: asyncio.Event
 ) -> None:
-    stream_stop_event = asyncio.Event()
     while not stream_stop_event.is_set():
         try:
             await _run(db, name, operations_callback, stream_stop_event)
@@ -240,18 +236,29 @@ async def _run(
     params = subscribe_repos.Params(cursor=state.cursor if state else None)
     client = AsyncFirehoseSubscribeReposClient(params)
 
-    async def on_message_handler(message: "MessageFrame") -> None:
-        # stop on next message if requested
-        if stream_stop_event.is_set():
-            await client.stop()
-            return
+    messages_to_process: 'asyncio.Queue[Optional[MessageFrame]]' = asyncio.Queue(maxsize=20)
 
+    async def process_message(message: "MessageFrame") -> None:
         commit = parse_subscribe_repos_message(message)
 
         if isinstance(commit, subscribe_repos.Info):
             print('Info', commit.model_dump_json())
         else:
-            if commit.seq % 500 == 0:
+            if isinstance(commit, subscribe_repos.Tombstone):
+                print('Tombstone', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Handle):
+                print('Handle', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Migrate):
+                print('Migrate', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Commit):
+                ops = _get_ops_by_type(commit)
+                await operations_callback(db, ops)
+                pass
+            else:
+                # Should never reach here
+                assert False
+            
+            if commit.seq % 5000 == 0:
                 client.update_params({'cursor': commit.seq})
                 await db.subscriptionstate.upsert(
                     where={'service': name},
@@ -262,27 +269,49 @@ async def _run(
                 )
                 lag = datetime.now() - parse_datetime(commit.time)
                 lag_minutes = lag.total_seconds() // 60
+                # num_tasks = len(client._on_message_tasks)
                 if lag_minutes != 0:
-                    print(f'Firehose is lagging | commit {commit.seq} | {lag_minutes // 60} hours {lag_minutes % 60} minutes')
-            if isinstance(commit, subscribe_repos.Tombstone):
-                print('Tombstone', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Handle):
-                print('Handle', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Migrate):
-                print('Migrate', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Commit):
-                ops = _get_ops_by_type(commit)
-                await operations_callback(db, ops)
-            else:
-                # Should never reach here
-                assert False
+                    cprint(f'Firehose is lagging | commit {commit.seq} | {messages_to_process.qsize()} items in queue | {lag_minutes // 60} hours {lag_minutes % 60} minutes behind', 'cyan', force_color=True)
+
+    async def process_messages_forever() -> None:
+        while True:
+            message = await wait_interruptable(
+                messages_to_process.get(),
+                stream_stop_event
+            )
+            if message is None:
+                break
+            try:
+                await process_message(message)
+            except Exception as e:
+                on_error_handler(e)
+            finally:
+                messages_to_process.task_done()
+
+    async def on_message_handler(message: "MessageFrame") -> None:
+        await wait_interruptable(
+            messages_to_process.put(message),
+            stream_stop_event
+        )
 
     def on_error_handler(exception: BaseException) -> None:
         if isinstance(exception, KeyboardInterrupt):
+            # This has the potential to bubble waaaaaay up the stack so IDK if this is smart
+            # It shouldn't really be occuring here anyway during production tho TBH
             print('KeyboardInterrupt during data stream message handler, shutting down')
             stream_stop_event.set()
-        else:
+        elif not stream_stop_event.is_set():
             print("Error in data stream message handler:", file=sys.stderr)
             traceback.print_exception(type(exception), exception, exception.__traceback__)
+        else:
+            print('Error in data stream message handler, not reporting due to stop signal')
 
+    async def ender() -> None:
+        await stream_stop_event.wait()
+        client.stop()
+
+    worker = asyncio.create_task(process_messages_forever())
+    end_w = asyncio.create_task(ender())
     await client.start(on_message_handler, on_error_handler)
+    await asyncio.gather(worker, end_w)
+

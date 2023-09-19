@@ -39,7 +39,7 @@ from dataclasses import dataclass
 
 import server.algos.fox_feed
 import server.algos.score_task
-from server.util import parse_datetime
+from server.util import parse_datetime, sleep_on, join_unless
 
 from server.store import store_like, store_post, store_user
 
@@ -201,10 +201,14 @@ async def _get_all_mutes(
 
 async def get_all_mutes(
     client: AsyncClient,
+    *,
+    shutdown_event: asyncio.Event,
 ) -> AsyncIterable[Tuple[Optional[ListView], ProfileView]]:
     async for i, j in _get_all_mutes(client):
         # print('>', j.handle, j.display_name)
         yield (i, j)
+        if shutdown_event.is_set():
+            break
 
 
 async def get_many_profiles(
@@ -247,8 +251,8 @@ class StoreLike:
 StoreThing = Union[StoreUser, StorePost, StoreLike]
 
 
-async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):
-    while True:
+async def store_to_db_task(shutdown_event: asyncio.Event, db: Database, q: "asyncio.Queue[StoreThing]"):
+    while not shutdown_event.is_set():
         await asyncio.sleep(0.001)
         item = await q.get()
         try:
@@ -271,6 +275,7 @@ async def store_to_db_task(db: Database, q: "asyncio.Queue[StoreThing]"):
 
 
 async def load_posts_task(
+    shutdown_event: asyncio.Event,
     client: AsyncClient,
     only_posts_after: datetime,
     input_queue: "asyncio.Queue[ProfileView]",
@@ -281,7 +286,7 @@ async def load_posts_task(
 ):
     cprint("Grabbing posts for furries...", "blue", force_color=True)
     unique = 0
-    while True:
+    while not shutdown_event.is_set():
         user = await input_queue.get()
         try:
             if actually_do_shit:
@@ -303,12 +308,13 @@ async def load_posts_task(
                 force_color=True,
             )
             traceback.print_exc()
-            await asyncio.sleep(60)
+            await sleep_on(shutdown_event, 60)
         finally:
             input_queue.task_done()
 
 
 async def load_likes_task(
+    shutdown_event: asyncio.Event,
     client: AsyncClient,
     input_queue: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]",
     output_queue: "asyncio.Queue[StoreThing]",
@@ -316,7 +322,7 @@ async def load_likes_task(
     actually_do_shit: bool = True,
 ):
     cprint("Grabbing likes for posts...", "blue", force_color=True)
-    while True:
+    while not shutdown_event.is_set():
         _, _, post = await input_queue.get()
         try:
             if actually_do_shit:
@@ -333,30 +339,32 @@ async def load_likes_task(
                 force_color=True,
             )
             traceback.print_exc()
-            await asyncio.sleep(60)
+            await sleep_on(shutdown_event, 60)
         finally:
             input_queue.task_done()
 
 
 async def log_queue_size_task(
+    shutdown_event: asyncio.Event,
     storage_queue: "asyncio.Queue[StoreThing]",
     post_load_queue: "asyncio.Queue[ProfileView]",
     like_load_queue: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]",
 ) -> None:
-    while True:
+    while not shutdown_event.is_set():
         print(
             f"> Load: {post_load_queue.qsize()} . Like: {like_load_queue.qsize()} . Store: {storage_queue.qsize()}"
         )
-        await asyncio.sleep(30)
+        await sleep_on(shutdown_event, 30)
 
 
 async def find_furries_raw(
     client: AsyncClient,
+    *,
+    shutdown_event: Optional[asyncio.Event]
 ) -> AsyncIterable[Tuple[ProfileView, bool]]:
     known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
         (get_people_who_like_your_feeds, "puppyfox.bsky.social"),
         (get_follows, "puppyfox.bsky.social"),
-        (get_follows, "furryli.st"),
         (get_mutuals, "100racs.bsky.social"),
         (get_mutuals, "glitzyfox.bsky.social"),
         (get_mutuals, "itswolven.bsky.social"),
@@ -371,6 +379,8 @@ async def find_furries_raw(
     )
     yield (furrylist, True)
     async for other in get_follows(client, furrylist.did):
+        if shutdown_event is not None and shutdown_event.is_set():
+            return
         yield (other, True)
 
     cprint("Loading furries from seed list", "blue", force_color=True)
@@ -378,6 +388,8 @@ async def find_furries_raw(
         seed_list = json.loads(sff.read().decode("utf-8"))["seed"]
 
     async for profile in get_many_profiles(client, seed_list):
+        if shutdown_event is not None and shutdown_event.is_set():
+            return
         yield (profile, False)
 
     cprint("Grabbing furry-adjacent accounts", "blue", force_color=True)
@@ -388,27 +400,34 @@ async def find_furries_raw(
         )
         yield (profile, False)
         async for other in get_associations(client, profile.did):
+            if shutdown_event is not None and shutdown_event.is_set():
+                return
             yield (other, False)
 
 
 async def find_furries_clean(
     client: AsyncClient,
+    *,
+    shutdown_event: Optional[asyncio.Event],
 ) -> AsyncIterable[Tuple[ProfileView, bool]]:
     # Ok so we *know* that the furrylist verified ones are coming out first and we can exploit this to not miss anything
     seen: Set[str] = set()
-    async for profile, is_furrylist_verified in find_furries_raw(client):
+    async for profile, is_furrylist_verified in find_furries_raw(client, shutdown_event=shutdown_event):
         if profile.did not in seen and profile.did:
             seen.add(profile.did)
             yield (profile, is_furrylist_verified)
 
 
-async def load(db: Database, client: AsyncClient, load_posts: bool = True, load_likes: bool = True) -> None:
+async def load(shutdown_event: asyncio.Event, db: Database, client: AsyncClient, load_posts: bool = True, load_likes: bool = True) -> None:
     only_posts_after = datetime.now() - server.algos.score_task.LOOKBACK_HARD_LIMIT
 
     cprint("Getting muted accounts", "blue", force_color=True)
-    mutes = {i.did async for _, i in get_all_mutes(client)} - {
+    mutes = {i.did async for _, i in get_all_mutes(client, shutdown_event=shutdown_event)} - {
         "" if client.me is None else client.me.did
     }
+
+    if shutdown_event.is_set():
+        return
 
     queue_size_limit = 20_000
 
@@ -420,9 +439,10 @@ async def load(db: Database, client: AsyncClient, load_posts: bool = True, load_
         asyncio.PriorityQueue(maxsize=queue_size_limit)
     )
 
-    storage_worker = asyncio.create_task(store_to_db_task(db, storage_queue))
+    storage_worker = asyncio.create_task(store_to_db_task(shutdown_event, db, storage_queue))
     load_posts_worker = asyncio.create_task(
         load_posts_task(
+            shutdown_event,
             client,
             only_posts_after,
             post_load_queue,
@@ -433,14 +453,15 @@ async def load(db: Database, client: AsyncClient, load_posts: bool = True, load_
     )
     load_likes_worker = asyncio.create_task(
         load_likes_task(
+            shutdown_event,
             client, like_load_queue, storage_queue, actually_do_shit=load_likes
         )
     )
     report_task = asyncio.create_task(
-        log_queue_size_task(storage_queue, post_load_queue, like_load_queue)
+        log_queue_size_task(shutdown_event, storage_queue, post_load_queue, like_load_queue)
     )
 
-    async for furry, is_furrlist_verified in find_furries_clean(client):
+    async for furry, is_furrlist_verified in find_furries_clean(client, shutdown_event=shutdown_event):
         # The posts for a user can be loaded before the user is stored, however the StoreUser will always be ahead of the relevant
         # StorePosts, so this will never break the DB foreign keys
         muted = furry.did in mutes
@@ -450,9 +471,9 @@ async def load(db: Database, client: AsyncClient, load_posts: bool = True, load_
 
     cprint("Waiting for workers to finish...", "blue", force_color=True)
 
-    await post_load_queue.join()
-    await storage_queue.join()
-    await like_load_queue.join()
+    await join_unless(post_load_queue, shutdown_event)
+    await join_unless(storage_queue, shutdown_event)
+    await join_unless(like_load_queue, shutdown_event)
 
     storage_worker.cancel()
     load_posts_worker.cancel()
@@ -468,17 +489,22 @@ async def load(db: Database, client: AsyncClient, load_posts: bool = True, load_
     )
 
     cprint("Ok! Yeah! Woooo!", "blue", force_color=True)
-    cprint("Done scraping website :)", "green", force_color=True)
+    if shutdown_event.is_set():
+        cprint("Scraping website concluded early due to shutdown signal", "green", force_color=True)
+    else:
+        cprint("Done scraping website :)", "green", force_color=True)
 
 
-async def scan_once(db: Database, client: AsyncClient):
+async def scan_once(shutdown_event: asyncio.Event, db: Database, client: AsyncClient) -> None:
     cprint("Loading list of furries", "blue", force_color=True)
-    mutes = {i.did async for _, i in get_all_mutes(client)} - {
+    mutes = {i.did async for _, i in get_all_mutes(client, shutdown_event=shutdown_event)} - {
         "" if client.me is None else client.me.did
     }
-    all_furries = [i async for i in find_furries_clean(client)]
+    all_furries = [i async for i in find_furries_clean(client, shutdown_event=shutdown_event)]
     cprint("Storing furries", "blue", force_color=True)
     for user, verified in all_furries:
+        if shutdown_event.is_set():
+            return
         await store_user(
             db,
             user,
@@ -494,12 +520,12 @@ async def scan_once(db: Database, client: AsyncClient):
     cprint("Done", "blue", force_color=True)
 
 
-async def rescan_furry_accounts_forever(db: Database, client: AsyncClient):
+async def rescan_furry_accounts_forever(shutdown_event: asyncio.Event, db: Database, client: AsyncClient):
     # Do this ONCE
-    await load(db, client)
-    while True:
+    await load(shutdown_event, db, client)
+    while not shutdown_event.is_set():
         try:
-            await scan_once(db, client)
+            await scan_once(shutdown_event, db, client)
         except asyncio.CancelledError:
             break
         except KeyboardInterrupt:
@@ -507,13 +533,13 @@ async def rescan_furry_accounts_forever(db: Database, client: AsyncClient):
         except Exception:
             cprint(f"error while scanning furries", color="red", force_color=True)
             traceback.print_exc()
-        await asyncio.sleep(60 * 30)
+        await sleep_on(shutdown_event, 60 * 30)
 
 
 async def main():
     db = await make_database_connection()
     client = await make_bsky_client(db)
-    await load(db, client, load_posts=True)
+    await load(asyncio.Event(), db, client, load_posts=True)
 
 
 if __name__ == "__main__":

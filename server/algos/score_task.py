@@ -19,7 +19,7 @@ import server.gender
 from termcolor import cprint
 from dataclasses import dataclass
 import gc
-from server.util import groupby
+from server.util import sleep_on
 import sys
 
 
@@ -258,7 +258,7 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[s
     return {i.uri for i in will_store}
 
 
-async def score_posts(db: Database, client: AsyncClient, do_refresh_posts: bool = False) -> None:
+async def score_posts(shutdown_event: asyncio.Event, db: Database, client: AsyncClient, do_refresh_posts: bool = False) -> None:
     run_starttime = datetime.now(tz=timezone.utc)
     run_version = int(run_starttime.timestamp())
 
@@ -271,6 +271,8 @@ async def score_posts(db: Database, client: AsyncClient, do_refresh_posts: bool 
     all_uris_in_feeds: Set[str] = set()
     for algo in ALGORITHMIC_FEEDS:
         all_uris_in_feeds |= await create_feed(db, algo, rd)
+        if shutdown_event.is_set():
+            break
 
     run_endtime = datetime.now(tz=timezone.utc)
 
@@ -279,6 +281,10 @@ async def score_posts(db: Database, client: AsyncClient, do_refresh_posts: bool 
         "yellow",
         force_color=True,
     )
+
+    if shutdown_event.is_set():
+        cprint("It ended early due to a shutdown event", "yellow", force_color=True)
+        return
 
     await db.postscore.delete_many(
         where={"created_at": {"lt": run_starttime - timedelta(hours=1)}}
@@ -306,15 +312,15 @@ async def score_posts(db: Database, client: AsyncClient, do_refresh_posts: bool 
             print('Refresh done')
 
 
-async def score_posts_forever(db: Database, client: AsyncClient):
-    while True:
+async def score_posts_forever(shutdown_event: asyncio.Event, db: Database, client: AsyncClient):
+    while not shutdown_event.is_set():
         try:
-            await score_posts(db, client, do_refresh_posts=True)
+            await score_posts(shutdown_event, db, client, do_refresh_posts=True)
             cprint(f"gc-d {gc.collect()} objects", "yellow", force_color=True)
         except Exception:
             cprint(f"Error during score_posts", color="red", force_color=True)
             traceback.print_exc()
-        await asyncio.sleep(60)
+        await sleep_on(shutdown_event, 60)
 
 
 async def main(forever: bool):
