@@ -268,7 +268,7 @@ async def _run(
                     }
                 )
                 lag = datetime.now() - parse_datetime(commit.time)
-                lag_minutes = lag.total_seconds() // 60
+                lag_minutes = int(lag.total_seconds()) // 60
                 # num_tasks = len(client._on_message_tasks)
                 if lag_minutes != 0:
                     cprint(f'Firehose is lagging | commit {commit.seq} | {messages_to_process.qsize()} items in queue | {lag_minutes // 60} hours {lag_minutes % 60} minutes behind', 'cyan', force_color=True)
