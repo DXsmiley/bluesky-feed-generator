@@ -91,7 +91,7 @@ async def request_and_retry_on_ratelimit(
                 )
             elif e.response and e.response.status_code == 429:
                 reset_at = int(e.response.headers.get("ratelimit-reset", None))
-                time_to_wait = time.time() - reset_at + 1
+                time_to_wait = reset_at - time.time() + 1
                 await (
                     asyncio.sleep(time_to_wait)
                     if stop_event is None
