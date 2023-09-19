@@ -26,6 +26,7 @@ from atproto.xrpc_client.models.app.bsky.feed.defs import (
 )
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
 from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
+from atproto.xrpc_client.models.app.bsky.feed.defs import PostView
 from atproto import models
 
 
@@ -181,6 +182,23 @@ def get_posts(
         lambda r: r.feed,
         stop_event=stop_event,
     )
+
+
+async def get_specific_posts(
+    client: AsyncClient, uris: List[str], *, stop_event: Optional[asyncio.Event] = None
+) -> AsyncIterable[PostView]:
+    for i in range(0, len(uris), 25):
+        if stop_event is not None and stop_event.is_set():
+            return
+        block = uris[i:i+25]
+        posts = await request_and_retry_on_ratelimit(
+            3,
+            client.app.bsky.feed.get_posts,
+            models.AppBskyFeedGetPosts.Params(uris=block),
+            stop_event=stop_event
+        )
+        for i in posts.posts:
+            yield i
 
 
 def get_likes(

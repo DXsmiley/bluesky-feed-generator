@@ -10,6 +10,7 @@ from prisma.models import Post, Actor
 import prisma.errors
 import prisma.types
 import server.gen.db
+from server.bsky import get_specific_posts
 
 from typing import List, Dict, Tuple, Callable, Iterator, Literal, Set, Optional
 from .feed_names import FeedName
@@ -304,11 +305,8 @@ async def score_posts(shutdown_event: asyncio.Event, db: Database, client: Async
         )
         if posts_to_refresh:
             print(f'Refreshing {len(posts_to_refresh)} posts')
-            for i in range(0, len(posts_to_refresh), 25):
-                block = posts_to_refresh[i:i+25]
-                refreshed = await client.app.bsky.feed.get_posts({'uris': [i.uri for i in block]})
-                for i in refreshed.posts:
-                    await store_post2(db, i, None, None, now=run_endtime)
+            async for i in get_specific_posts(client, [i.uri for i in posts_to_refresh]):
+                await store_post2(db, i, None, None, now=run_endtime)
             print('Refresh done')
 
 
