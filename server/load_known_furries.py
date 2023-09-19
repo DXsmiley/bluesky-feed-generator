@@ -5,7 +5,19 @@ import server.monkeypatch
 
 from server.database import Database, make_database_connection
 
-from server.bsky import AsyncClient, make_bsky_client
+from server.bsky import (
+    AsyncClient,
+    make_bsky_client,
+    get_followers,
+    get_follows,
+    get_feeds,
+    get_likes,
+    get_mute_lists,
+    get_mutes,
+    get_list
+)
+
+import server.bsky
 
 from typing import (
     AsyncIterable,
@@ -24,11 +36,9 @@ from atproto.xrpc_client.models.app.bsky.actor.defs import (
 from atproto.xrpc_client.models.app.bsky.feed.defs import (
     FeedViewPost,
     ReasonRepost,
-    GeneratorView,
 )
 from atproto.xrpc_client.models.app.bsky.graph.defs import ListView
 from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
-from atproto import models
 
 import gzip
 import json
@@ -57,26 +67,6 @@ def simplify_profile_view(p: ProfileViewDetailed) -> ProfileView:
     )
 
 
-async def get_followers(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
-    r = await client.app.bsky.graph.get_followers({"actor": did})
-    for i in r.followers:
-        yield i
-    while r.cursor:
-        r = await client.app.bsky.graph.get_followers({"actor": did, "cursor": r.cursor})
-        for i in r.followers:
-            yield i
-
-
-async def get_follows(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
-    r = await client.app.bsky.graph.get_follows({"actor": did})
-    for i in r.follows:
-        yield i
-    while r.cursor:
-        r = await client.app.bsky.graph.get_follows({"actor": did, "cursor": r.cursor})
-        for i in r.follows:
-            yield i
-
-
 async def get_mutuals(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
     following_dids = {i.did async for i in get_follows(client, did)}
     async for i in get_followers(client, did):
@@ -84,26 +74,7 @@ async def get_mutuals(client: AsyncClient, did: str) -> AsyncIterable[ProfileVie
             yield i
 
 
-async def get_feeds(client: AsyncClient, did: str) -> AsyncIterable[GeneratorView]:
-    r = await client.app.bsky.feed.get_actor_feeds({"actor": did})
-    for i in r.feeds:
-        yield i
-    while r.cursor is not None:
-        r = await client.app.bsky.feed.get_actor_feeds({"actor": did, "cursor": r.cursor})
-        for i in r.feeds:
-            yield i
-
-
-async def get_people_who_like_the_feed(
-    client: AsyncClient, uri: str
-) -> AsyncIterable[ProfileView]:
-    r = await client.app.bsky.feed.get_likes({"uri": uri})
-    for i in r.likes:
-        yield i.actor
-    while r.cursor is not None:
-        r = await client.app.bsky.feed.get_likes({"uri": uri, "cursor": r.cursor})
-        for i in r.likes:
-            yield i.actor
+get_people_who_like_the_feed = get_likes
 
 
 async def get_people_who_like_your_feeds(
@@ -111,7 +82,8 @@ async def get_people_who_like_your_feeds(
 ) -> AsyncIterable[ProfileView]:
     seen: Set[str] = set()
     async for feed in get_feeds(client, did):
-        async for user in get_people_who_like_the_feed(client, feed.uri):
+        async for like in get_people_who_like_the_feed(client, feed.uri):
+            user = like.actor
             if user.did not in seen:
                 seen.add(user.did)
                 # print(user.handle, user.display_name)
@@ -124,56 +96,16 @@ async def get_posts(
     *,
     after: Optional[datetime] = None,
     include_reposts: bool = False,
-    return_data_if_we_have_it_anyway: bool = False,
 ) -> AsyncIterable[FeedViewPost]:
-    r = None
-    while r is None or r.cursor:
-        r = await client.app.bsky.feed.get_author_feed(
-            {"actor": did, "cursor": r and r.cursor}
+    async for i in server.bsky.get_posts(client, did):
+        is_repost, indexed_at = (
+            (True, i.reason.indexed_at)
+            if isinstance(i.reason, ReasonRepost)
+            else (False, i.post.indexed_at)
         )
-        for i in r.feed:
-            is_repost, indexed_at = (
-                (True, i.reason.indexed_at)
-                if isinstance(i.reason, ReasonRepost)
-                else (False, i.post.indexed_at)
-            )
-            if after is not None and parse_datetime(indexed_at) < after:
-                r.cursor = None
-                if not return_data_if_we_have_it_anyway:
-                    return
-            if include_reposts or not is_repost:
-                yield i
-
-
-async def get_likes(client: AsyncClient, uri: str) -> AsyncIterable[Like]:
-    r = await client.app.bsky.feed.get_likes({"uri": uri})
-    for i in r.likes:
-        yield i
-    while r.cursor is not None:
-        r = await client.app.bsky.feed.get_likes({"uri": uri, "cursor": r.cursor})
-        for i in r.likes:
-            yield i
-
-
-async def get_actor_likes(
-    client: AsyncClient, actor: str
-) -> AsyncIterable[FeedViewPost]:
-    r = await client.app.bsky.feed.get_actor_likes({"actor": actor})
-    for i in r.feed:
-        yield i
-    while r.cursor is not None:
-        r = await client.app.bsky.feed.get_actor_likes({"actor": actor, "cursor": r.cursor})
-        for i in r.feed:
-            yield i
-
-
-async def get_mute_lists(client: AsyncClient) -> AsyncIterable[ListView]:
-    r = await client.app.bsky.graph.get_list_mutes({})
-    for i in r.lists:
-        yield i
-    while r.cursor:
-        r = await client.app.bsky.graph.get_list_mutes({"cursor": r.cursor})
-        for i in r.lists:
+        if after is not None and parse_datetime(indexed_at) < after:
+            return
+        if include_reposts or not is_repost:
             yield i
 
 
@@ -181,22 +113,12 @@ async def _get_all_mutes(
     client: AsyncClient,
 ) -> AsyncIterable[Tuple[Optional[ListView], ProfileView]]:
     # Direct, manual mutes
-    r = await client.app.bsky.graph.get_mutes()
-    for i in r.mutes:
+    async for i in get_mutes(client):
         yield (None, i)
-    while r.cursor is not None:
-        r = await client.app.bsky.graph.get_mutes({"cursor": r.cursor})
-        for i in r.mutes:
-            yield (None, i)
     # Mutes from a mute list
     async for lst in get_mute_lists(client):
-        r = await client.app.bsky.graph.get_list({"list": lst.uri})
-        for i in r.items:
+        async for i in get_list(client, lst.uri):
             yield (lst, i.subject)
-        while r.cursor:
-            r = await client.app.bsky.graph.get_list({"list": lst.uri, "cursor": r.cursor})
-            for i in r.items:
-                yield (lst, i.subject)
 
 
 async def get_all_mutes(
