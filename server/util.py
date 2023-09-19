@@ -80,10 +80,16 @@ async def wait_interruptable(c: Coroutine[Any, Any, T], event: asyncio.Event) ->
         await event.wait()
     c_task = asyncio.create_task(c)
     wait_task = asyncio.create_task(_f())
-    done, _ = await asyncio.wait(
+    done, pending = await asyncio.wait(
         [c_task, wait_task],
         return_when=asyncio.FIRST_COMPLETED
     )
+    for i in pending:
+        try:
+            if i.cancel():
+                await i
+        except asyncio.CancelledError:
+            pass
     for i in done:
         return i.result()
     return None
