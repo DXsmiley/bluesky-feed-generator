@@ -326,10 +326,11 @@ async def score_posts_forever(shutdown_event: asyncio.Event, db: Database, clien
 async def main(forever: bool):
     db = await make_database_connection(timeout=30)
     client = await make_bsky_client(db)
+    event = asyncio.Event()
     if forever:
-        await score_posts_forever(db, client)
+        await score_posts_forever(event, db, client)
     else:
-        await score_posts(db, client, do_refresh_posts=True)
+        await score_posts(event, db, client, do_refresh_posts=True)
 
 
 if __name__ == "__main__":

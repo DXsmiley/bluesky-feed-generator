@@ -35,6 +35,7 @@ WITH table1 AS (
             FROM "Like" as lk
             INNER JOIN "Actor" as liker ON lk.liker_id = liker.did
             WHERE lk.post_uri = post.uri
+            AND lk.created_at > NOW() - interval '96 hours'
             AND NOT liker.is_muted
             AND liker.manual_include_in_fox_feed IS NOT FALSE
             AND (
