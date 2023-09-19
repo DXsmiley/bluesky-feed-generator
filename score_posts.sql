@@ -1,4 +1,25 @@
-WITH table1 AS (
+WITH "LikeCount" AS (
+    -- Splitting this out seems to give performance improvements over doing the
+    -- count inside table1
+    SELECT
+        lk.post_uri,
+        COUNT(*) AS count
+    FROM "Like" as lk
+    INNER JOIN "Actor" as liker ON lk.liker_id = liker.did
+    AND lk.created_at > NOW() - interval '96 hours'
+    AND NOT liker.is_muted
+    AND liker.manual_include_in_fox_feed IS NOT FALSE
+    AND (
+        :include_guy_votes
+        OR liker.manual_include_in_vix_feed IS TRUE
+            OR (
+                liker.manual_include_in_vix_feed IS NOT FALSE
+                AND liker.autolabel_fem_vibes IS TRUE
+                AND liker.autolabel_masc_vibes IS FALSE
+            )
+        )
+    GROUP BY lk.post_uri
+), table1 AS (
     SELECT
         post.uri AS uri,
         post."authorId" as author,
@@ -12,22 +33,7 @@ WITH table1 AS (
             (CASE WHEN post.media_count > 0 AND post.media_with_alt_text_count = 0 THEN 0.7 ELSE 1.0 END)
         ) AS multiplier,
         (
-            SELECT COUNT(*)
-            FROM "Like" as lk
-            INNER JOIN "Actor" as liker ON lk.liker_id = liker.did
-            WHERE lk.post_uri = post.uri
-            AND lk.created_at > NOW() - interval '96 hours'
-            AND NOT liker.is_muted
-            AND liker.manual_include_in_fox_feed IS NOT FALSE
-            AND (
-                :include_guy_votes
-                OR liker.manual_include_in_vix_feed IS TRUE
-                    OR (
-                        liker.manual_include_in_vix_feed IS NOT FALSE
-                        AND liker.autolabel_fem_vibes IS TRUE
-                        AND liker.autolabel_masc_vibes IS FALSE
-                    )
-                )
+            like_count.count
         ) AS likes,
         (
             author.manual_include_in_vix_feed IS TRUE
@@ -39,6 +45,7 @@ WITH table1 AS (
         ) AS author_is_fem
     FROM "Post" as post
     INNER JOIN "Actor" as author on post."authorId" = author.did
+    INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
     WHERE post.indexed_at > NOW() - interval '96 hours'
         AND NOT author.is_muted
         AND author.manual_include_in_fox_feed IS NOT FALSE
@@ -61,6 +68,8 @@ WITH table1 AS (
         ) AS score
     FROM table1 as post
     WHERE :include_guy_posts OR author_is_fem
+    -- Not required but this seems to give performance improvements?
+    ORDER BY author, score DESC
 ), table3 AS (
     SELECT
         uri,
