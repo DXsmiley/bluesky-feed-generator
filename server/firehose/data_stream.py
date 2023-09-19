@@ -236,7 +236,7 @@ async def _run(
     params = subscribe_repos.Params(cursor=state.cursor if state else None)
     client = AsyncFirehoseSubscribeReposClient(params)
 
-    messages_to_process: 'asyncio.Queue[Optional[MessageFrame]]' = asyncio.Queue(maxsize=20)
+    messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=20)
 
     async def process_message(message: "MessageFrame") -> None:
         commit = parse_subscribe_repos_message(message)
@@ -253,7 +253,6 @@ async def _run(
             elif isinstance(commit, subscribe_repos.Commit):
                 ops = _get_ops_by_type(commit)
                 await operations_callback(db, ops)
-                pass
             else:
                 # Should never reach here
                 assert False
@@ -275,24 +274,17 @@ async def _run(
 
     async def process_messages_forever() -> None:
         while True:
-            message = await wait_interruptable(
-                messages_to_process.get(),
-                stream_stop_event
-            )
-            if message is None:
-                break
+            message = await messages_to_process.get()
             try:
-                await process_message(message)
+                if not stream_stop_event.is_set():
+                    await process_message(message)
             except Exception as e:
                 on_error_handler(e)
             finally:
                 messages_to_process.task_done()
 
     async def on_message_handler(message: "MessageFrame") -> None:
-        await wait_interruptable(
-            messages_to_process.put(message),
-            stream_stop_event
-        )
+        await messages_to_process.put(message)
 
     def on_error_handler(exception: BaseException) -> None:
         if isinstance(exception, KeyboardInterrupt):
@@ -313,5 +305,7 @@ async def _run(
     worker = asyncio.create_task(process_messages_forever())
     end_w = asyncio.create_task(ender())
     await client.start(on_message_handler, on_error_handler)
-    await asyncio.gather(worker, end_w)
+    await messages_to_process.join()
+    worker.cancel()
+    await asyncio.gather(worker, end_w, return_exceptions=True)
 
