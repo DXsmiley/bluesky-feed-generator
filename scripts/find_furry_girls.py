@@ -2,7 +2,8 @@ import asyncio
 from atproto import AsyncClient
 import server.database
 from server.database import make_database_connection, Database
-from server.load_known_furries import get_actor_likes, get_likes, store_user, store_like
+from server.bsky import get_actor_likes, get_likes
+from server.store import store_user, store_like
 # from server.gender import guess_gender_reductive
 from typing import Set, Tuple, Literal
 from server import gender
