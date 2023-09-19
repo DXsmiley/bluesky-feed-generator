@@ -58,10 +58,12 @@ async def sleep_on(event: asyncio.Event, timeout: float) -> bool:
         return False
 
 
-async def join_unless(queue: asyncio.Queue, event: asyncio.Event):
+async def join_unless(queue: 'asyncio.Queue[Any]', event: asyncio.Event):
     if not event.is_set():
+        queue_task = asyncio.create_task(queue.join())
+        wait_task = asyncio.create_task(event.wait())
         done, pending = await asyncio.wait(
-            [queue.join(), event.wait()],
+            [queue_task, wait_task],
             return_when=asyncio.FIRST_COMPLETED
         )
         # Dunno if we need to do something about the "done" things?
@@ -76,8 +78,10 @@ async def join_unless(queue: asyncio.Queue, event: asyncio.Event):
 async def wait_interruptable(c: Coroutine[Any, Any, T], event: asyncio.Event) -> Optional[T]:
     async def _f() -> None:
         await event.wait()
+    c_task = asyncio.create_task(c)
+    wait_task = asyncio.create_task(_f())
     done, _ = await asyncio.wait(
-        [c, _f()],
+        [c_task, wait_task],
         return_when=asyncio.FIRST_COMPLETED
     )
     for i in done:

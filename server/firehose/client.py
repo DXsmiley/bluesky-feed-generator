@@ -26,6 +26,8 @@ class AsyncFirehoseClient(_WebsocketClientBase):
         self._loop = asyncio.get_event_loop()
         self._stop_event = asyncio.Event()
 
+        self._on_message_callback: t.Optional[AsyncOnMessageCallback] = None
+
     async def _process_raw_frame(self, data: bytes) -> None:
         frame = Frame.from_bytes(data)
         if isinstance(frame, ErrorFrame):
