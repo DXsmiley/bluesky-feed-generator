@@ -1,7 +1,7 @@
 import foxfeed.monkeypatch
 
 import sys
-from foxfeed.app import create_and_run_webapp, Services
+from foxfeed.web.app import create_and_run_webapp, Services
 from typing import List
 from foxfeed import config
 

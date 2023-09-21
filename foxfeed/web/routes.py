@@ -1,207 +1,38 @@
-import sys
-import asyncio
+# pyright: reportUnusedFunction=false
+
 import secrets
-
-from foxfeed import config
-from foxfeed.firehose import data_stream
-import foxfeed.interface
-
-from aiohttp import web
-import aiojobs.aiohttp
-import foxfeed.jwt_verification
-import foxfeed.metrics
-
-import foxfeed.algos
-from foxfeed.data_filter import operations_callback
-from foxfeed.algos.score_task import score_posts_forever
-
-import foxfeed.load_known_furries
-
-import prisma
-import foxfeed.database
-from foxfeed.database import Database, make_database_connection
-
-from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set, List, Tuple
-
-import traceback
-import termcolor
-from termcolor import cprint
 from datetime import datetime, timedelta
-from dataclasses import dataclass
-
+from aiohttp import web
+import foxfeed.metrics
+import foxfeed.web.interface
+import foxfeed.algos
+import foxfeed.database
+import foxfeed.web.jwt_verification
+from foxfeed.database import Database
+from foxfeed.bsky import AsyncClient
+from foxfeed.web.ratelimit import Ratelimit
+from foxfeed import config
+from termcolor import cprint
+import aiojobs.aiohttp
+import prisma
 import scripts.find_furry_girls
 
-from atproto import AsyncClient
-from foxfeed.bsky import make_bsky_client
-import signal
+from typing import Callable, Coroutine, Any, Optional, Set, List, Tuple
 
 
 algos = {
-    **{
-        # TODO: make this slightly less hard-coded
-        (
-            "at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.generator/"
-            + i["record_name"]
-        ): i["handler"]
-        for i in foxfeed.algos.algo_details
-    },
-    **{i["record_name"]: i["handler"] for i in foxfeed.algos.algo_details},
+    # TODO: make this slightly less hard-coded
+    (
+        "at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.generator/"
+        + i["record_name"]
+    ): i["handler"]
+    for i in foxfeed.algos.algo_details
 }
 
 
-# def sigint_handler(*_: Any) -> Never:
-#     print('Stopping data stream...')
-#     stream_stop_event.set()
-#     sys.exit(0)
-
-
-# signal.signal(signal.SIGINT, sigint_handler)
-
-
-@dataclass
-class Services:
-    scraper: bool = True
-    firehose: bool = True
-    scores: bool = True
-    # probably shouldn't be here tbh
-    log_db_queries: bool = False
-    admin_panel: bool = False
-
-
-def create_and_run_webapp(
-    *, port: int, db_url: Optional[str], services: Optional[Services] = None
-) -> None:
-    asyncio.run(
-        _create_and_run_webapp(port, db_url, services or Services(), catch_sigint=True)
-    )
-
-
-async def _create_and_run_webapp(
-    port: int, db_url: Optional[str], services: Services, *, catch_sigint: bool
-) -> None:
-    shutdown_event = asyncio.Event()
-    if catch_sigint:
-
-        def _sigint_handler(*_: Any) -> None:
-            if shutdown_event.is_set():
-                print("Got second shutdown signal, doing hard exit")
-                sys.exit(0)
-            else:
-                print("Got shutdown signal!")
-                shutdown_event.set()
-
-        signal.signal(signal.SIGINT, _sigint_handler)
-    db = await make_database_connection(db_url, log_queries=services.log_db_queries)
-    client = await make_bsky_client(db)
-    app = create_web_application(shutdown_event, db, client, services)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    await shutdown_event.wait()
-    print("Waiting on shutdown event finished")
-    await site.stop()
-    print("Did site.stop")
-    await runner.cleanup()
-    print("Did runner.cleanup")
-    await runner.shutdown()
-    print("Did runner.shutdown")
-
-
-def create_web_application(
-    shutdown_event: asyncio.Event, db: Database, client: AsyncClient, services: Services
-) -> web.Application:
-    app = web.Application()
-    app.add_routes(create_route_table(db, client, admin_panel=services.admin_panel))
-    app.cleanup_ctx.append(background_tasks(shutdown_event, db, client, services))
-    aiojobs.aiohttp.setup(app)
-    return app
-
-
-def background_tasks(
-    shutdown_event: asyncio.Event, db: Database, client: AsyncClient, services: Services
-) -> Callable[[web.Application], AsyncIterator[None]]:
-    async def catch(name: str, c: Coroutine[Any, Any, None]) -> None:
-        try:
-            await c
-            termcolor.cprint(
-                f"--------[  {name} finished  ]--------", "green", force_color=True
-            )
-        except KeyboardInterrupt:
-            pass
-        except:
-            termcolor.cprint(
-                f"--------[ Failure in {name} ]--------", "red", force_color=True
-            )
-            termcolor.cprint(
-                "Critical exception in background task", "red", force_color=True
-            )
-            termcolor.cprint(
-                "-------------------------------------", "red", force_color=True
-            )
-            traceback.print_exc()
-            termcolor.cprint(
-                "-------------------------------------", "red", force_color=True
-            )
-
-    async def f(_: web.Application) -> AsyncIterator[None]:
-        scraper = None
-        scores = None
-        firehose = None
-        if services.scraper:
-            scraper = asyncio.create_task(
-                catch(
-                    "LOADDB",
-                    foxfeed.load_known_furries.rescan_furry_accounts_forever(
-                        shutdown_event, db, client
-                    ),
-                )
-            )
-        if services.scores:
-            scores = asyncio.create_task(
-                catch("SCORES", score_posts_forever(shutdown_event, db, client))
-            )
-        if services.firehose:
-            firehose = asyncio.create_task(
-                catch(
-                    "FIREHS",
-                    data_stream.run(
-                        db, config.SERVICE_DID, operations_callback, shutdown_event
-                    ),
-                )
-            )
-        yield
-        print("We're on the other side of the yield in foxfeed.app.background_tasks:f")
-        print("I wonder what that means?")
-        if scraper is not None:
-            await scraper
-        if scores is not None:
-            await scores
-        if firehose is not None:
-            await firehose
-        print("Finished waiting on the background tasks to finish!")
-
-    return f
-
-
-class Ratelimit:
-    def __init__(self, timespan: timedelta, limit: int):
-        self.timespan = timespan
-        self.timeout = datetime.now()
-        self.limit = limit
-        self.count = 0
-
-    def _check(self) -> bool:
-        now = datetime.now()
-        if now > self.timeout:
-            self.timeout = now + self.timespan
-            self.count = 0
-        self.count += 1
-        return self.count <= self.limit
-
-    def check_raising(self):
-        if not self._check():
-            raise web.HTTPTooManyRequests()
+algos_by_short_name = {
+    i["record_name"]: i["handler"] for i in foxfeed.algos.algo_details
+}
 
 
 def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool = False):
@@ -236,21 +67,15 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
     routes.static("/static", "./static")
 
     @routes.get("/")
-    async def index(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.StreamResponse:
+    async def index(request: web.Request) -> web.StreamResponse:
         return web.FileResponse("./static/index.html")
 
     @routes.get("/favicon.ico")
-    async def favicon(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.StreamResponse:
+    async def favicon(request: web.Request) -> web.StreamResponse:
         return web.FileResponse("./static/logo.png")
 
     @routes.get("/stats")
-    async def stats(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def stats(request: web.Request) -> web.Response:
         now = datetime.now()
         metrics = await foxfeed.metrics.feed_metrics_for_time_range(
             db,
@@ -259,7 +84,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             now,
             timedelta(hours=1),
         )
-        page = foxfeed.interface.stats_page(
+        page = foxfeed.web.interface.stats_page(
             [
                 ("feeds", len(foxfeed.algos.algo_details)),
                 ("users", await db.actor.count()),
@@ -300,9 +125,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/user/{handle}")
-    async def user_deets(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def user_deets(request: web.Request) -> web.Response:
         handle = request.match_info["handle"]
         # if not isinstance(handle, str):
         #     return web.HTTPBadRequest(text='requires parameter "handle"')
@@ -312,13 +135,11 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         posts = await db.post.find_many(
             where={"authorId": user.did}, order={"indexed_at": "desc"}
         )
-        page = foxfeed.interface.user_page(await is_admin(request), user, posts)
+        page = foxfeed.web.interface.user_page(await is_admin(request), user, posts)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/.well-known/did.json")
-    async def did_json(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def did_json(request: web.Request) -> web.Response:
         if not config.SERVICE_DID.endswith(config.HOSTNAME):
             return web.HTTPNotFound()
 
@@ -337,9 +158,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         )
 
     @routes.get("/xrpc/app.bsky.feed.describeFeedGenerator")
-    async def describe_feed_generator(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def describe_feed_generator(request: web.Request) -> web.Response:
         feeds = [{"uri": uri} for uri in algos.keys()]
         response = {
             "encoding": "application/json",
@@ -348,9 +167,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         return web.json_response(response)
 
     @routes.get("/xrpc/app.bsky.feed.getFeedSkeleton")
-    async def get_feed_skeleton(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def get_feed_skeleton(request: web.Request) -> web.Response:
         feed = request.query.get("feed", default="")
         algo = algos.get(feed)
         if not algo:
@@ -395,7 +212,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         limit: int,
         served: foxfeed.algos.fox_feed.HandlerResult,
     ) -> None:
-        did = await foxfeed.jwt_verification.verify_jwt(auth)
+        did = await foxfeed.web.jwt_verification.verify_jwt(auth)
         print("store_served_posts", feed_name, did)
         if did is not None:
             await db.servedblock.create(
@@ -421,20 +238,16 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             )
 
     @routes.get("/feed")
-    async def get_feeds(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
-        page = foxfeed.interface.feeds_page(
+    async def get_feeds(request: web.Request) -> web.Response:
+        page = foxfeed.web.interface.feeds_page(
             [i["record_name"] for i in foxfeed.algos.algo_details]
         )
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/feed/{feed}")
-    async def get_feed(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def get_feed(request: web.Request) -> web.Response:
         feed_name = request.match_info.get("feed", "")
-        algo = algos.get(feed_name)
+        algo = algos_by_short_name.get(feed_name)
         if algo is None:
             return web.HTTPNotFound(text="Feed not found")
 
@@ -446,30 +259,26 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             for i in posts
         ]
 
-        page = foxfeed.interface.feed_page(
+        page = foxfeed.web.interface.feed_page(
             await is_admin(request), feed_name, full_posts
         )
 
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/pinned_posts")
-    async def pinned_posts(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def pinned_posts(request: web.Request) -> web.Response:
         posts = await db.post.find_many(
             order={"indexed_at": "desc"},
             where={"is_pinned": True},
             include={"author": True},
         )
-        page = foxfeed.interface.post_list_page(
+        page = foxfeed.web.interface.post_list_page(
             await is_admin(request), "Pinned Posts", posts
         )
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/feed/{feed}/stats")
-    async def get_feed_stats(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def get_feed_stats(request: web.Request) -> web.Response:
         feed_name = request.match_info.get("feed", "")
         algo = algos.get(feed_name)
         if algo is None:
@@ -485,7 +294,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             timedelta(hours=1),
         )
 
-        page = foxfeed.interface.feed_metrics_page(metrics)
+        page = foxfeed.web.interface.feed_metrics_page(metrics)
         return web.Response(text=str(page), content_type="text/html")
 
     async def quickflag_candidates_from_feed(
@@ -504,9 +313,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
 
     @routes.get("/quickflag")
     @require_admin_login
-    async def quickflag(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def quickflag(request: web.Request) -> web.Response:
         # pick from feeds that are actually able to contain non-girls
         dids = await quickflag_candidates_from_feed("vix-votes")
         users = await db.actor.find_many(
@@ -537,14 +344,12 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
                 }
             },
         )
-        page = foxfeed.interface.quickflag_page(await is_admin(request), users)
+        page = foxfeed.web.interface.quickflag_page(await is_admin(request), users)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/experiment/{name}")
     @require_admin_login
-    async def experiment_results(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ):
+    async def experiment_results(request: web.Request):
         experiment = request.match_info.get("name", "")
         media: List[Tuple[float, str, Optional[str]]] = []
         highest_version = await db.experimentresult.find_first(
@@ -574,23 +379,19 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
                 for i in sample
                 if i.post is not None
             ]
-        page = foxfeed.interface.media_experiment_page(experiment, media)
+        page = foxfeed.web.interface.media_experiment_page(experiment, media)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/admin/login")
-    async def login_get(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def login_get(request: web.Request) -> web.Response:
         if not admin_panel or not config.ADMIN_PANEL_PASSWORD:
-            page = foxfeed.interface.admin_login_page_disabled
+            page = foxfeed.web.interface.admin_login_page_disabled
         else:
-            page = foxfeed.interface.admin_login_page
+            page = foxfeed.web.interface.admin_login_page
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/login")
-    async def login_post(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def login_post(request: web.Request) -> web.Response:
         if not admin_panel or not config.ADMIN_PANEL_PASSWORD:
             return web.HTTPForbidden(text="admin tools currently disabled")
         data = await request.post()
@@ -606,17 +407,13 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
 
     @routes.get("/admin/done-login")
     @require_admin_login
-    async def done_login(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
-        page = foxfeed.interface.admin_done_login_page()
+    async def done_login(request: web.Request) -> web.Response:
+        page = foxfeed.web.interface.admin_done_login_page()
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/mark")
     @require_admin_login
-    async def mark_user(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def mark_user(request: web.Request) -> web.Response:
         blob = await request.json()
         did = blob["did"]
         assert isinstance(did, str)
@@ -637,9 +434,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
 
     @routes.post("/admin/scan_likes")
     @require_admin_login
-    async def scan_likes(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def scan_likes(request: web.Request) -> web.Response:
         blob = await request.json()
         uri = blob["uri"]
         assert isinstance(uri, str)
@@ -652,9 +447,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
 
     @routes.post("/admin/pin_post")
     @require_admin_login
-    async def pin_post(  # pyright: ignore[reportUnusedFunction]
-        request: web.Request,
-    ) -> web.Response:
+    async def pin_post(request: web.Request) -> web.Response:
         blob = await request.json()
         uri = blob["uri"]
         pin = blob["pin"]

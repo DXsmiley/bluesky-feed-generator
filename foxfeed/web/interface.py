@@ -1,10 +1,11 @@
-from foxfeed import html
-from foxfeed.html import Node, head, img, div, h3, h4, p, span, a, UnescapedString
+from foxfeed.web import html
+from foxfeed.web.html import Node, head, img, div, h3, h4, p, span, a, UnescapedString
 import re
 from typing import List, Tuple, Union, TypeVar, Optional, Callable
 from prisma.models import Post, Actor
 from foxfeed.util import interleave
 from foxfeed.metrics import FeedMetrics, FeedMetricsSlice
+
 
 T = TypeVar("T")
 
