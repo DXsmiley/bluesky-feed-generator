@@ -3,7 +3,7 @@ import tensorflow as tf
 tf.gfile = tf.io.gfile
 
 import asyncio
-from server.database import make_database_connection
+from foxfeed.database import make_database_connection
 from PIL import Image
 from aiohttp import ClientSession
 from fursuit_model.model import FursuitModel

@@ -1,7 +1,7 @@
 import jwt
 import multibase
 import aiohttp
-from server.config import SERVICE_DID
+from foxfeed.config import SERVICE_DID
 from typing import Optional, Callable, Coroutine, Any, Tuple
 from collections import OrderedDict
 from time import time

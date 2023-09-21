@@ -2,24 +2,24 @@ import sys
 import asyncio
 import secrets
 
-from server import config
-from server.firehose import data_stream
-import server.interface
+from foxfeed import config
+from foxfeed.firehose import data_stream
+import foxfeed.interface
 
 from aiohttp import web
 import aiojobs.aiohttp
-import server.jwt_verification
-import server.metrics
+import foxfeed.jwt_verification
+import foxfeed.metrics
 
-import server.algos
-from server.data_filter import operations_callback
-from server.algos.score_task import score_posts_forever
+import foxfeed.algos
+from foxfeed.data_filter import operations_callback
+from foxfeed.algos.score_task import score_posts_forever
 
-import server.load_known_furries
+import foxfeed.load_known_furries
 
 import prisma
-import server.database
-from server.database import Database, make_database_connection
+import foxfeed.database
+from foxfeed.database import Database, make_database_connection
 
 from typing import AsyncIterator, Callable, Coroutine, Any, Optional, Set, List, Tuple
 
@@ -32,7 +32,7 @@ from dataclasses import dataclass
 import scripts.find_furry_girls
 
 from atproto import AsyncClient
-from server.bsky import make_bsky_client
+from foxfeed.bsky import make_bsky_client
 import signal
 
 
@@ -43,9 +43,9 @@ algos = {
             "at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.generator/"
             + i["record_name"]
         ): i["handler"]
-        for i in server.algos.algo_details
+        for i in foxfeed.algos.algo_details
     },
-    **{i["record_name"]: i["handler"] for i in server.algos.algo_details},
+    **{i["record_name"]: i["handler"] for i in foxfeed.algos.algo_details},
 }
 
 
@@ -152,7 +152,7 @@ def background_tasks(
             scraper = asyncio.create_task(
                 catch(
                     "LOADDB",
-                    server.load_known_furries.rescan_furry_accounts_forever(
+                    foxfeed.load_known_furries.rescan_furry_accounts_forever(
                         shutdown_event, db, client
                     ),
                 )
@@ -252,29 +252,29 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         request: web.Request,
     ) -> web.Response:
         now = datetime.now()
-        metrics = await server.metrics.feed_metrics_for_time_range(
+        metrics = await foxfeed.metrics.feed_metrics_for_time_range(
             db,
             None,
-            now - server.metrics.METRICS_MAXIMUM_LOOKBACK,
+            now - foxfeed.metrics.METRICS_MAXIMUM_LOOKBACK,
             now,
             timedelta(hours=1),
         )
-        page = server.interface.stats_page(
+        page = foxfeed.interface.stats_page(
             [
-                ("feeds", len(server.algos.algo_details)),
+                ("feeds", len(foxfeed.algos.algo_details)),
                 ("users", await db.actor.count()),
                 (
                     "in-fox-feed",
-                    await db.actor.count(where=server.database.user_is_in_fox_feed),
+                    await db.actor.count(where=foxfeed.database.user_is_in_fox_feed),
                 ),
                 (
                     "in-vix-feed",
-                    await db.actor.count(where=server.database.user_is_in_vix_feed),
+                    await db.actor.count(where=foxfeed.database.user_is_in_vix_feed),
                 ),
                 (
                     "storing-data-for",
                     await db.actor.count(
-                        where=server.database.care_about_storing_user_data_preemptively
+                        where=foxfeed.database.care_about_storing_user_data_preemptively
                     ),
                 ),
                 ("posts", await db.post.count()),
@@ -312,7 +312,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         posts = await db.post.find_many(
             where={"authorId": user.did}, order={"indexed_at": "desc"}
         )
-        page = server.interface.user_page(await is_admin(request), user, posts)
+        page = foxfeed.interface.user_page(await is_admin(request), user, posts)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/.well-known/did.json")
@@ -393,9 +393,9 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         feed_name: str,
         cursor: Optional[str],
         limit: int,
-        served: server.algos.fox_feed.HandlerResult,
+        served: foxfeed.algos.fox_feed.HandlerResult,
     ) -> None:
-        did = await server.jwt_verification.verify_jwt(auth)
+        did = await foxfeed.jwt_verification.verify_jwt(auth)
         print("store_served_posts", feed_name, did)
         if did is not None:
             await db.servedblock.create(
@@ -424,8 +424,8 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
     async def get_feeds(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
-        page = server.interface.feeds_page(
-            [i["record_name"] for i in server.algos.algo_details]
+        page = foxfeed.interface.feeds_page(
+            [i["record_name"] for i in foxfeed.algos.algo_details]
         )
         return web.Response(text=str(page), content_type="text/html")
 
@@ -446,7 +446,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             for i in posts
         ]
 
-        page = server.interface.feed_page(
+        page = foxfeed.interface.feed_page(
             await is_admin(request), feed_name, full_posts
         )
 
@@ -461,7 +461,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             where={"is_pinned": True},
             include={"author": True},
         )
-        page = server.interface.post_list_page(
+        page = foxfeed.interface.post_list_page(
             await is_admin(request), "Pinned Posts", posts
         )
         return web.Response(text=str(page), content_type="text/html")
@@ -477,19 +477,19 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
 
         now = datetime.now()
 
-        metrics = await server.metrics.feed_metrics_for_time_range(
+        metrics = await foxfeed.metrics.feed_metrics_for_time_range(
             db,
             feed_name,
-            now - server.metrics.METRICS_MAXIMUM_LOOKBACK,
+            now - foxfeed.metrics.METRICS_MAXIMUM_LOOKBACK,
             now,
             timedelta(hours=1),
         )
 
-        page = server.interface.feed_metrics_page(metrics)
+        page = foxfeed.interface.feed_metrics_page(metrics)
         return web.Response(text=str(page), content_type="text/html")
 
     async def quickflag_candidates_from_feed(
-        feed_name: server.algos.FeedName,
+        feed_name: foxfeed.algos.FeedName,
     ) -> Set[str]:
         max_version = await db.postscore.find_first_or_raise(
             where={"feed_name": feed_name}, order={"version": "desc"}
@@ -537,7 +537,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
                 }
             },
         )
-        page = server.interface.quickflag_page(await is_admin(request), users)
+        page = foxfeed.interface.quickflag_page(await is_admin(request), users)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/experiment/{name}")
@@ -574,7 +574,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
                 for i in sample
                 if i.post is not None
             ]
-        page = server.interface.media_experiment_page(experiment, media)
+        page = foxfeed.interface.media_experiment_page(experiment, media)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/admin/login")
@@ -582,9 +582,9 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         request: web.Request,
     ) -> web.Response:
         if not admin_panel or not config.ADMIN_PANEL_PASSWORD:
-            page = server.interface.admin_login_page_disabled
+            page = foxfeed.interface.admin_login_page_disabled
         else:
-            page = server.interface.admin_login_page
+            page = foxfeed.interface.admin_login_page
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/login")
@@ -609,7 +609,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
     async def done_login(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
-        page = server.interface.admin_done_login_page()
+        page = foxfeed.interface.admin_done_login_page()
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/mark")

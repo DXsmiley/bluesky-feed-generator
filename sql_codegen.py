@@ -1,7 +1,7 @@
 import re
 from typing import Iterator
 
-OUTPUT = './server/gen/db.py'
+OUTPUT = './foxfeed/gen/db.py'
 
 INPUT = [
     ('score_posts', 'score_posts.sql', 'ScorePostsOutputModel')
@@ -10,7 +10,7 @@ INPUT = [
 HEADDER = '''
 # This is kinda weird and really bad sorry
 
-import server.database
+import foxfeed.database
 from typing import List, Union
 
 Arg = Union[str, int, float, bool]
@@ -35,17 +35,17 @@ def codegen_for_query(function_name: str, output_model: str, sql: str) -> Iterat
     yield ''
     # Function signature
     yield f'async def {function_name}('
-    yield '    db: server.database.Database,'
+    yield '    db: foxfeed.database.Database,'
     yield '    *,'
     for i in sorted(set(arguments)):
         yield f'    {i}: Arg,'
-    yield f') -> List[server.database.{output_model}]:'
+    yield f') -> List[foxfeed.database.{output_model}]:'
     # Function body
     yield f'    query = {function_name}_sql_query.format('
     for i in sorted(set(arguments)):
         yield f'        {i} = escape({i}),'
     yield '    )'
-    yield f'    result = await db.query_raw(query, model=server.database.{output_model})'
+    yield f'    result = await db.query_raw(query, model=foxfeed.database.{output_model})'
     yield '    return result'
     yield ''
 

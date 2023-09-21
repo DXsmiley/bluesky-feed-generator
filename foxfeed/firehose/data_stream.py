@@ -9,7 +9,7 @@ from datetime import datetime
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
-from server.firehose.client import AsyncFirehoseSubscribeReposClient
+from foxfeed.firehose.client import AsyncFirehoseSubscribeReposClient
 from atproto.firehose import parse_subscribe_repos_message
 from atproto.xrpc_client.models.utils import get_or_create, is_record_type
 from atproto.xrpc_client.models.common import XrpcError
@@ -17,12 +17,12 @@ from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
 
 from termcolor import cprint
 
-from server.util import parse_datetime, wait_interruptable
+from foxfeed.util import parse_datetime, wait_interruptable
 
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 
-from server.logger import logger
-from server.database import Database
+from foxfeed.logger import logger
+from foxfeed.database import Database
 
 if t.TYPE_CHECKING:
     from atproto.firehose.models import MessageFrame

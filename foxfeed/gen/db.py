@@ -1,7 +1,7 @@
 
 # This is kinda weird and really bad sorry
 
-import server.database
+import foxfeed.database
 from typing import List, Union
 
 Arg = Union[str, int, float, bool]
@@ -107,7 +107,7 @@ SELECT * FROM table3 ORDER BY score DESC LIMIT {lmt};
 """
 
 async def score_posts(
-    db: server.database.Database,
+    db: foxfeed.database.Database,
     *,
     alpha: Arg,
     beta: Arg,
@@ -116,7 +116,7 @@ async def score_posts(
     include_guy_posts: Arg,
     include_guy_votes: Arg,
     lmt: Arg,
-) -> List[server.database.ScorePostsOutputModel]:
+) -> List[foxfeed.database.ScorePostsOutputModel]:
     query = score_posts_sql_query.format(
         alpha = escape(alpha),
         beta = escape(beta),
@@ -126,5 +126,5 @@ async def score_posts(
         include_guy_votes = escape(include_guy_votes),
         lmt = escape(lmt),
     )
-    result = await db.query_raw(query, model=server.database.ScorePostsOutputModel)
+    result = await db.query_raw(query, model=foxfeed.database.ScorePostsOutputModel)
     return result

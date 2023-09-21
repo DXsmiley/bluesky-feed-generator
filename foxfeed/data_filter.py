@@ -1,17 +1,17 @@
 from atproto.xrpc_client import models
 from atproto.xrpc_client.models.utils import is_record_type
 
-from server.logger import logger
-from server.firehose.data_stream import OpsByType
+from foxfeed.logger import logger
+from foxfeed.firehose.data_stream import OpsByType
 
 from typing import List, Callable, Coroutine, Any
 from prisma.types import PostCreateWithoutRelationsInput, LikeCreateWithoutRelationsInput
 import prisma.errors
 
-from server.database import Database, care_about_storing_user_data_preemptively
-from server.load_known_furries import parse_datetime
+from foxfeed.database import Database, care_about_storing_user_data_preemptively
+from foxfeed.load_known_furries import parse_datetime
 
-from server.util import mentions_fursuit, parse_datetime
+from foxfeed.util import mentions_fursuit, parse_datetime
 
 from datetime import datetime, timedelta
 

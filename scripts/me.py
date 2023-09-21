@@ -1,6 +1,6 @@
 import asyncio
-from server.database import make_database_connection
-from server.bsky import make_bsky_client
+from foxfeed.database import make_database_connection
+from foxfeed.bsky import make_bsky_client
 
 
 async def main():

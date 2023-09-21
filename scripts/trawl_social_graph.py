@@ -1,7 +1,7 @@
 import asyncio
 from asyncio import Queue
 from atproto import AsyncClient
-from server.load_known_furries import (
+from foxfeed.load_known_furries import (
     get_followers,
     get_follows,
     store_to_db,
@@ -11,8 +11,8 @@ from server.load_known_furries import (
     PASSWORD,
     ProfileView,
 )
-from server.gender import guess_gender_reductive
-from server.database import make_database_connection
+from foxfeed.gender import guess_gender_reductive
+from foxfeed.database import make_database_connection
 
 from typing import Set, List, Union
 

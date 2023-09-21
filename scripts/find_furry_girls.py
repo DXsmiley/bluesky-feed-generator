@@ -1,13 +1,13 @@
 import asyncio
 from atproto import AsyncClient
-import server.database
-from server.database import make_database_connection, Database
-from server.bsky import get_actor_likes, get_likes
-from server.store import store_user, store_like
+import foxfeed.database
+from foxfeed.database import make_database_connection, Database
+from foxfeed.bsky import get_actor_likes, get_likes
+from foxfeed.store import store_user, store_like
 # from server.gender import guess_gender_reductive
 from typing import Set, Tuple, Literal
-from server import gender
-from server.bsky import AsyncClient, make_bsky_client
+from foxfeed import gender
+from foxfeed.bsky import AsyncClient, make_bsky_client
 
 
 def guess_gender_reductive(s: str) -> Literal['girl', 'not-girl']:
@@ -20,7 +20,7 @@ async def main() -> None:
     client = await make_bsky_client(db)
     seen: Set[str] = set()
     async for post in get_actor_likes(client, client.me.did):
-        if await db.actor.find_first(where={'did': post.post.author.did, 'AND': [server.database.user_is_in_fox_feed]}) is not None:
+        if await db.actor.find_first(where={'did': post.post.author.did, 'AND': [foxfeed.database.user_is_in_fox_feed]}) is not None:
             async for like in get_likes(client, post.post.uri):
                 if like.actor.did not in seen:
                     seen.add(like.actor.did)

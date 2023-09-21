@@ -1,9 +1,9 @@
 import asyncio
-from server.firehose import data_stream
-import server.logger
-from server import config
-from server.database import make_database_connection
-from server.data_filter import operations_callback
+from foxfeed.firehose import data_stream
+import foxfeed.logger
+from foxfeed import config
+from foxfeed.database import make_database_connection
+from foxfeed.data_filter import operations_callback
 import signal
 from typing import Any
 

@@ -1,6 +1,6 @@
 import asyncio
-from server.database import make_database_connection
-from server.gender import guess_gender_reductive
+from foxfeed.database import make_database_connection
+from foxfeed.gender import guess_gender_reductive
 from collections import defaultdict
 from typing import Dict
 

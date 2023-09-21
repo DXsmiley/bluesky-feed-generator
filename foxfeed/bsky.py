@@ -1,8 +1,8 @@
 import asyncio
 import atproto
 import atproto.exceptions
-from server.config import HANDLE, PASSWORD
-from server.database import Database
+from foxfeed.config import HANDLE, PASSWORD
+from foxfeed.database import Database
 from typing import (
     Callable,
     Coroutine,
@@ -14,7 +14,7 @@ from typing import (
     AsyncIterable,
 )
 import time
-from server.util import sleep_on
+from foxfeed.util import sleep_on
 
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import (

@@ -8,7 +8,7 @@ from datetime import datetime
 from atproto.xrpc_client.models import ids
 from atproto import Client, models
 from typing import Optional
-from server.algos import algo_details, environment_variable_name_for
+from foxfeed.algos import algo_details, environment_variable_name_for
 
 dotenv.load_dotenv()
 

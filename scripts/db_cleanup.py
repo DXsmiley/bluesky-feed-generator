@@ -1,8 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta
-from server.database import make_database_connection
-from server.algos.score_task import LOOKBACK_HARD_LIMIT
-from server.metrics import METRICS_MAXIMUM_LOOKBACK
+from foxfeed.database import make_database_connection
+from foxfeed.algos.score_task import LOOKBACK_HARD_LIMIT
+from foxfeed.metrics import METRICS_MAXIMUM_LOOKBACK
 
 async def main():
     now = datetime.utcnow()

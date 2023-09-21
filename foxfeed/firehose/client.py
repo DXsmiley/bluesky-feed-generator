@@ -9,7 +9,7 @@ from atproto.xrpc_client.models.utils import get_model_as_dict, get_or_create
 from atproto.xrpc_client.models import get_model_as_dict
 from atproto.xrpc_client.models.common import XrpcError
 import traceback
-from server.util import sleep_on
+from foxfeed.util import sleep_on
 from websockets.client import connect as aconnect
 
 

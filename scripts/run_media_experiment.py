@@ -1,5 +1,5 @@
 import asyncio
-from server.database import make_database_connection, Post
+from foxfeed.database import make_database_connection, Post
 from typing import List, Tuple
 from aiohttp import ClientSession
 from PIL import Image

@@ -1,5 +1,5 @@
 import asyncio
-from server.database import make_database_connection
+from foxfeed.database import make_database_connection
 import gzip
 import json
 

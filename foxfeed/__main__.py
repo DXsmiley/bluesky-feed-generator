@@ -1,9 +1,9 @@
-import server.monkeypatch
+import foxfeed.monkeypatch
 
 import sys
-from server.app import create_and_run_webapp, Services
+from foxfeed.app import create_and_run_webapp, Services
 from typing import List
-from server import config
+from foxfeed import config
 
 ARGS = {
     "--no-scraper": "Disable the website scraper",

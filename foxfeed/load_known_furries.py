@@ -1,11 +1,11 @@
 import asyncio
 from datetime import datetime
 
-import server.monkeypatch
+import foxfeed.monkeypatch
 
-from server.database import Database, make_database_connection
+from foxfeed.database import Database, make_database_connection
 
-from server.bsky import (
+from foxfeed.bsky import (
     AsyncClient,
     make_bsky_client,
     get_followers,
@@ -17,7 +17,7 @@ from server.bsky import (
     get_list,
 )
 
-import server.bsky
+import foxfeed.bsky
 
 from typing import (
     AsyncIterable,
@@ -47,11 +47,11 @@ from termcolor import cprint
 from dataclasses import dataclass
 
 
-import server.algos.fox_feed
-import server.algos.score_task
-from server.util import parse_datetime, sleep_on, join_unless
+import foxfeed.algos.fox_feed
+import foxfeed.algos.score_task
+from foxfeed.util import parse_datetime, sleep_on, join_unless
 
-from server.store import store_like, store_post, store_user
+from foxfeed.store import store_like, store_post, store_user
 
 
 def simplify_profile_view(p: ProfileViewDetailed) -> ProfileView:
@@ -97,7 +97,7 @@ async def get_posts(
     after: Optional[datetime] = None,
     include_reposts: bool = False,
 ) -> AsyncIterable[FeedViewPost]:
-    async for i in server.bsky.get_posts(client, did):
+    async for i in foxfeed.bsky.get_posts(client, did):
         is_repost, indexed_at = (
             (True, i.reason.indexed_at)
             if isinstance(i.reason, ReasonRepost)
@@ -355,7 +355,7 @@ async def load(
     load_posts: bool = True,
     load_likes: bool = True,
 ) -> None:
-    only_posts_after = datetime.now() - server.algos.score_task.LOOKBACK_HARD_LIMIT
+    only_posts_after = datetime.now() - foxfeed.algos.score_task.LOOKBACK_HARD_LIMIT
 
     cprint("Getting muted accounts", "blue", force_color=True)
     mutes = {

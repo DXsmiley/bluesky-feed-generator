@@ -1,5 +1,5 @@
 import math
-from server.database import Database
+from foxfeed.database import Database
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Literal, Iterator, List, Optional

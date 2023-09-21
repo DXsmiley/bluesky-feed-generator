@@ -4,29 +4,29 @@ from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
 
-import server.database
-from server.database import Database, make_database_connection, ScorePostsOutputModel
+import foxfeed.database
+from foxfeed.database import Database, make_database_connection, ScorePostsOutputModel
 from prisma.models import Post, Actor
 import prisma.errors
 import prisma.types
-import server.gen.db
-from server.bsky import get_specific_posts
+import foxfeed.gen.db
+from foxfeed.bsky import get_specific_posts
 
 from typing import List, Dict, Tuple, Callable, Iterator, Literal, Set, Optional
 from .feed_names import FeedName
 
-import server.gender
+import foxfeed.gender
 
 from termcolor import cprint
 from dataclasses import dataclass
 import gc
-from server.util import sleep_on
+from foxfeed.util import sleep_on
 import sys
 
 
-from server.store import store_post2
+from foxfeed.store import store_post2
 from atproto import AsyncClient
-from server.bsky import make_bsky_client
+from foxfeed.bsky import make_bsky_client
 
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
@@ -220,7 +220,7 @@ ALGORITHMIC_FEEDS = [
 
 async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[str]:
     decay = fp.decay or StandardDecay(alpha=1, beta='1 hour', gamma=1)
-    scored_posts = await server.gen.db.score_posts(
+    scored_posts = await foxfeed.gen.db.score_posts(
         db,
         alpha=decay.alpha,
         beta=decay.beta,

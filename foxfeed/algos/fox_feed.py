@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Optional, List, Callable, Coroutine, Any
 
-import server.database
-from server.database import Database
+import foxfeed.database
+from foxfeed.database import Database
 
 from typing_extensions import TypedDict
 
 from prisma.types import PostWhereInput
-from server.algos.feed_names import FeedName
+from foxfeed.algos.feed_names import FeedName
 
 
 class FeedItem(TypedDict):
@@ -126,7 +126,7 @@ top_feed = algorithmic_feed("top-feed")
 fursuit_feed = chronological_feed(
     {
         "AND": [
-            {"author": {"is": server.database.user_is_in_vix_feed}},
+            {"author": {"is": foxfeed.database.user_is_in_vix_feed}},
             {"media_count": {"gt": 0}},
             {
                 "OR": [
