@@ -279,8 +279,8 @@ def quickflag_page(enable_admin_controls: bool, users: List[Actor]) -> Node:
     )
 
 
-def admin_login_page() -> Node:
-    return wrap_body(
+admin_login_page = (
+    wrap_body(
         h3("Admin Login"),
         Node("form", [], {"method": "post"})(
             div(
@@ -293,6 +293,15 @@ def admin_login_page() -> Node:
             div(Node("button", ["Login"], {"type": "submit"})),
         ),
     )
+)
+
+
+admin_login_page_disabled = (
+    wrap_body(
+        h3("Admin Login"),
+        p("Admin tools are currently disabled"),
+    )
+)
 
 
 def admin_done_login_page() -> Node:

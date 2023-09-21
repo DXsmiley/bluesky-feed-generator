@@ -71,7 +71,9 @@ class Services:
 def create_and_run_webapp(
     *, port: int, db_url: Optional[str], services: Optional[Services] = None
 ) -> None:
-    asyncio.run(_create_and_run_webapp(port, db_url, services or Services(), catch_sigint=True))
+    asyncio.run(
+        _create_and_run_webapp(port, db_url, services or Services(), catch_sigint=True)
+    )
 
 
 async def _create_and_run_webapp(
@@ -79,13 +81,15 @@ async def _create_and_run_webapp(
 ) -> None:
     shutdown_event = asyncio.Event()
     if catch_sigint:
+
         def _sigint_handler(*_: Any) -> None:
             if shutdown_event.is_set():
-                print('Got second shutdown signal, doing hard exit')
+                print("Got second shutdown signal, doing hard exit")
                 sys.exit(0)
             else:
-                print('Got shutdown signal!')
+                print("Got shutdown signal!")
                 shutdown_event.set()
+
         signal.signal(signal.SIGINT, _sigint_handler)
     db = await make_database_connection(db_url, log_queries=services.log_db_queries)
     client = await make_bsky_client(db)
@@ -95,16 +99,18 @@ async def _create_and_run_webapp(
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     await shutdown_event.wait()
-    print('Waiting on shutdown event finished')
+    print("Waiting on shutdown event finished")
     await site.stop()
-    print('Did site.stop')
+    print("Did site.stop")
     await runner.cleanup()
-    print('Did runner.cleanup')
+    print("Did runner.cleanup")
     await runner.shutdown()
-    print('Did runner.shutdown')
+    print("Did runner.shutdown")
 
 
-def create_web_application(shutdown_event: asyncio.Event, db: Database, client: AsyncClient, services: Services) -> web.Application:
+def create_web_application(
+    shutdown_event: asyncio.Event, db: Database, client: AsyncClient, services: Services
+) -> web.Application:
     app = web.Application()
     app.add_routes(create_route_table(db, client, admin_panel=services.admin_panel))
     app.cleanup_ctx.append(background_tasks(shutdown_event, db, client, services))
@@ -146,33 +152,83 @@ def background_tasks(
             scraper = asyncio.create_task(
                 catch(
                     "LOADDB",
-                    server.load_known_furries.rescan_furry_accounts_forever(shutdown_event, db, client),
+                    server.load_known_furries.rescan_furry_accounts_forever(
+                        shutdown_event, db, client
+                    ),
                 )
             )
         if services.scores:
-            scores = asyncio.create_task(catch("SCORES", score_posts_forever(shutdown_event, db, client)))
+            scores = asyncio.create_task(
+                catch("SCORES", score_posts_forever(shutdown_event, db, client))
+            )
         if services.firehose:
             firehose = asyncio.create_task(
                 catch(
                     "FIREHS",
-                    data_stream.run(db, config.SERVICE_DID, operations_callback, shutdown_event),
+                    data_stream.run(
+                        db, config.SERVICE_DID, operations_callback, shutdown_event
+                    ),
                 )
             )
         yield
         print("We're on the other side of the yield in server.app.background_tasks:f")
-        print('I wonder what that means?')
+        print("I wonder what that means?")
         if scraper is not None:
             await scraper
         if scores is not None:
             await scores
         if firehose is not None:
             await firehose
-        print('Finished waiting on the background tasks to finish!')
+        print("Finished waiting on the background tasks to finish!")
 
     return f
 
 
+class Ratelimit:
+    def __init__(self, timespan: timedelta, limit: int):
+        self.timespan = timespan
+        self.timeout = datetime.now()
+        self.limit = limit
+        self.count = 0
+
+    def _check(self) -> bool:
+        now = datetime.now()
+        if now > self.timeout:
+            self.timeout = now + self.timespan
+            self.count = 0
+        self.count += 1
+        return self.count <= self.limit
+
+    def check_raising(self):
+        if not self._check():
+            raise web.HTTPTooManyRequests()
+
+
 def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool = False):
+    auth_ratelimit = Ratelimit(timedelta(seconds=5), limit=10)
+
+    async def is_admin(request: web.Request) -> bool:
+        if not admin_panel:
+            return False
+        token = request.cookies.get("x-foxfeed-admin-login", "")
+        if not token:
+            return False
+        # This is the secret sauce that we don't want to give away, RATELIMIT THIS CHECK
+        auth_ratelimit.check_raising()
+        return token == admin_token
+
+    def require_admin_login(
+        handler: Callable[[web.Request], Coroutine[Any, Any, web.Response]]
+    ) -> Callable[[web.Request], Coroutine[Any, Any, web.Response]]:
+        async def require_admin_login_wrapped(request: web.Request) -> web.Response:
+            if not await is_admin(request):
+                if request.method == "GET":
+                    raise web.HTTPSeeOther("/admin/login")
+                raise web.HTTPForbidden(text="admin tools currently disabled")
+            return await handler(request)
+
+        return require_admin_login_wrapped
+
     admin_token = secrets.token_urlsafe()
 
     routes = web.RouteTableDef()
@@ -184,7 +240,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         request: web.Request,
     ) -> web.StreamResponse:
         return web.FileResponse("./static/index.html")
-    
+
     @routes.get("/favicon.ico")
     async def favicon(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
@@ -222,18 +278,29 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
                     ),
                 ),
                 ("posts", await db.post.count()),
-                ("posts-recent", await db.post.count(where={'indexed_at': {'gt': now - timedelta(hours=96)}})),
+                (
+                    "posts-recent",
+                    await db.post.count(
+                        where={"indexed_at": {"gt": now - timedelta(hours=96)}}
+                    ),
+                ),
                 ("likes", await db.like.count()),
-                ("likes-recent", await db.like.count(where={'created_at': {'gt': now - timedelta(hours=96)}})),
+                (
+                    "likes-recent",
+                    await db.like.count(
+                        where={"created_at": {"gt": now - timedelta(hours=96)}}
+                    ),
+                ),
                 ("postscores", await db.postscore.count()),
                 ("servedblock", await db.servedblock.count()),
                 ("servedpost", await db.servedpost.count()),
             ],
-            metrics
+            metrics,
         )
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/user/{handle}")
+    @require_admin_login
     async def user_deets(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
@@ -246,7 +313,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         posts = await db.post.find_many(
             where={"authorId": user.did}, order={"indexed_at": "desc"}
         )
-        page = server.interface.user_page(is_admin(request), user, posts)
+        page = server.interface.user_page(True, user, posts)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/.well-known/did.json")
@@ -289,8 +356,8 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         algo = algos.get(feed)
         if not algo:
             return web.HTTPBadRequest(text="Unsupported algorithm")
-        
-        feed_record_name = feed.split('/')[-1]
+
+        feed_record_name = feed.split("/")[-1]
 
         cprint(f"Getting feed {feed_record_name}", "magenta", force_color=True)
 
@@ -310,7 +377,12 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         await aiojobs.aiohttp.spawn(
             request,
             store_served_posts(
-                request.headers.get("Authorization"), s, feed_record_name, cursor, limit, body
+                request.headers.get("Authorization"),
+                s,
+                feed_record_name,
+                cursor,
+                limit,
+                body,
             ),
         )
 
@@ -375,7 +447,9 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             for i in posts
         ]
 
-        page = server.interface.feed_page(is_admin(request), feed_name, full_posts)
+        page = server.interface.feed_page(
+            await is_admin(request), feed_name, full_posts
+        )
 
         return web.Response(text=str(page), content_type="text/html")
 
@@ -391,7 +465,11 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         now = datetime.now()
 
         metrics = await server.metrics.feed_metrics_for_time_range(
-            db, feed_name, now - server.metrics.METRICS_MAXIMUM_LOOKBACK, now, timedelta(hours=1)
+            db,
+            feed_name,
+            now - server.metrics.METRICS_MAXIMUM_LOOKBACK,
+            now,
+            timedelta(hours=1),
         )
 
         page = server.interface.feed_metrics_page(metrics)
@@ -412,6 +490,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         return set(i.authorId for i in posts)
 
     @routes.get("/quickflag")
+    @require_admin_login
     async def quickflag(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
@@ -445,38 +524,39 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
                 }
             },
         )
-        page = server.interface.quickflag_page(is_admin(request), users)
+        page = server.interface.quickflag_page(await is_admin(request), users)
         return web.Response(text=str(page), content_type="text/html")
-    
-    @routes.get('/experiment/{name}')
+
+    @routes.get("/experiment/{name}")
+    @require_admin_login
     async def experiment_results(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ):
         experiment = request.match_info.get("name", "")
         media: List[Tuple[float, str, Optional[str]]] = []
         highest_version = await db.experimentresult.find_first(
-            order={'experiment_version': 'desc'},
+            order={"experiment_version": "desc"},
             where={
-                'experiment_name': experiment,
-                'did_error': False,
-            }
+                "experiment_name": experiment,
+                "did_error": False,
+            },
         )
         if highest_version is not None:
             sample = await db.experimentresult.find_many(
                 take=50,
                 where={
-                    'experiment_version': highest_version.experiment_version,
-                    'experiment_name': experiment,
-                    'did_error': False,
+                    "experiment_version": highest_version.experiment_version,
+                    "experiment_name": experiment,
+                    "did_error": False,
                 },
-                include={'post': True}
+                include={"post": True},
             )
             sample.sort(key=lambda x: x.result_score, reverse=True)
             media = [
                 (
                     i.result_score,
                     i.result_comment,
-                    [i.post.m0, i.post.m1, i.post.m2, i.post.m3][i.media_index]
+                    [i.post.m0, i.post.m1, i.post.m2, i.post.m3][i.media_index],
                 )
                 for i in sample
                 if i.post is not None
@@ -488,7 +568,10 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
     async def login_get(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
-        page = server.interface.admin_login_page()
+        if not admin_panel or not config.ADMIN_PANEL_PASSWORD:
+            page = server.interface.admin_login_page_disabled
+        else:
+            page = server.interface.admin_login_page
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/login")
@@ -500,6 +583,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         data = await request.post()
         password = data.get("password")
         assert isinstance(password, str)
+        auth_ratelimit.check_raising()
         if password == config.ADMIN_PANEL_PASSWORD:
             response = web.HTTPSeeOther("/admin/done-login")
             response.set_cookie("x-foxfeed-admin-login", admin_token)
@@ -507,29 +591,19 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         else:
             return web.HTTPForbidden(text="Incorrect password")
 
-    def is_admin(request: web.Request) -> bool:
-        r = admin_panel and (
-            request.cookies.get("x-foxfeed-admin-login", "") == admin_token
-        )
-        return r
-
-    def require_admin_login(request: web.Request):
-        if not is_admin(request):
-            raise web.HTTPForbidden(text="admin tools currently disabled")
-
     @routes.get("/admin/done-login")
+    @require_admin_login
     async def done_login(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
-        require_admin_login(request)
         page = server.interface.admin_done_login_page()
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.post("/admin/mark")
+    @require_admin_login
     async def mark_user(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
-        require_admin_login(request)
         blob = await request.json()
         did = blob["did"]
         assert isinstance(did, str)
@@ -549,10 +623,10 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         )
 
     @routes.post("/admin/scan_likes")
+    @require_admin_login
     async def scan_likes(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
-        require_admin_login(request)
         blob = await request.json()
         uri = blob["uri"]
         assert isinstance(uri, str)
