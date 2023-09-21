@@ -7,7 +7,7 @@ function toast(string) {
     window.setTimeout((() => box.removeChild(toast)), 10000);
 }
 
-async function togglestrip(off, on) {
+function togglestrip(off, on) {
     for (let i of off) {
         document.getElementById(i).classList.remove('selected')
     }
@@ -32,14 +32,19 @@ async function post(url, payload) {
 
 async function set_include_in_fox_feed(handle, did, include) {
     togglestrip([`${handle}-ff-false`, `${handle}-ff-null`, `${handle}-ff-true`], `${handle}-ff-${include}`);
-    post('/admin/mark', {did: did, include_in_fox_feed: include});
+    await post('/admin/mark', {did: did, include_in_fox_feed: include});
 }
 
 async function set_include_in_vix_feed(handle, did, include) {
     togglestrip([`${handle}-vf-false`, `${handle}-vf-null`, `${handle}-vf-true`], `${handle}-vf-${include}`);
-    post('/admin/mark', {did: did, include_in_vix_feed: include});
+    await post('/admin/mark', {did: did, include_in_vix_feed: include});
 }
 
 async function scan_likes(uri) {
-    post('/admin/scan_likes', {uri: uri});
+    await post('/admin/scan_likes', {uri: uri});
+}
+
+async function set_post_pinned(uri, pin) {
+    togglestrip([`${uri}-pinned-${!pin}`], `${uri}-pinned-${pin}`);
+    await post('/admin/pin_post', {uri: uri, pin: pin});
 }

@@ -231,7 +231,18 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[s
         lmt=1000,
     )
 
-    will_store = fp.remix_func(scored_posts)[:500]
+    ordered_posts = [i.uri for i in fp.remix_func(scored_posts)[:500]]
+
+    pinned_posts = await db.post.find_many(
+        order={'indexed_at': 'desc'},
+        where={'is_pinned': True},
+    )
+
+    will_store = (
+        ordered_posts[:1]
+        + [i.uri for i in pinned_posts]
+        + ordered_posts[1:]
+    )
 
     cprint(
         f"Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts",
@@ -241,14 +252,14 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[s
 
     blob: List[prisma.types.PostScoreCreateWithoutRelationsInput] = [
         {
-            "uri": post.uri,
+            "uri": post_uri,
             "version": rd.run_version,
             # This is actually "rank"
             "score": len(will_store) - i,
             "created_at": rd.run_starttime,
             "feed_name": fp.feed_name,
         }
-        for i, post in enumerate(will_store)
+        for i, post_uri in enumerate(will_store)
     ]
 
     try:
@@ -256,7 +267,7 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[s
     except prisma.errors.UniqueViolationError:
         cprint(f"Unique violation when creating PostScores on {fp.feed_name}::{rd.run_version}", 'red', force_color=True)
 
-    return {i.uri for i in will_store}
+    return set(will_store)
 
 
 async def score_posts(shutdown_event: asyncio.Event, db: Database, client: AsyncClient, do_refresh_posts: bool = False) -> None:

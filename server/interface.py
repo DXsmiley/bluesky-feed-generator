@@ -13,15 +13,18 @@ _navbar = [
     a(href="/")("home"),
     a(href="/stats")("stats"),
     a(href="/feed")("feeds"),
+    a(href="/pinned_posts")("pins"),
+    a(href="/user/puppyfox.bsky.social")("me"),
     a(href="/quickflag")("quickflag"),
 ]
 
 navbar = div(*interleave(" | ", _navbar))
 
 
-def wrap_body(*n: Union[Node, None]) -> Node:
+def wrap_body(title: str, *n: Union[Node, None]) -> Node:
     return html.html(
         head(
+            Node("title", [title], {}),
             Node("link", [], {"rel": "stylesheet", "href": "/static/admin-style.css"}),
             Node("script", [], {"src": "/static/admin-script.js"}),
         ),
@@ -35,93 +38,96 @@ def wrap_body(*n: Union[Node, None]) -> Node:
 def toggle_foxfeed(
     enabled: bool, handle: str, did: str, current_value: Optional[bool]
 ) -> Node:
-    return Node(
-        "span",
-        [
+    return span(
+        *(
             html.button(
-                "Exclude",
-                class_="togglestrip" + (" selected" if current_value is False else ""),
-                id_=f"{handle}-ff-false",
+                name,
+                class_="togglestrip" + (" selected" if current_value is pyvalue else ""),
+                id_=f"{handle}-ff-{jsvalue}",
                 disabled=not enabled,
                 onclick=UnescapedString(
-                    f"set_include_in_fox_feed('{handle}', '{did}', false)"
+                    f"set_include_in_fox_feed('{handle}', '{did}', {jsvalue})"
                 ),
-            ),
-            html.button(
-                "Shrug",
-                class_="togglestrip" + (" selected" if current_value is None else ""),
-                id_=f"{handle}-ff-null",
-                disabled=not enabled,
-                onclick=UnescapedString(
-                    f"set_include_in_fox_feed('{handle}', '{did}', null)"
-                ),
-            ),
-            html.button(
-                "Include",
-                class_="togglestrip" + (" selected" if current_value is True else ""),
-                id_=f"{handle}-ff-true",
-                disabled=not enabled,
-                onclick=UnescapedString(
-                    f"set_include_in_fox_feed('{handle}', '{did}', true)"
-                ),
-            ),
-        ],
-        {},
+            )
+            for (name, pyvalue, jsvalue) in [
+                ("Exclude", False, 'false'),
+                ("Shrug", None, 'null'),
+                ("Include", True, 'true'),
+            ]
+        )
     )
 
 
 def toggle_vixfeed(
     enabled: bool, handle: str, did: str, current_value: Optional[bool]
 ) -> Node:
-    return Node(
-        "span",
-        [
+    return span(
+        *(
             html.button(
-                "Exclude",
-                class_="togglestrip" + (" selected" if current_value is False else ""),
-                id_=f"{handle}-vf-false",
+                name,
+                class_="togglestrip" + (" selected" if current_value is pyvalue else ""),
+                id_=f"{handle}-vf-{jsvalue}",
                 disabled=not enabled,
                 onclick=UnescapedString(
-                    f"set_include_in_vix_feed('{handle}', '{did}', false)"
+                    f"set_include_in_vix_feed('{handle}', '{did}', {jsvalue})"
                 ),
-            ),
+            )
+            for (name, pyvalue, jsvalue) in [
+                ("Exclude", False, 'false'),
+                ("Shrug", None, 'null'),
+                ("Include", True, 'true'),
+            ]
+        )
+    )
+
+
+def toggle_post_pin(
+    uri: str, current_value: bool
+) -> Node:
+    return span(
+        *(
             html.button(
-                "Shrug",
-                class_="togglestrip" + (" selected" if current_value is None else ""),
-                id_=f"{handle}-vf-null",
-                disabled=not enabled,
+                name,
+                class_="togglestrip" + (" selected" if current_value is pyvalue else ""),
+                id_=f"{uri}-pinned-{jsvalue}",
+                # disabled=not enabled,
                 onclick=UnescapedString(
-                    f"set_include_in_vix_feed('{handle}', '{did}', null)"
+                    f"set_post_pinned('{uri}', {jsvalue})"
                 ),
-            ),
-            html.button(
-                "Include",
-                class_="togglestrip" + (" selected" if current_value is True else ""),
-                id_=f"{handle}-vf-true",
-                disabled=not enabled,
-                onclick=UnescapedString(
-                    f"set_include_in_vix_feed('{handle}', '{did}', true)"
-                ),
-            ),
-        ],
-        {},
+            )
+            for (name, pyvalue, jsvalue) in [
+                ("-", False, 'false'),
+                ("Pin", True, 'true'),
+            ]
+        )
     )
 
 
 def post(enable_admin_controls: bool, post_: Post) -> Node:
     text = re.sub(r"\n+", " • ", post_.text, re.MULTILINE)
-    mainline = p(
+    profile_image = (
         img(src=post_.author.avatar, width="30px", height="30px", class_="profile")
-        if post_.author and post_.author.avatar
-        else None,
+        if post_.author and post_.author.avatar else None
+    )
+    scan_button = (
         html.button("scan", onclick=UnescapedString(f"scan_likes('{post_.uri}')"))
-        if enable_admin_controls
-        else None,
-        " " if enable_admin_controls else None,
-        "?"
-        if not post_.author
-        else a(post_.author.handle, href="/user/" + post_.author.handle),
-        " - [" + " ".join(post_.labels) + '] - ',
+        if enable_admin_controls else None
+    )
+    toggle_pin_buttons = (
+        toggle_post_pin(post_.uri, post_.is_pinned) if enable_admin_controls
+        else '📌' if post_.is_pinned
+        else None
+    )
+    author_name = (
+        a(post_.author.handle, href="/user/" + post_.author.handle)
+        if post_.author else None
+    )
+    mainline = p(
+        profile_image,
+        scan_button,
+        toggle_pin_buttons,
+        author_name,
+        " [" + " ".join(post_.labels) + "] ",
         text,
     )
     images = div(
@@ -136,15 +142,26 @@ def post(enable_admin_controls: bool, post_: Post) -> Node:
 
 def feeds_page(names: List[str]) -> Node:
     ls = [p(a(href=f"/feed/{i}")(i)) for i in names]
-    return wrap_body(h3("feeds"), *ls)
+    return wrap_body("Fox Feed - Feeds", h3("Feeds"), *ls)
 
 
 def feed_page(
     enable_admin_controls: bool, feed_name: str, full_posts: List[Post]
 ) -> Node:
     return wrap_body(
+        f"Fox Feed - Feeds - {feed_name}",
         h3(feed_name),
         a(href=f"/feed/{feed_name}/stats")(p("stats")),
+        *[post(enable_admin_controls, i) for i in full_posts],
+    )
+
+
+def post_list_page(
+    enable_admin_controls: bool, name: str, full_posts: List[Post]
+) -> Node:
+    return wrap_body(
+        "Fox Feed - {name}",
+        h3(name),
         *[post(enable_admin_controls, i) for i in full_posts],
     )
 
@@ -185,6 +202,7 @@ def feed_metric_row(
 
 def feed_metrics_page(metrics: FeedMetrics) -> Node:
     return wrap_body(
+        "Fox Feed - Metrics",
         h3(metrics.feed_name),
         feed_metric_row("attributed likes", metrics, lambda x: x.attributed_likes),
         feed_metric_row("requests", metrics, lambda x: x.num_requests),
@@ -196,6 +214,7 @@ def feed_metrics_page(metrics: FeedMetrics) -> Node:
 def stats_page(stats: List[Tuple[str, int]], metrics: FeedMetrics) -> Node:
     ls = [p(f"{n} {s}") for n, s in stats]
     return wrap_body(
+        "Fox Feed - Stats",
         h3("stats"),
         *ls,
         h3("accumulated feed metrics"),
@@ -209,17 +228,10 @@ def stats_page(stats: List[Tuple[str, int]], metrics: FeedMetrics) -> Node:
 def user_main(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> Node:
     hline = [
         a("☁️", href="https://bsky.app/profile/" + user.handle, target="_blank"),
-        "🚩" if user.flagged_for_manual_review else None,
+        "🚩" if user.flagged_for_manual_review and enable_admin_controls else None,
         f"{user.displayName} ({user.handle})" if user.displayName else user.handle,
     ]
-    return div(
-        h3(*interleave(" • ", [i for i in hline if i is not None])),
-        (
-            img(src=user.avatar, width="150px", height="150px", class_="profile")
-            if user.avatar
-            else None
-        ),
-        p(user.description),
+    admin_controls = [
         p(
             span(class_="marker" if not user.autolabel_fem_vibes else "marker pink"),
             span(class_="marker" if not user.autolabel_nb_vibes else "marker yellow"),
@@ -244,18 +256,32 @@ def user_main(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> No
                 user.did,
                 user.manual_include_in_vix_feed,
             ),
+        )
+    ]
+    return div(
+        h3(*interleave(" • ", [i for i in hline if i is not None])),
+        (
+            img(src=user.avatar, width="150px", height="150px", class_="profile")
+            if user.avatar
+            else None
         ),
+        p(user.description),
+        *(admin_controls if enable_admin_controls else []),
         h3(f"{len(posts)} posts") if posts else None,
         *[post(enable_admin_controls, i) for i in posts],
     )
 
 
 def user_page(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> Node:
-    return wrap_body(user_main(enable_admin_controls, user, posts))
+    return wrap_body(
+        f"Fox Feed - User - {user.handle}",
+        user_main(enable_admin_controls, user, posts)
+    )
 
 
 def media_experiment_page(name: str, media: List[Tuple[float, str, Optional[str]]]):
     return wrap_body(
+        f"Fox Feed - Experiment Results - {name}",
         h3("Experiment results for ", name),
         div(
             *[
@@ -272,6 +298,7 @@ def media_experiment_page(name: str, media: List[Tuple[float, str, Optional[str]
 
 def quickflag_page(enable_admin_controls: bool, users: List[Actor]) -> Node:
     return wrap_body(
+        "Fox Feed - Quickflag",
         h3("Quickflag"),
         *[user_main(enable_admin_controls, i, i.posts or []) for i in users],
         h3("(end)"),
@@ -281,6 +308,7 @@ def quickflag_page(enable_admin_controls: bool, users: List[Actor]) -> Node:
 
 admin_login_page = (
     wrap_body(
+        "Fox Feed - Admin Login",
         h3("Admin Login"),
         Node("form", [], {"method": "post"})(
             div(
@@ -298,6 +326,7 @@ admin_login_page = (
 
 admin_login_page_disabled = (
     wrap_body(
+        "Fox Feed - Admin Login",
         h3("Admin Login"),
         p("Admin tools are currently disabled"),
     )
@@ -305,4 +334,8 @@ admin_login_page_disabled = (
 
 
 def admin_done_login_page() -> Node:
-    return wrap_body(h3("Logged in"), p(":)"))
+    return wrap_body(
+        "Fox Feed - Admin Login",
+        h3("Logged in"),
+        p(":)")
+    )

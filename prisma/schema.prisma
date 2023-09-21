@@ -63,6 +63,7 @@ model Post {
   likes Like[]
   labels String[]
   last_rescan DateTime?
+  is_pinned Boolean @default(false)
   // audit_log AuditLog[]
   // Media URLs
   m0 String?
@@ -78,6 +79,7 @@ model Post {
   @@index([uri])
   @@index([indexed_at])
   @@index([authorId, indexed_at])
+  @@index([is_pinned, indexed_at])
 }
 
 model Like {

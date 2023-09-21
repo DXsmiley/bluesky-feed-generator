@@ -47,6 +47,8 @@ WITH "LikeCount" AS (
     INNER JOIN "Actor" as author on post."authorId" = author.did
     INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
     WHERE post.indexed_at > NOW() - interval '96 hours'
+        -- Pinned posts get mixed into the feed in a different way, so exclude them from scoring
+        AND NOT post.is_pinned
         AND NOT author.is_muted
         AND author.manual_include_in_fox_feed IS NOT FALSE
 ), table2 AS (

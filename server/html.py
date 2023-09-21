@@ -52,6 +52,7 @@ class Node:
 html = Node("html", [], {})
 body = Node("body", [], {})
 head = Node("head", [], {})
+
 div = Node("div", [], {})
 img = Node("img", [], {})
 p = Node("p", [], {})

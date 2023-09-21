@@ -300,7 +300,6 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/user/{handle}")
-    @require_admin_login
     async def user_deets(  # pyright: ignore[reportUnusedFunction]
         request: web.Request,
     ) -> web.Response:
@@ -313,7 +312,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         posts = await db.post.find_many(
             where={"authorId": user.did}, order={"indexed_at": "desc"}
         )
-        page = server.interface.user_page(True, user, posts)
+        page = server.interface.user_page(await is_admin(request), user, posts)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/.well-known/did.json")
@@ -451,6 +450,20 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
             await is_admin(request), feed_name, full_posts
         )
 
+        return web.Response(text=str(page), content_type="text/html")
+
+    @routes.get("/pinned_posts")
+    async def pinned_posts(  # pyright: ignore[reportUnusedFunction]
+        request: web.Request,
+    ) -> web.Response:
+        posts = await db.post.find_many(
+            order={"indexed_at": "desc"},
+            where={"is_pinned": True},
+            include={"author": True},
+        )
+        page = server.interface.post_list_page(
+            await is_admin(request), "Pinned Posts", posts
+        )
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/feed/{feed}/stats")
@@ -636,5 +649,18 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         return web.HTTPOk(
             text=f"Found {added_users} new candidate furries and {added_likes} new likes"
         )
+
+    @routes.post("/admin/pin_post")
+    @require_admin_login
+    async def pin_post(  # pyright: ignore[reportUnusedFunction]
+        request: web.Request,
+    ) -> web.Response:
+        blob = await request.json()
+        uri = blob["uri"]
+        pin = blob["pin"]
+        assert isinstance(uri, str)
+        assert isinstance(pin, bool)
+        await db.post.update(where={"uri": uri}, data={"is_pinned": pin})
+        return web.HTTPOk(text=("pinned post" if pin else "unpinned post"))
 
     return routes
