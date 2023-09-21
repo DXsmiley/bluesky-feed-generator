@@ -171,7 +171,7 @@ def background_tasks(
                 )
             )
         yield
-        print("We're on the other side of the yield in server.app.background_tasks:f")
+        print("We're on the other side of the yield in foxfeed.app.background_tasks:f")
         print("I wonder what that means?")
         if scraper is not None:
             await scraper

@@ -25,5 +25,5 @@ prisma generate
 Run the local server:
 
 ```
-python -m server
+python -m foxfeed
 ```

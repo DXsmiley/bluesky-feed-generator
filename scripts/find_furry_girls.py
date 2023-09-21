@@ -4,7 +4,6 @@ import foxfeed.database
 from foxfeed.database import make_database_connection, Database
 from foxfeed.bsky import get_actor_likes, get_likes
 from foxfeed.store import store_user, store_like
-# from server.gender import guess_gender_reductive
 from typing import Set, Tuple, Literal
 from foxfeed import gender
 from foxfeed.bsky import AsyncClient, make_bsky_client
