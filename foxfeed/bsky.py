@@ -58,13 +58,14 @@ async def _login_from_best_source(db: Database) -> AsyncClient:
     )
     try:
         assert session is not None
-        return await _login_from_session_string(session.session_string)
+        client = await _login_from_session_string(session.session_string)
     except:
         client = await _login_from_handle_and_password()
-        await db.blueskyclientsession.create(
-            data={"handle": HANDLE, "session_string": client.export_session_string()}
-        )
-        return client
+    await db.blueskyclientsession.delete_many(where={"handle": HANDLE})
+    await db.blueskyclientsession.create(
+        data={"handle": HANDLE, "session_string": client.export_session_string()}
+    )
+    return client
 
 
 async def make_bsky_client(db: Database) -> AsyncClient:
