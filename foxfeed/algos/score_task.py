@@ -321,27 +321,15 @@ async def score_posts(shutdown_event: asyncio.Event, db: Database, client: Async
             print('Refresh done')
 
 
-async def score_posts_forever(shutdown_event: asyncio.Event, db: Database, client: AsyncClient):
-    while not shutdown_event.is_set():
-        try:
-            await score_posts(shutdown_event, db, client, do_refresh_posts=True)
-            cprint(f"gc-d {gc.collect()} objects", "yellow", force_color=True)
-        except Exception:
-            cprint(f"Error during score_posts", color="red", force_color=True)
-            traceback.print_exc()
-        await sleep_on(shutdown_event, 60)
-
-
-async def main(forever: bool):
-    db = await make_database_connection(timeout=30)
-    client = await make_bsky_client(db)
-    event = asyncio.Event()
+async def score_posts_forever(shutdown_event: asyncio.Event, db: Database, client: AsyncClient, forever: bool):
     if forever:
-        await score_posts_forever(event, db, client)
+        while not shutdown_event.is_set():
+            try:
+                await score_posts(shutdown_event, db, client, do_refresh_posts=True)
+                cprint(f"gc-d {gc.collect()} objects", "yellow", force_color=True)
+            except Exception:
+                cprint(f"Error during score_posts", color="red", force_color=True)
+                traceback.print_exc()
+            await sleep_on(shutdown_event, 60)
     else:
-        await score_posts(event, db, client, do_refresh_posts=True)
-
-
-if __name__ == "__main__":
-    forever = "--forever" in sys.argv
-    asyncio.run(main(forever))
+        await score_posts(shutdown_event, db, client, do_refresh_posts=True)

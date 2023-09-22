@@ -473,12 +473,12 @@ async def scan_once(
     cprint("Done", "blue", force_color=True)
 
 
-async def rescan_furry_accounts_forever(
-    shutdown_event: asyncio.Event, db: Database, client: AsyncClient
+async def rescan_furry_accounts(
+    shutdown_event: asyncio.Event, db: Database, client: AsyncClient, forever: bool
 ):
     # Do this ONCE
     await load(shutdown_event, db, client)
-    while not shutdown_event.is_set():
+    while forever and not shutdown_event.is_set():
         try:
             await scan_once(shutdown_event, db, client)
         except asyncio.CancelledError:
@@ -489,13 +489,3 @@ async def rescan_furry_accounts_forever(
             cprint(f"error while scanning furries", color="red", force_color=True)
             traceback.print_exc()
         await sleep_on(shutdown_event, 60 * 30)
-
-
-async def main():
-    db = await make_database_connection()
-    client = await make_bsky_client(db)
-    await load(asyncio.Event(), db, client, load_posts=True)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
