@@ -253,8 +253,8 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
 
         posts = (await algo(db, None, 50))["feed"]
         full_posts = [
-            await db.post.find_unique_or_raise(
-                {"uri": i["post"]}, include={"author": True}
+            await db.post.find_first(
+                where={"uri": i["post"]}, include={"author": True}
             )
             for i in posts
         ]

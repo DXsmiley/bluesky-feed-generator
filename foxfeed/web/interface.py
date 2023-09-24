@@ -147,13 +147,17 @@ def feeds_page(names: List[str]) -> Node:
 
 
 def feed_page(
-    enable_admin_controls: bool, feed_name: str, full_posts: List[Post]
+    enable_admin_controls: bool, feed_name: str, full_posts: List[Optional[Post]]
 ) -> Node:
     return wrap_body(
         f"Fox Feed - Feeds - {feed_name}",
         h3(feed_name),
         a(href=f"/feed/{feed_name}/stats")(p("stats")),
-        *[post(enable_admin_controls, i) for i in full_posts],
+        *[
+            p('(post was deleted)') if i is None
+            else post(enable_admin_controls, i)
+            for i in full_posts
+        ],
     )
 
 
