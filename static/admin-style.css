@@ -115,3 +115,19 @@ img {
     /* top: 20px;
     right: 20px; */
 }
+
+.timetravel-container {
+    margin: 30px;
+    display: flex;
+    flex-wrap: nowrap;
+}
+
+.timetravel-column {
+    display: inline-block;
+    width: 300px;
+    flex-shrink: 0;
+}
+
+.timetravel-column + .timetravel-column {
+    margin-left: 20px;
+}

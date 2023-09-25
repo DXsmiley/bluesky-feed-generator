@@ -1,20 +1,24 @@
 
 # This is kinda weird and really bad sorry
 
+from datetime import datetime
 import foxfeed.database
 from typing import List, Union
 
-Arg = Union[str, int, float, bool]
+Arg = Union[str, int, float, bool, datetime]
 
 def escape(a: Arg) -> str:
     if isinstance(a, bool):
         return 'TRUE' if a else 'FALSE'
     if isinstance(a, str):
+        assert "'" not in a
         return "'" + a + "'"
     if isinstance(a, int):
         return str(a)
     if isinstance(a, float):
         return str(a)
+    if isinstance(a, datetime):
+        return "'" + a.isoformat().split('.')[0] + "'::timestamp"
 
 score_posts_sql_query = """
 WITH "LikeCount" AS (
@@ -25,7 +29,8 @@ WITH "LikeCount" AS (
         COUNT(*) AS count
     FROM "Like" as lk
     INNER JOIN "Actor" as liker ON lk.liker_id = liker.did
-    AND lk.created_at > NOW() - interval '96 hours'
+    AND lk.created_at > ({current_time} - interval '96 hours')
+    AND lk.created_at < {current_time}
     AND NOT liker.is_muted
     AND liker.manual_include_in_fox_feed IS NOT FALSE
     AND (
@@ -45,7 +50,7 @@ WITH "LikeCount" AS (
         post.indexed_at as indexed_at,
         post.labels as labels,
         (
-            EXTRACT(EPOCH FROM (NOW() - post.indexed_at)) /
+            EXTRACT(EPOCH FROM ({current_time} - post.indexed_at)) /
             EXTRACT(EPOCH FROM interval {beta})
         ) AS x,
         (
@@ -65,7 +70,8 @@ WITH "LikeCount" AS (
     FROM "Post" as post
     INNER JOIN "Actor" as author on post."authorId" = author.did
     INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
-    WHERE post.indexed_at > NOW() - interval '96 hours'
+    WHERE post.indexed_at > ({current_time} - interval '96 hours')
+        AND post.indexed_at < {current_time}
         -- Pinned posts get mixed into the feed in a different way, so exclude them from scoring
         AND NOT post.is_pinned
         AND NOT author.is_muted
@@ -111,6 +117,7 @@ async def score_posts(
     *,
     alpha: Arg,
     beta: Arg,
+    current_time: Arg,
     do_time_decay: Arg,
     gamma: Arg,
     include_guy_posts: Arg,
@@ -120,6 +127,7 @@ async def score_posts(
     query = score_posts_sql_query.format(
         alpha = escape(alpha),
         beta = escape(beta),
+        current_time = escape(current_time),
         do_time_decay = escape(do_time_decay),
         gamma = escape(gamma),
         include_guy_posts = escape(include_guy_posts),

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import time
 
 import foxfeed.database
 from foxfeed.database import Database, ScorePostsOutputModel
@@ -164,6 +165,8 @@ fast_time_decay = StandardDecay(
 
 
 async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> List[str]:
+    t0 = time.time()
+
     decay = fp.decay or StandardDecay(alpha=1, beta='1 hour', gamma=1)
     scored_posts = await foxfeed.gen.db.score_posts(
         db,
@@ -174,6 +177,7 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> List[
         include_guy_posts=fp.include_guy_posts,
         include_guy_votes=fp.include_guy_votes,
         lmt=1000,
+        current_time=rd.run_starttime
     )
 
     ordered_posts = [i.uri for i in fp.remix_func(scored_posts)[:500]]
@@ -189,8 +193,10 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> List[
         + ordered_posts[1:]
     )
 
+    elapsed = time.time() - t0
+
     cprint(
-        f"Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts",
+        f"Scored {fp.feed_name}::{rd.run_version} - {len(will_store)} posts in {elapsed} seconds",
         "yellow",
         force_color=True,
     )

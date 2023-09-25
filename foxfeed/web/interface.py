@@ -161,6 +161,30 @@ def feed_page(
     )
 
 
+def feed_timetravel_page(
+    cols: List[List[Optional[Post]]]
+) -> Node:
+    return html.html(
+        html.head(
+            Node("link", [], {"rel": "stylesheet", "href": "/static/admin-style.css"}),
+        ),
+        html.body(
+            div(class_="timetravel-container")(
+                *[
+                    div(class_="timetravel-column")(
+                        *[
+                            p('(post was deleted)') if i is None
+                            else post(False, i)
+                            for i in c
+                        ]
+                    )
+                    for c in cols
+                ]
+            )
+        )
+    )
+
+
 def post_list_page(
     enable_admin_controls: bool, name: str, full_posts: List[Post]
 ) -> Node:

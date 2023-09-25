@@ -6,7 +6,8 @@ WITH "LikeCount" AS (
         COUNT(*) AS count
     FROM "Like" as lk
     INNER JOIN "Actor" as liker ON lk.liker_id = liker.did
-    AND lk.created_at > NOW() - interval '96 hours'
+    AND lk.created_at > (:current_time - interval '96 hours')
+    AND lk.created_at < :current_time
     AND NOT liker.is_muted
     AND liker.manual_include_in_fox_feed IS NOT FALSE
     AND (
@@ -26,7 +27,7 @@ WITH "LikeCount" AS (
         post.indexed_at as indexed_at,
         post.labels as labels,
         (
-            EXTRACT(EPOCH FROM (NOW() - post.indexed_at)) /
+            EXTRACT(EPOCH FROM (:current_time - post.indexed_at)) /
             EXTRACT(EPOCH FROM interval :beta)
         ) AS x,
         (
@@ -46,7 +47,8 @@ WITH "LikeCount" AS (
     FROM "Post" as post
     INNER JOIN "Actor" as author on post."authorId" = author.did
     INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
-    WHERE post.indexed_at > NOW() - interval '96 hours'
+    WHERE post.indexed_at > (:current_time - interval '96 hours')
+        AND post.indexed_at < :current_time
         -- Pinned posts get mixed into the feed in a different way, so exclude them from scoring
         AND NOT post.is_pinned
         AND NOT author.is_muted

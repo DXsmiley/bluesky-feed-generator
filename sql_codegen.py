@@ -10,21 +10,30 @@ INPUT = [
 HEADDER = '''
 # This is kinda weird and really bad sorry
 
+from datetime import datetime
 import foxfeed.database
 from typing import List, Union
 
-Arg = Union[str, int, float, bool]
+Arg = Union[str, int, float, bool, datetime]
 
 def escape(a: Arg) -> str:
     if isinstance(a, bool):
         return 'TRUE' if a else 'FALSE'
     if isinstance(a, str):
+        assert "'" not in a
         return "'" + a + "'"
     if isinstance(a, int):
         return str(a)
     if isinstance(a, float):
         return str(a)
+    if isinstance(a, datetime):
+        return "'" + a.isoformat().split('.')[0] + "'::timestamp"
 '''
+
+from datetime import datetime
+
+d = datetime.now()
+d.isoformat
 
 def codegen_for_query(function_name: str, output_model: str, sql: str) -> Iterator[str]:
     arguments = [i[1:] for i in re.findall(r'(?::)\w+', sql)]

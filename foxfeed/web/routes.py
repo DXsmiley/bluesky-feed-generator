@@ -12,6 +12,8 @@ from foxfeed.database import Database
 from foxfeed.bsky import AsyncClient
 from foxfeed.web.ratelimit import Ratelimit
 from foxfeed import config
+from foxfeed.metrics import daterange
+import foxfeed.algos.generators
 from termcolor import cprint
 import aiojobs.aiohttp
 import prisma
@@ -264,6 +266,45 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         )
 
         return web.Response(text=str(page), content_type="text/html")
+    
+    # Kinda doesn't need admin but this is gonna be *slow* so uh yeah
+    @routes.get("/feed/{feed}/timetravel")
+    @require_admin_login
+    async def get_feed_timetravel(request: web.Request) -> web.Response:
+        feed_name = request.match_info.get("feed", "")
+        algo = [i for i in foxfeed.algos.feeds.algo_details if i['record_name'] == feed_name]
+        if not algo:
+            return web.HTTPNotFound(text="Feed not found")
+        
+        algo = algo[0]
+        
+        now = datetime.now()
+
+        cols: List[List[Optional[foxfeed.database.Post]]] = []
+        
+        for days_ago in [-4, -3, -2, -1, 0]:
+            dt = now - timedelta(days=days_ago)
+            if algo['generator'] is not None:
+                # Low key bad design but whatever
+                rd = foxfeed.algos.generators.RunDetails(
+                    run_starttime=dt,
+                    run_version=0,
+                )
+                posts = (await algo['generator'](db, rd))[:20]
+                full_posts = [
+                    await db.post.find_first(
+                        where={"uri": i}, include={"author": True}
+                    )
+                    for i in posts
+                ]
+                cols.append(full_posts)
+
+        page = foxfeed.web.interface.feed_timetravel_page(
+            cols
+        )
+
+        return web.Response(text=str(page), content_type="text/html")
+
 
     @routes.get("/pinned_posts")
     async def pinned_posts(request: web.Request) -> web.Response:
