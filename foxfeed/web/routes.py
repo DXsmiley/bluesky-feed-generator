@@ -282,7 +282,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
 
         cols: List[List[Optional[foxfeed.database.Post]]] = []
         
-        for days_ago in [-4, -3, -2, -1, 0]:
+        for days_ago in [4, 3, 2, 1, 0]:
             dt = now - timedelta(days=days_ago)
             if algo['generator'] is not None:
                 # Low key bad design but whatever
