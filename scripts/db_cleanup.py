@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from foxfeed.database import make_database_connection
-from foxfeed.algos.score_task import LOOKBACK_HARD_LIMIT
+from foxfeed.algos.generators import LOOKBACK_HARD_LIMIT
 from foxfeed.metrics import METRICS_MAXIMUM_LOOKBACK
 
 async def main():

@@ -1,273 +1,44 @@
 import asyncio
+import gc
+from typing import List, Set
+from datetime import datetime, timedelta, timezone
 import traceback
-from datetime import datetime
-from datetime import timezone
-from datetime import timedelta
-
-import foxfeed.database
-from foxfeed.database import Database, make_database_connection, ScorePostsOutputModel
-from prisma.models import Post, Actor
-import prisma.errors
-import prisma.types
-import foxfeed.gen.db
-from foxfeed.bsky import get_specific_posts
-
-from typing import List, Dict, Tuple, Callable, Iterator, Literal, Set, Optional
-from .feed_names import FeedName
-
-import foxfeed.gender
 
 from termcolor import cprint
-from dataclasses import dataclass
-import gc
-from foxfeed.util import sleep_on
-import sys
 
+import prisma.types
+import prisma.errors
 
+from foxfeed.bsky import AsyncClient, get_specific_posts
+from foxfeed.database import Database
 from foxfeed.store import store_post2
-from atproto import AsyncClient
-from foxfeed.bsky import make_bsky_client
+from foxfeed.algos.feeds import algo_details
+from foxfeed.algos.generators import RunDetails
+from foxfeed.util import sleep_on
 
 
-LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
-SCORING_CURVE_INFLECTION_POINT = timedelta(hours=12)
-FRESH_CURVE_INFLECTION_POINT = timedelta(minutes=30)
-ALPHA = 1.5
-
-
-PostScoreResult = ScorePostsOutputModel
-
-
-def do_not_remix(ps: List[PostScoreResult]) -> List[PostScoreResult]:
-    return ps
-
-
-@dataclass
-class StandardDecay:
-    alpha: float
-    beta: str
-    gamma: float
-
-
-@dataclass
-class FeedParameters:
-    feed_name: FeedName
-    decay: Optional[StandardDecay]
-    include_guy_posts: bool
-    include_guy_votes: bool
-    # lmt: int
-    remix_func: Callable[
-        [List[PostScoreResult]], List[PostScoreResult]
-    ] = do_not_remix
-
-
-@dataclass
-class RunDetails:
-    run_starttime: datetime
-    run_version: int
-
-
-def sorted_by_score_desc(
-    posts: List[PostScoreResult]
-) -> List[PostScoreResult]:
-    return sorted(posts, key=lambda x: x.score, reverse=True)
-
-
-# def has_trans_vibes(i: Actor) -> bool:
-#     s = ((i.displayName or "") + " " + (i.description or "")).lower()
-#     return "🏳️‍⚧️" in s or "trans" in s
-
-
-# def has_masc_vibes(i: Actor) -> bool:
-#     return (
-#         i.manual_include_in_vix_feed is not True
-#         and i.autolabel_masc_vibes
-#         and not i.autolabel_fem_vibes
-#     )
-
-
-# def has_fem_vibes(i: Actor) -> bool:
-#     return i.manual_include_in_vix_feed is True or (
-#         i.manual_include_in_vix_feed is None
-#         and i.autolabel_fem_vibes
-#         and not i.autolabel_masc_vibes
-#     )
-
-
-# def _gender_splitmix(p: List[Tuple[float, PostWithInfo]]) -> Iterator[PostWithInfo]:
-#     # Not a huge fan of this approach but uhhhhhhhh
-#     transfem = [
-#         i for _, i in p if has_trans_vibes(i.author) and has_fem_vibes(i.author)
-#     ]
-#     cisfem = [
-#         i for _, i in p if not has_trans_vibes(i.author) and has_fem_vibes(i.author)
-#     ]
-#     transmasc = [
-#         i for _, i in p if has_trans_vibes(i.author) and has_masc_vibes(i.author)
-#     ]
-#     cismasc = [
-#         i for _, i in p if not has_trans_vibes(i.author) and has_masc_vibes(i.author)
-#     ]
-#     other = [
-#         i for _, i in p if not has_fem_vibes(i.author) and not has_masc_vibes(i.author)
-#     ]
-#     lists = [transfem, cisfem, transmasc, cismasc, other]
-#     for i in range(max(map(len, lists))):
-#         for x in lists:
-#             if i < len(x):
-#                 yield x[i]
-
-
-# def gender_splitmix(ps: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
-#     return list(_gender_splitmix(ps))
-
-
-# def actor_is_fem(actor: Actor):
-#     return actor.manual_include_in_vix_feed is True or (
-#         actor.manual_include_in_vix_feed is None
-#         and actor.autolabel_fem_vibes is True
-#         and actor.autolabel_masc_vibes is False
-#     )
-
-
-def post_is_masc_nsfw(p: PostScoreResult):
-    return bool(p.labels) and not p.author_is_fem
-
-
-def _masc_nsfw_limiter(ratio: int, ps: List[PostScoreResult]) -> Iterator[PostScoreResult]:
-    masc_nsfw = [i for i in ps if post_is_masc_nsfw(i)][::-1]
-    other = [i for i in ps if not post_is_masc_nsfw(i)][::-1]
-    while other and masc_nsfw:
-        for _ in range(ratio):
-            if other:
-                yield other.pop()
-        if other and masc_nsfw and masc_nsfw[-1].score > other[-1].score:
-            yield masc_nsfw.pop()
-    while other:
-        yield other.pop()
-    while masc_nsfw:
-        yield masc_nsfw.pop()
-
-
-def masc_nsfw_limiter(ratio: Literal[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) -> Callable[[List[PostScoreResult]], List[PostScoreResult]]:
-    def _f(ps: List[PostScoreResult]) -> List[PostScoreResult]:
-        return list(_masc_nsfw_limiter(ratio, ps))
-    return _f
-
-
-def top_100_chronological(p: List[PostScoreResult]) -> List[PostScoreResult]:
-    return sorted(
-        p[:100], key=lambda p: p.indexed_at, reverse=True
-    )
-
-
-score_time_decay = StandardDecay(
-    alpha=1.5,
-    beta='12 hours',
-    gamma=0.9,
-)
-
-
-fast_time_decay = StandardDecay(
-    alpha=1.5,
-    beta='30 minutes',
-    gamma=0.3,
-)
-
-
-ALGORITHMIC_FEEDS = [
-    FeedParameters(
-        feed_name="fox-feed",
-        decay=score_time_decay,
-        include_guy_posts=True,
-        include_guy_votes=True,
-        remix_func=masc_nsfw_limiter(4),
-    ),
-    FeedParameters(
-        feed_name="vix-feed",
-        decay=score_time_decay,
-        include_guy_posts=False,
-        include_guy_votes=True,
-    ),
-    FeedParameters(
-        feed_name="fresh-feed",
-        decay=fast_time_decay,
-        include_guy_posts=False,
-        include_guy_votes=True,
-    ),
-    FeedParameters(
-        feed_name="vix-votes",
-        decay=score_time_decay,
-        include_guy_posts=True,
-        include_guy_votes=False,
-        remix_func=masc_nsfw_limiter(4),
-    ),
-    # FeedParameters(
-    #     feed_name="bisexy",
-    #     filter=lambda p: post_is_irl_nsfw(p) and p.post.media_count > 0,
-    #     score_func=raw_score,
-    #     remix_func=gender_splitmix,
-    # ),
-    FeedParameters(
-        feed_name="top-feed",
-        decay=None,
-        include_guy_posts=False,
-        include_guy_votes=True,
-        remix_func=top_100_chronological,
-    ),
-]
-
-
-async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> Set[str]:
-    decay = fp.decay or StandardDecay(alpha=1, beta='1 hour', gamma=1)
-    scored_posts = await foxfeed.gen.db.score_posts(
-        db,
-        alpha=decay.alpha,
-        beta=decay.beta,
-        gamma=decay.gamma,
-        do_time_decay=fp.decay is not None,
-        include_guy_posts=fp.include_guy_posts,
-        include_guy_votes=fp.include_guy_votes,
-        lmt=1000,
-    )
-
-    ordered_posts = [i.uri for i in fp.remix_func(scored_posts)[:500]]
-
-    pinned_posts = await db.post.find_many(
-        order={'indexed_at': 'desc'},
-        where={'is_pinned': True},
-    )
-
-    will_store = (
-        ordered_posts[:1]
-        + [i.uri for i in pinned_posts]
-        + ordered_posts[1:]
-    )
-
-    cprint(
-        f"Scoring {fp.feed_name}::{rd.run_version} has resulted in {len(will_store)} scored posts",
-        "yellow",
-        force_color=True,
-    )
-
-    blob: List[prisma.types.PostScoreCreateWithoutRelationsInput] = [
-        {
-            "uri": post_uri,
-            "version": rd.run_version,
-            # This is actually "rank"
-            "score": len(will_store) - i,
-            "created_at": rd.run_starttime,
-            "feed_name": fp.feed_name,
+async def refresh_posts(
+        db: Database,
+        client: AsyncClient,
+        all_uris_in_feeds: List[str],
+        run_endtime: datetime
+):
+    posts_to_refresh = await db.post.find_many(
+        take=500,
+        where={
+            'uri': {'in': list(all_uris_in_feeds)},
+            'indexed_at': {'lt': run_endtime - timedelta(minutes=20)},
+            'OR': [
+                {'last_rescan': None},
+                {'last_rescan': {'lt': run_endtime - timedelta(hours=6)}},
+            ]
         }
-        for i, post_uri in enumerate(will_store)
-    ]
-
-    try:
-        await db.postscore.create_many(data=blob)
-    except prisma.errors.UniqueViolationError:
-        cprint(f"Unique violation when creating PostScores on {fp.feed_name}::{rd.run_version}", 'red', force_color=True)
-
-    return set(will_store)
+    )
+    if posts_to_refresh:
+        print(f'Refreshing {len(posts_to_refresh)} posts')
+        async for i in get_specific_posts(client, [i.uri for i in posts_to_refresh]):
+            await store_post2(db, i, None, None, now=run_endtime)
+        print('Refresh done')
 
 
 async def score_posts(shutdown_event: asyncio.Event, db: Database, client: AsyncClient, do_refresh_posts: bool = False) -> None:
@@ -281,8 +52,12 @@ async def score_posts(shutdown_event: asyncio.Event, db: Database, client: Async
     )
 
     all_uris_in_feeds: Set[str] = set()
-    for algo in ALGORITHMIC_FEEDS:
-        all_uris_in_feeds |= await create_feed(db, algo, rd)
+    for algo in algo_details:
+        gen = algo['generator']
+        if gen is not None:
+            result = await gen(db, rd)
+            await save_generator_results(db, algo['record_name'], rd, result)
+            all_uris_in_feeds |= set(result)
         if shutdown_event.is_set():
             break
 
@@ -303,22 +78,27 @@ async def score_posts(shutdown_event: asyncio.Event, db: Database, client: Async
     )
 
     if do_refresh_posts:
-        posts_to_refresh = await db.post.find_many(
-            take=500,
-            where={
-                'uri': {'in': list(all_uris_in_feeds)},
-                'indexed_at': {'lt': run_endtime - timedelta(minutes=20)},
-                'OR': [
-                    {'last_rescan': None},
-                    {'last_rescan': {'lt': run_endtime - timedelta(hours=6)}},
-                ]
-            }
-        )
-        if posts_to_refresh:
-            print(f'Refreshing {len(posts_to_refresh)} posts')
-            async for i in get_specific_posts(client, [i.uri for i in posts_to_refresh]):
-                await store_post2(db, i, None, None, now=run_endtime)
-            print('Refresh done')
+        await refresh_posts(db, client, list(all_uris_in_feeds), run_endtime)
+
+
+async def save_generator_results(db: Database, feed_name: str, rd: RunDetails, will_store: List[str]) -> None:
+    blob: List[prisma.types.PostScoreCreateWithoutRelationsInput] = [
+        {
+            "uri": post_uri,
+            "version": rd.run_version,
+            # This is actually "rank"
+            "score": len(will_store) - i,
+            "created_at": rd.run_starttime,
+            "feed_name": feed_name,
+        }
+        for i, post_uri in enumerate(will_store)
+    ]
+
+    try:
+        await db.postscore.create_many(data=blob)
+    except prisma.errors.UniqueViolationError:
+        cprint(f"Unique violation when creating PostScores on {feed_name}::{rd.run_version}", 'red', force_color=True)
+
 
 
 async def score_posts_forever(shutdown_event: asyncio.Event, db: Database, client: AsyncClient, forever: bool):

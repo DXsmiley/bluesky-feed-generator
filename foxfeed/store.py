@@ -1,5 +1,5 @@
 from foxfeed.database import Database
-from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView
+from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import (
     PostView,
     FeedViewPost,

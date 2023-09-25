@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from aiohttp import web
 import foxfeed.metrics
 import foxfeed.web.interface
-import foxfeed.algos
+import foxfeed.algos.feeds
 import foxfeed.database
 import foxfeed.web.jwt_verification
 from foxfeed.database import Database
@@ -26,12 +26,12 @@ algos = {
         "at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.generator/"
         + i["record_name"]
     ): i["handler"]
-    for i in foxfeed.algos.algo_details
+    for i in foxfeed.algos.feeds.algo_details
 }
 
 
 algos_by_short_name = {
-    i["record_name"]: i["handler"] for i in foxfeed.algos.algo_details
+    i["record_name"]: i["handler"] for i in foxfeed.algos.feeds.algo_details
 }
 
 
@@ -86,7 +86,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         )
         page = foxfeed.web.interface.stats_page(
             [
-                ("feeds", len(foxfeed.algos.algo_details)),
+                ("feeds", len(foxfeed.algos.feeds.algo_details)),
                 ("users", await db.actor.count()),
                 (
                     "in-fox-feed",
@@ -210,7 +210,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         feed_name: str,
         cursor: Optional[str],
         limit: int,
-        served: foxfeed.algos.fox_feed.HandlerResult,
+        served: foxfeed.algos.feeds.handlers.HandlerResult,
     ) -> None:
         did = await foxfeed.web.jwt_verification.verify_jwt(auth)
         print("store_served_posts", feed_name, did)
@@ -240,7 +240,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
     @routes.get("/feed")
     async def get_feeds(request: web.Request) -> web.Response:
         page = foxfeed.web.interface.feeds_page(
-            [i["record_name"] for i in foxfeed.algos.algo_details]
+            [i["record_name"] for i in foxfeed.algos.feeds.algo_details]
         )
         return web.Response(text=str(page), content_type="text/html")
 
@@ -298,7 +298,7 @@ def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool =
         return web.Response(text=str(page), content_type="text/html")
 
     async def quickflag_candidates_from_feed(
-        feed_name: foxfeed.algos.FeedName,
+        feed_name: foxfeed.algos.feeds.FeedName,
     ) -> Set[str]:
         max_version = await db.postscore.find_first_or_raise(
             where={"feed_name": feed_name}, order={"version": "desc"}

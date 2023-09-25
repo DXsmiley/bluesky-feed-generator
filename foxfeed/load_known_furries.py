@@ -47,8 +47,7 @@ from termcolor import cprint
 from dataclasses import dataclass
 
 
-import foxfeed.algos.fox_feed
-import foxfeed.algos.score_task
+import foxfeed.algos.generators
 from foxfeed.util import parse_datetime, sleep_on, join_unless
 
 from foxfeed.store import store_like, store_post, store_user
@@ -355,7 +354,7 @@ async def load(
     load_posts: bool = True,
     load_likes: bool = True,
 ) -> None:
-    only_posts_after = datetime.now() - foxfeed.algos.score_task.LOOKBACK_HARD_LIMIT
+    only_posts_after = datetime.now() - foxfeed.algos.generators.LOOKBACK_HARD_LIMIT
 
     cprint("Getting muted accounts", "blue", force_color=True)
     mutes = {
