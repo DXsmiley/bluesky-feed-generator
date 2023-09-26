@@ -55,6 +55,7 @@ WITH "LikeCount" AS (
         ) AS x,
         (
             (CASE WHEN post.media_count > 0 AND post.media_with_alt_text_count = 0 THEN 0.7 ELSE 1.0 END)
+            * POWER(1 / GREATEST(1, author.follower_count - 400), 0.5)
         ) AS multiplier,
         (
             like_count.count
