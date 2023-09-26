@@ -152,3 +152,11 @@ model ExperimentResult {
   media_index Int
   did_error Boolean
 }
+
+model ScheduledPost {
+  id Int @id @default(autoincrement())
+  text String
+  post_uri String?
+  status String @default("scheduled")
+  @@unique([text])
+}

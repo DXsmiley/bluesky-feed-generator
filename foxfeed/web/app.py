@@ -3,6 +3,7 @@ import asyncio
 from foxfeed import config
 from foxfeed.firehose import data_stream
 import foxfeed.web.interface
+from foxfeed.post_schedule import run_schedule
 
 from aiohttp import web
 import aiojobs.aiohttp
@@ -117,6 +118,7 @@ async def _run_services(
     scraper = None
     scores = None
     firehose = None
+    scheduler = None
     if services.scraper:
         scraper = asyncio.create_task(
             _catch_service(
@@ -139,6 +141,13 @@ async def _run_services(
                 ),
             )
         )
+    if services.post_scheduler:
+        scheduler = asyncio.create_task(
+            _catch_service(
+                "POSTER",
+                run_schedule(db, client, shutdown_event, services.forever)
+            )
+        )
     yield
     if running_in_webapp:
         print("Waiting for service tasks to finish")
@@ -150,6 +159,8 @@ async def _run_services(
         await scores
     if firehose is not None:
         await firehose
+    if scheduler is not None:
+        await scheduler
     if running_in_webapp:
         print("Service tasks finished")
 

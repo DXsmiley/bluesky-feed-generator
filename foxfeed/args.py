@@ -16,6 +16,7 @@ Services:
     --scraper --no-scraper    Enable or disable the scraper
     --firehose --no-firehose  Enable or disable the firehose
     --scores --no-scores      Enable or disable post scoring (feed generation)
+    --post --no-post          Enable or disable post scheduler
 
 Settings:
 
@@ -38,6 +39,7 @@ class Args:
     scraper: bool
     firehose: bool
     scores: bool
+    post_scheduler: bool
     
     log_db_queries: bool
     admin_panel: bool
@@ -80,6 +82,7 @@ def parse_args(args_original: List[str]) -> Union[int, Args]:
     scraper_flag = take(args, '--scraper', '--no-scraper')
     firehose_flag = take(args, '--firehose', '--no-firehose')
     scores_flag = take(args, '--scores', '--no-scores')
+    scheduler_flag = take(args, '--post', '--no-post')
 
     dral_flag = take(args, '--admin-without-login', default=False)
 
@@ -89,12 +92,14 @@ def parse_args(args_original: List[str]) -> Union[int, Args]:
         and scraper_flag is not True
         and firehose_flag is not True
         and scores_flag is not True
+        and scheduler_flag is not True
     )
 
     webserver = defaulting(webserver_flag, service_default)
     scraper = defaulting(scraper_flag, service_default)
     firehose = defaulting(firehose_flag, service_default)
     scores = defaulting(scores_flag, service_default)
+    scheduler = defaulting(scheduler_flag, service_default)
 
     forever = (
         forever_flag
@@ -111,6 +116,7 @@ def parse_args(args_original: List[str]) -> Union[int, Args]:
         scraper=scraper,
         firehose=firehose,
         scores=scores,
+        post_scheduler=scheduler,
         log_db_queries=log_db_queries,
         admin_panel=admin_panel,
         forever=forever,
