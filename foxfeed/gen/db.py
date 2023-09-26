@@ -55,7 +55,12 @@ WITH "LikeCount" AS (
         ) AS x,
         (
             (CASE WHEN post.media_count > 0 AND post.media_with_alt_text_count = 0 THEN 0.7 ELSE 1.0 END)
-            * POWER(1 / GREATEST(1, author.follower_count - 400), 0.5)
+            -- An attempt to stop a few large accounts dominating the feed
+            -- This is bad because it creates a way for people to de-rank others intentionally
+            -- Also low-key breaks generating old snapshots
+            * (0.7 + (-0.1 * ATAN(author.follower_count / 800)))
+            -- Funny :)
+            * (0.95 + (0.05 * SIN(like_count.count * 20)))
         ) AS multiplier,
         (
             like_count.count

@@ -302,8 +302,8 @@ def create_route_table(
 
         cols: List[List[Optional[foxfeed.database.Post]]] = []
         
-        for days_ago in [4, 3, 2, 1, 0]:
-            dt = now - timedelta(days=days_ago)
+        for hours_ago in [72, 60, 48, 36, 24, 12, 0]:
+            dt = now - timedelta(hours=hours_ago)
             if algo['generator'] is not None:
                 # Low key bad design but whatever
                 rd = foxfeed.algos.generators.RunDetails(

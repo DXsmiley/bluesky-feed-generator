@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 
 LOOKBACK_HARD_LIMIT = timedelta(hours=(24 * 4))
-SCORING_CURVE_INFLECTION_POINT = timedelta(hours=12)
+SCORING_CURVE_INFLECTION_POINT = timedelta(hours=8)
 FRESH_CURVE_INFLECTION_POINT = timedelta(minutes=30)
 ALPHA = 1.5
 
@@ -151,14 +151,14 @@ def top_100_chronological(p: List[PostScoreResult]) -> List[PostScoreResult]:
 
 
 score_time_decay = StandardDecay(
-    alpha=1.5,
-    beta='12 hours',
+    alpha=ALPHA,
+    beta='8 hours',
     gamma=0.9,
 )
 
 
 fast_time_decay = StandardDecay(
-    alpha=1.5,
+    alpha=ALPHA,
     beta='30 minutes',
     gamma=0.3,
 )

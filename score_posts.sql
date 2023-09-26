@@ -35,7 +35,9 @@ WITH "LikeCount" AS (
             -- An attempt to stop a few large accounts dominating the feed
             -- This is bad because it creates a way for people to de-rank others intentionally
             -- Also low-key breaks generating old snapshots
-            * POWER(1 / GREATEST(1, author.follower_count - 400), 0.5)
+            * (0.7 + (-0.1 * ATAN(author.follower_count / 800)))
+            -- Funny :)
+            * (0.95 + (0.05 * SIN(like_count.count * 20)))
         ) AS multiplier,
         (
             like_count.count
