@@ -3,7 +3,7 @@ from foxfeed.web.html import Node, head, img, div, h3, h4, p, span, a, Unescaped
 import re
 from typing import List, Tuple, Union, TypeVar, Optional, Callable
 from prisma.models import Post, Actor
-from foxfeed.util import interleave
+from foxfeed.util import interleave, groupby
 from foxfeed.metrics import FeedMetrics, FeedMetricsSlice
 
 
@@ -104,7 +104,7 @@ def toggle_post_pin(
     )
 
 
-def post(enable_admin_controls: bool, post_: Post) -> Node:
+def post(enable_admin_controls: bool, post_: Post, colour: str = 'white') -> Node:
     text = re.sub(r"\n+", " • ", post_.text, re.MULTILINE)
     profile_image = (
         img(src=post_.author.avatar, width="30px", height="30px", class_="profile")
@@ -130,6 +130,7 @@ def post(enable_admin_controls: bool, post_: Post) -> Node:
         author_name,
         " [" + " ".join(post_.labels) + "] ",
         text,
+        style=f'background-color: {colour};'
     )
     images = div(
         *[
@@ -164,6 +165,16 @@ def feed_page(
 def feed_timetravel_page(
     cols: List[List[Optional[Post]]]
 ) -> Node:
+    just_posts = [j for i in cols for j in i if j is not None]
+    repeat_posters = [
+        k
+        for (k, v) in groupby(lambda p: p.authorId, just_posts).items()
+        if len(v) > 1
+    ]
+    colours = {
+        k: f'hsl({255 * i // len(repeat_posters):d}, 60%, 90%)'
+        for i, k in enumerate(repeat_posters)
+    }
     return html.html(
         html.head(
             Node("link", [], {"rel": "stylesheet", "href": "/static/admin-style.css"}),
@@ -174,7 +185,7 @@ def feed_timetravel_page(
                     div(class_="timetravel-column")(
                         *[
                             p('(post was deleted)') if i is None
-                            else post(False, i)
+                            else post(False, i, colour=colours.get(i.authorId, 'white'))
                             for i in c
                         ]
                     )
@@ -295,6 +306,7 @@ def user_main(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> No
             else None
         ),
         p(user.description),
+        p(f'{user.following_count} following, ', Node('b', [str(user.follower_count)], {}), ' followers'),
         *(admin_controls if enable_admin_controls else []),
         h3(f"{len(posts)} posts") if posts else None,
         *[post(enable_admin_controls, i) for i in posts],

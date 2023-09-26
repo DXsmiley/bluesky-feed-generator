@@ -18,7 +18,7 @@ from typing import Optional, List
 
 async def store_user(
     db: Database,
-    user: ProfileView,
+    user: ProfileViewDetailed,
     *,
     is_muted: bool,
     is_furrylist_verified: bool,
@@ -40,6 +40,8 @@ async def store_user(
                 "autolabel_masc_vibes": gender_vibes.masc,
                 "is_furrylist_verified": is_furrylist_verified,  # TODO
                 "is_muted": is_muted,
+                "follower_count": user.followers_count or 0,
+                "following_count": user.follows_count or 0,
             },
             "update": {
                 "did": user.did,
@@ -53,6 +55,8 @@ async def store_user(
                 "is_muted": is_muted,
                 "is_furrylist_verified": is_furrylist_verified,
                 # 'flagged_for_manual_review': flag_for_manual_review,
+                "follower_count": user.followers_count or 0,
+                "following_count": user.follows_count or 0,
             },
         },
     )

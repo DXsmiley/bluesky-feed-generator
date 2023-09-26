@@ -27,6 +27,8 @@ model Actor {
   description String?
   displayName String?
   avatar String?
+  follower_count Int @default(0)
+  following_count Int @default(0)
   // This should allow us to pipe in a bunch of users without too much risk
   // They'll count for votes but not have their posts appear in feeds
   posts Post[]

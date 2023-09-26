@@ -57,7 +57,7 @@ def create_web_application(
     shutdown_event: asyncio.Event, db: Database, client: AsyncClient, services: Services
 ) -> web.Application:
     app = web.Application()
-    app.add_routes(foxfeed.web.routes.create_route_table(db, client, admin_panel=services.admin_panel))
+    app.add_routes(foxfeed.web.routes.create_route_table(db, client, admin_panel=services.admin_panel, require_login=not services.dont_require_admin_login))
     app.cleanup_ctx.append(webapp_background_tasks(shutdown_event, db, client, services))
     aiojobs.aiohttp.setup(app)
     return app

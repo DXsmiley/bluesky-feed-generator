@@ -120,6 +120,7 @@ img {
     margin: 30px;
     display: flex;
     flex-wrap: nowrap;
+    align-items: stretch;
 }
 
 .timetravel-column {
@@ -129,5 +130,7 @@ img {
 }
 
 .timetravel-column + .timetravel-column {
-    margin-left: 20px;
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 2px solid hsl(0, 0%, 83%);
 }

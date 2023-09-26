@@ -3,11 +3,10 @@ from datetime import datetime
 
 import foxfeed.monkeypatch
 
-from foxfeed.database import Database, make_database_connection
+from foxfeed.database import Database
 
 from foxfeed.bsky import (
     AsyncClient,
-    make_bsky_client,
     get_followers,
     get_follows,
     get_feeds,
@@ -15,6 +14,8 @@ from foxfeed.bsky import (
     get_mute_lists,
     get_mutes,
     get_list,
+    get_specific_profiles,
+    as_detailed_profiles,
 )
 
 import foxfeed.bsky
@@ -53,22 +54,11 @@ from foxfeed.util import parse_datetime, sleep_on, join_unless
 from foxfeed.store import store_like, store_post, store_user
 
 
-def simplify_profile_view(p: ProfileViewDetailed) -> ProfileView:
-    return ProfileView(
-        did=p.did,
-        handle=p.handle,
-        avatar=p.avatar,
-        description=p.description,
-        displayName=p.display_name,
-        indexedAt=p.indexed_at,
-        labels=p.labels,
-        viewer=p.viewer,
-    )
-
-
-async def get_mutuals(client: AsyncClient, did: str) -> AsyncIterable[ProfileView]:
-    following_dids = {i.did async for i in get_follows(client, did)}
-    async for i in get_followers(client, did):
+async def get_mutuals(client: AsyncClient, did: str, stop_event: Optional[asyncio.Event]) -> AsyncIterable[ProfileView]:
+    following_dids = {i.did async for i in get_follows(client, did, stop_event)}
+    if stop_event is not None and stop_event.is_set():
+        return
+    async for i in get_followers(client, did, stop_event):
         if i.did in following_dids:
             yield i
 
@@ -77,11 +67,11 @@ get_people_who_like_the_feed = get_likes
 
 
 async def get_people_who_like_your_feeds(
-    client: AsyncClient, did: str
+    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event]
 ) -> AsyncIterable[ProfileView]:
     seen: Set[str] = set()
-    async for feed in get_feeds(client, did):
-        async for like in get_people_who_like_the_feed(client, feed.uri):
+    async for feed in get_feeds(client, did, stop_event):
+        async for like in get_people_who_like_the_feed(client, feed.uri, stop_event):
             user = like.actor
             if user.did not in seen:
                 seen.add(user.did)
@@ -132,28 +122,19 @@ async def get_all_mutes(
             break
 
 
-async def get_many_profiles(
-    client: AsyncClient, dids: List[str]
-) -> AsyncIterable[ProfileView]:
-    for i in range(0, len(dids), 25):
-        r = await client.app.bsky.actor.get_profiles({"actors": dids[i : i + 25]})
-        for p in r.profiles:
-            yield simplify_profile_view(p)
-
-
 async def no_connections(_client: AsyncClient, _did: str) -> AsyncIterable[ProfileView]:
     return
     yield
 
 
 KNOWN_FURRIES_AND_CONNECTIONS = List[
-    Tuple[Callable[[AsyncClient, str], AsyncIterable[ProfileView]], str]
+    Tuple[Callable[[AsyncClient, str, Optional[asyncio.Event]], AsyncIterable[ProfileView]], str]
 ]
 
 
 @dataclass
 class StoreUser:
-    user: ProfileView
+    user: ProfileViewDetailed
     is_furrlist_verified: bool
     is_muted: bool
 
@@ -207,7 +188,7 @@ async def load_posts_task(
     shutdown_event: asyncio.Event,
     client: AsyncClient,
     only_posts_after: datetime,
-    input_queue: "asyncio.Queue[ProfileView]",
+    input_queue: "asyncio.Queue[ProfileViewDetailed]",
     llq: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]",
     output_queue: "asyncio.Queue[StoreThing]",
     *,
@@ -276,7 +257,7 @@ async def load_likes_task(
 async def log_queue_size_task(
     shutdown_event: asyncio.Event,
     storage_queue: "asyncio.Queue[StoreThing]",
-    post_load_queue: "asyncio.Queue[ProfileView]",
+    post_load_queue: "asyncio.Queue[ProfileViewDetailed]",
     like_load_queue: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]",
 ) -> None:
     while not shutdown_event.is_set():
@@ -288,7 +269,7 @@ async def log_queue_size_task(
 
 async def find_furries_raw(
     client: AsyncClient, *, shutdown_event: Optional[asyncio.Event]
-) -> AsyncIterable[Tuple[ProfileView, bool]]:
+) -> AsyncIterable[Tuple[ProfileViewDetailed, bool]]:
     known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
         (get_people_who_like_your_feeds, "puppyfox.bsky.social"),
         (get_follows, "puppyfox.bsky.social"),
@@ -301,34 +282,24 @@ async def find_furries_raw(
     ]
 
     cprint("Loading furries from furrtli.st", "blue", force_color=True)
-    furrylist = simplify_profile_view(
-        await client.app.bsky.actor.get_profile({"actor": "furryli.st"})
-    )
+    furrylist = await client.app.bsky.actor.get_profile({"actor": "furryli.st"})
     yield (furrylist, True)
-    async for other in get_follows(client, furrylist.did):
-        if shutdown_event is not None and shutdown_event.is_set():
-            return
+    async for other in as_detailed_profiles(client, get_follows, furrylist.did, shutdown_event):
         yield (other, True)
 
     cprint("Loading furries from seed list", "blue", force_color=True)
     with gzip.open("./seed.json.gzip", "rb") as sff:
         seed_list = json.loads(sff.read().decode("utf-8"))["seed"]
 
-    async for profile in get_many_profiles(client, seed_list):
-        if shutdown_event is not None and shutdown_event.is_set():
-            return
+    async for profile in get_specific_profiles(client, seed_list, shutdown_event):
         yield (profile, False)
 
     cprint("Grabbing furry-adjacent accounts", "blue", force_color=True)
 
     for get_associations, handle in known_furries:
-        profile = simplify_profile_view(
-            await client.app.bsky.actor.get_profile({"actor": handle})
-        )
+        profile = await client.app.bsky.actor.get_profile({"actor": handle})
         yield (profile, False)
-        async for other in get_associations(client, profile.did):
-            if shutdown_event is not None and shutdown_event.is_set():
-                return
+        async for other in as_detailed_profiles(client, get_associations, profile.did, shutdown_event):
             yield (other, False)
 
 
@@ -336,7 +307,7 @@ async def find_furries_clean(
     client: AsyncClient,
     *,
     shutdown_event: Optional[asyncio.Event],
-) -> AsyncIterable[Tuple[ProfileView, bool]]:
+) -> AsyncIterable[Tuple[ProfileViewDetailed, bool]]:
     # Ok so we *know* that the furrylist verified ones are coming out first and we can exploit this to not miss anything
     seen: Set[str] = set()
     async for profile, is_furrylist_verified in find_furries_raw(
@@ -367,7 +338,7 @@ async def load(
     queue_size_limit = 20_000
 
     storage_queue: "asyncio.Queue[StoreThing]" = asyncio.Queue(maxsize=queue_size_limit)
-    post_load_queue: "asyncio.Queue[ProfileView]" = asyncio.Queue(
+    post_load_queue: "asyncio.Queue[ProfileViewDetailed]" = asyncio.Queue(
         maxsize=queue_size_limit
     )
     like_load_queue: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]" = (

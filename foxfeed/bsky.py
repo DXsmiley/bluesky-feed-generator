@@ -14,11 +14,12 @@ from typing import (
     AsyncIterable,
 )
 import time
-from foxfeed.util import sleep_on
+from foxfeed.util import sleep_on, chunkify, achunkify
 
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import (
     ProfileView,
+    ProfileViewDetailed,
 )
 from atproto.xrpc_client.models.app.bsky.feed.defs import (
     FeedViewPost,
@@ -141,7 +142,7 @@ async def paginate(
 
 
 def get_followers(
-    client: AsyncClient, did: str, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         # {"actor": did},
@@ -153,7 +154,7 @@ def get_followers(
 
 
 def get_follows(
-    client: AsyncClient, did: str, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         models.AppBskyGraphGetFollows.Params(actor=did),
@@ -164,7 +165,7 @@ def get_follows(
 
 
 def get_feeds(
-    client: AsyncClient, did: str, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[GeneratorView]:
     return paginate(
         models.AppBskyFeedGetActorFeeds.Params(actor=did),
@@ -175,7 +176,7 @@ def get_feeds(
 
 
 def get_posts(
-    client: AsyncClient, did: str, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[FeedViewPost]:
     return paginate(
         models.AppBskyFeedGetAuthorFeed.Params(actor=did),
@@ -186,12 +187,11 @@ def get_posts(
 
 
 async def get_specific_posts(
-    client: AsyncClient, uris: List[str], *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uris: List[str], stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[PostView]:
-    for i in range(0, len(uris), 25):
+    for block in chunkify(uris, 25):
         if stop_event is not None and stop_event.is_set():
             return
-        block = uris[i:i+25]
         posts = await request_and_retry_on_ratelimit(
             3,
             client.app.bsky.feed.get_posts,
@@ -202,8 +202,24 @@ async def get_specific_posts(
             yield i
 
 
+async def get_specific_profiles(
+    client: AsyncClient, dids: List[str], stop_event: Optional[asyncio.Event] = None
+) -> AsyncIterable[ProfileViewDetailed]:
+    for block in chunkify(dids, 25):
+        if stop_event is not None and stop_event.is_set():
+            return
+        users = await request_and_retry_on_ratelimit(
+            3,
+            client.app.bsky.actor.get_profiles,
+            models.AppBskyActorGetProfiles.Params(actors=block),
+            stop_event=stop_event
+        )
+        for i in users.profiles:
+            yield i
+
+
 def get_likes(
-    client: AsyncClient, uri: str, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uri: str, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[Like]:
     return paginate(
         models.AppBskyFeedGetLikes.Params(uri=uri),
@@ -214,7 +230,7 @@ def get_likes(
 
 
 def get_actor_likes(
-    client: AsyncClient, actor: str, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, actor: str, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[FeedViewPost]:
     return paginate(
         models.AppBskyFeedGetActorLikes.Params(actor=actor),
@@ -225,7 +241,7 @@ def get_actor_likes(
 
 
 def get_mute_lists(
-    client: AsyncClient, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[ListView]:
     return paginate(
         models.AppBskyGraphGetListMutes.Params(),
@@ -236,7 +252,7 @@ def get_mute_lists(
 
 
 def get_mutes(
-    client: AsyncClient, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         models.AppBskyGraphGetMutes.Params(),
@@ -247,7 +263,7 @@ def get_mutes(
 
 
 def get_list(
-    client: AsyncClient, uri: str, *, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uri: str, stop_event: Optional[asyncio.Event] = None
 ) -> AsyncIterable[ListItemView]:
     return paginate(
         models.AppBskyGraphGetList.Params(list=uri),
@@ -255,3 +271,19 @@ def get_list(
         lambda r: r.items,
         stop_event=stop_event,
     )
+
+
+async def as_detailed_profiles(
+    client: AsyncClient,
+    func: Callable[
+        [AsyncClient, str, Optional[asyncio.Event]],
+        AsyncIterable[ProfileView],
+    ],
+    arg: str,
+    stop_event: Optional[asyncio.Event] = None,
+) -> AsyncIterable[ProfileViewDetailed]:
+    async for chunk in achunkify(func(client, arg, stop_event), 25):
+        if stop_event is not None and stop_event.is_set():
+            return
+        async for i in get_specific_profiles(client, [i.did for i in chunk], stop_event):
+            yield i

@@ -37,10 +37,30 @@ algos_by_short_name = {
 }
 
 
-def create_route_table(db: Database, client: AsyncClient, *, admin_panel: bool = False):
+def create_route_table(
+        db: Database,
+        client: AsyncClient,
+        *,
+        admin_panel: bool = False,
+        require_login: bool = True
+) -> web.RouteTableDef:
+
+    if not require_login:
+        warning = 'ADMIN LOGIN NOT REQUIRED'
+        lines = [
+            '*' * (len(warning) + 6),
+            '*  ' + (' ' * len(warning)) + '  *',
+            '*  ' + warning + '  *',
+            '*  ' + (' ' * len(warning)) + '  *',
+            '*' * (len(warning) + 6),
+        ]
+        cprint('\n'.join(lines), 'red', force_color=True)
+
     auth_ratelimit = Ratelimit(timedelta(seconds=5), limit=10)
 
     async def is_admin(request: web.Request) -> bool:
+        if not require_login:
+            return True
         if not admin_panel:
             return False
         token = request.cookies.get("x-foxfeed-admin-login", "")

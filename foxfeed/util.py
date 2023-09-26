@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime
-from typing import List, TypeVar, Union, Callable, Dict, Coroutine, Any, Optional
+from typing import List, TypeVar, Union, Callable, Dict, Coroutine, Any, Optional, Iterable, AsyncIterable
 from itertools import chain
 from collections import defaultdict
 
@@ -93,3 +93,25 @@ async def wait_interruptable(c: Coroutine[Any, Any, T], event: asyncio.Event) ->
     for i in done:
         return i.result()
     return None
+
+
+def chunkify(xs: Iterable[T], chunk_size: int) -> Iterable[List[T]]:
+    chunk: List[T] = []
+    for i in xs:
+        chunk.append(i)
+        if len(chunk) == chunk_size:
+            yield chunk
+            chunk = []
+    if len(chunk) > 0:
+        yield chunk
+
+
+async def achunkify(ai: AsyncIterable[T], chunk_size: int) -> AsyncIterable[List[T]]:
+    chunk: List[T] = []
+    async for i in ai:
+        chunk.append(i)
+        if len(chunk) == chunk_size:
+            yield chunk
+            chunk = []
+    if len(chunk) > 0:
+        yield chunk

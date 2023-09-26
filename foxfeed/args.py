@@ -41,6 +41,7 @@ class Args:
     
     log_db_queries: bool
     admin_panel: bool
+    dont_require_admin_login: bool
 
     forever: bool
 
@@ -80,6 +81,8 @@ def parse_args(args_original: List[str]) -> Union[int, Args]:
     firehose_flag = take(args, '--firehose', '--no-firehose')
     scores_flag = take(args, '--scores', '--no-scores')
 
+    dral_flag = take(args, '--admin-without-login', default=False)
+
     # If there are no "service enabled" flags, then all services are enabled by default
     service_default = (
         webserver_flag is not True
@@ -111,4 +114,5 @@ def parse_args(args_original: List[str]) -> Union[int, Args]:
         log_db_queries=log_db_queries,
         admin_panel=admin_panel,
         forever=forever,
+        dont_require_admin_login=dral_flag
     )
