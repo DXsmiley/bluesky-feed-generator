@@ -156,6 +156,7 @@ model ExperimentResult {
 model ScheduledPost {
   id Int @id @default(autoincrement())
   text String
+  label String?
   post_uri String?
   status String @default("scheduled")
   media ScheduledMedia[]

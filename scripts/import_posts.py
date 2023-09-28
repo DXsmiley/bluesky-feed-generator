@@ -1,10 +1,12 @@
 import asyncio
-import json
 import sys
 from foxfeed.database import make_database_connection
-from typing import List
+from typing import List, Literal, Optional
 from pydantic import BaseModel
 from prisma import Base64
+
+
+LABEL_VALUES = Literal['sexual', 'nudity', 'porn', 'nsfl']
 
 
 class Media(BaseModel):
@@ -15,6 +17,7 @@ class Media(BaseModel):
 class Post(BaseModel):
     text: str
     media: List[Media] = []
+    label: Optional[LABEL_VALUES] = None
 
 
 class Blob(BaseModel):
@@ -30,6 +33,7 @@ async def main(filename: str):
             include={'media': True},
             data={
                 'text': post.text,
+                'label': post.label,
                 'media': {
                     'create': [
                         {

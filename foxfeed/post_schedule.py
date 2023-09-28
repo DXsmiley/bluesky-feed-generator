@@ -8,7 +8,7 @@ from foxfeed import config
 from foxfeed.bsky import AsyncClient
 from foxfeed.database import Database
 from foxfeed.util import sleep_on
-from atproto.xrpc_client.models import ComAtprotoRepoCreateRecord, AppBskyEmbedImages
+from atproto.xrpc_client import models
 
 import traceback
 
@@ -17,12 +17,13 @@ POST_COOLDOWN = timedelta(hours=8)
 IMAGE_POST_COOLDOWN = timedelta(hours=40)
 
 
-async def send_post(client: AsyncClient, post: ScheduledPost) -> ComAtprotoRepoCreateRecord.Response:
+async def send_post(client: AsyncClient, post: ScheduledPost) -> models.ComAtprotoRepoCreateRecord.Response:
+    assert client.me is not None
     images = (
         None if not post.media
-        else AppBskyEmbedImages.Main(
+        else models.AppBskyEmbedImages.Main(
             images=[
-                AppBskyEmbedImages.Image(
+                models.AppBskyEmbedImages.Image(
                     alt=image.alt_text,
                     image=(await client.com.atproto.repo.upload_blob(image.data.decode(), timeout=30)).blob
                 )
@@ -30,7 +31,31 @@ async def send_post(client: AsyncClient, post: ScheduledPost) -> ComAtprotoRepoC
             ]
         )
     )
-    return await client.send_post(text=post.text, embed=images)
+    labels = (
+        None if not post.label
+        else models.ComAtprotoLabelDefs.SelfLabels(
+            values=[
+                models.ComAtprotoLabelDefs.SelfLabel(
+                    val=post.label
+                )
+            ]
+        )
+    )
+    record = models.AppBskyFeedPost.Main(
+        createdAt = client.get_current_time_iso(),
+        text = post.text,
+        reply = None,
+        embed = images,
+        langs = ['en'],
+        labels = labels
+    )
+    return await client.com.atproto.repo.create_record(
+        models.ComAtprotoRepoCreateRecord.Data(
+            repo = client.me.did,
+            collection = models.ids.AppBskyFeedPost,
+            record = record,
+        )
+    )
 
 
 async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta]:
