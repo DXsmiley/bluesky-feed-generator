@@ -341,7 +341,7 @@ def create_route_table(
     @routes.get("/feed/{feed}/stats")
     async def get_feed_stats(request: web.Request) -> web.Response:
         feed_name = request.match_info.get("feed", "")
-        algo = algos.get(feed_name)
+        algo = algos_by_short_name.get(feed_name)
         if algo is None:
             return web.HTTPNotFound(text="Feed not found")
 
