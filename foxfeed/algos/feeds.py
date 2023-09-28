@@ -15,22 +15,25 @@ class AlgorithmDetails(TypedDict):
     description: str
     handler: handlers.HandlerType
     generator: Optional[generators.GeneratorType]
+    enable: bool
 
 
 algo_details: List[AlgorithmDetails] = [
     {
         "record_name": "fox-feed",
         "display_name": "🦊 Furry",
-        "description": "Algorithmic feed for furry posts! Details at bsky.probablyaweb.site",
+        "description": "Algorithmic furry feed! Details at bsky.probablyaweb.site",
         "handler": handlers.fox_feed,
         "generator": generators.fox_feed,
+        "enable": True,
     },
     {
         "record_name": "vix-feed",
         "display_name": "🦊 Vix",
-        "description": "Algorithmic feed for posts from furry women! Details at bsky.probablyaweb.site",
+        "description": "Algorithmic furry feed for posts from women! Details at bsky.probablyaweb.site",
         "handler": handlers.vix_feed,
         "generator": generators.vix_feed,
+        "enable": True,
     },
     {
         "record_name": "fursuit-feed",
@@ -38,6 +41,7 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.fursuit_feed,
         "generator": None,
+        "enable": True,
     },
     {
         "record_name": "fresh-feed",
@@ -45,6 +49,7 @@ algo_details: List[AlgorithmDetails] = [
         "description": "New and upcomming posts from furry bluesky! Details at bsky.probablyaweb.site",
         "handler": handlers.fresh_feed,
         "generator": generators.fresh_feed,
+        "enable": True,
     },
     {
         "record_name": "vix-votes",
@@ -52,6 +57,7 @@ algo_details: List[AlgorithmDetails] = [
         "description": "Top furry posts, as *voted by* furry women! Details at bsky.probablyaweb.site",
         "handler": handlers.vix_votes,
         "generator": generators.vix_votes,
+        "enable": True,
     },
     {
         "record_name": "bisexy",
@@ -59,6 +65,7 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.bisexy,
         "generator": None,
+        "enable": False,
     },
     {
         "record_name": "top-feed",
@@ -66,5 +73,6 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.top_feed,
         "generator": generators.top_feed,
+        "enable": False,
     },
 ]
