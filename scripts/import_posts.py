@@ -2,17 +2,46 @@ import asyncio
 import json
 import sys
 from foxfeed.database import make_database_connection
+from typing import List
+from pydantic import BaseModel
+from prisma import Base64
+
+
+class Media(BaseModel):
+    alt_text: str
+    path: str
+
+
+class Post(BaseModel):
+    text: str
+    media: List[Media] = []
+
+
+class Blob(BaseModel):
+    posts: List[Post]
 
 
 async def main(filename: str):
     db = await make_database_connection()
-    blob = json.load(open(filename))
-    for post in blob:
-        text: str = post['text']
-        print('Scheduling:', text.replace('\n', ' / '))
-        await db.scheduledpost.create(
-            data={'text': text}
+    blob = Blob.model_validate_json(open(filename).read())
+    print(blob.model_dump_json(indent=4))
+    for post in blob.posts:
+        r = await db.scheduledpost.create(
+            include={'media': True},
+            data={
+                'text': post.text,
+                'media': {
+                    'create': [
+                        {
+                            'alt_text': media.alt_text,
+                            'data': Base64.encode(open(media.path, 'rb').read())
+                        }
+                        for media in post.media
+                    ]
+                }
+            }
         )
+        print(r)
 
 
 if __name__ == '__main__':

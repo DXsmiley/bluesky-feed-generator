@@ -1,22 +1,36 @@
 import asyncio
 from datetime import datetime, timedelta
-import dateutil.tz
 from typing import Optional
+from prisma.models import ScheduledPost
+from backports.zoneinfo import ZoneInfo
 
 from foxfeed import config
 from foxfeed.bsky import AsyncClient
 from foxfeed.database import Database
 from foxfeed.util import sleep_on
+from atproto.xrpc_client.models import ComAtprotoRepoCreateRecord, AppBskyEmbedImages
 
 import traceback
 
 
-AEST = dateutil.tz.tzoffset('AEST', timedelta(hours=10))
+async def send_post(client: AsyncClient, post: ScheduledPost) -> ComAtprotoRepoCreateRecord.Response:
+    images = None
+    if post.media:
+        images = AppBskyEmbedImages.Main(
+            images=[
+                AppBskyEmbedImages.Image(
+                    alt=image.alt_text,
+                    image=(await client.com.atproto.repo.upload_blob(image.data.decode(), timeout=30)).blob
+                )
+                for image in post.media
+            ]
+        )
+    return await client.send_post(text=post.text, embed=images)
 
 
 async def step_schedule(db: Database, client: AsyncClient, shutdown_event: asyncio.Event) -> Optional[timedelta]:
-    now = datetime.now(tz=AEST)
-    timespan_start = now.replace(hour=17, minute=30, second=0, microsecond=0) # 5:30 pm
+    now = datetime.now(tz=ZoneInfo('Australia/Sydney'))
+    timespan_start = now.replace(hour=16, minute=0, second=0, microsecond=0) # 6:00 pm
     timespan_end = now.replace(hour=22, minute=0, second=0, microsecond=0) # 10:00 pm
     print(now, timespan_start, timespan_end)
     if now < timespan_start:
@@ -40,7 +54,8 @@ async def step_schedule(db: Database, client: AsyncClient, shutdown_event: async
         return until_post_is_old - now
     next_post = await db.scheduledpost.find_first(
         order={'id': 'asc'},
-        where={'status': 'scheduled'}
+        where={'status': 'scheduled'},
+        include={'media': True},
     )
     if next_post is None:
         print('There are no posts to schedule, sleeping for a bit')
@@ -48,7 +63,8 @@ async def step_schedule(db: Database, client: AsyncClient, shutdown_event: async
     await db.scheduledpost.update(where={'id': next_post.id}, data={'status': 'attempting'})
     try:
         print('Posting:', next_post.text)
-        result = await client.send_post(text=next_post.text)
+        # result = await client.send_post(text=next_post.text)
+        result = await send_post(client, next_post)
         print('Done!')
     except Exception:
         print('Failed to post the post')
