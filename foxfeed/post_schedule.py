@@ -13,10 +13,14 @@ from atproto.xrpc_client.models import ComAtprotoRepoCreateRecord, AppBskyEmbedI
 import traceback
 
 
+POST_COOLDOWN = timedelta(hours=8)
+IMAGE_POST_COOLDOWN = timedelta(hours=40)
+
+
 async def send_post(client: AsyncClient, post: ScheduledPost) -> ComAtprotoRepoCreateRecord.Response:
-    images = None
-    if post.media:
-        images = AppBskyEmbedImages.Main(
+    images = (
+        None if not post.media
+        else AppBskyEmbedImages.Main(
             images=[
                 AppBskyEmbedImages.Image(
                     alt=image.alt_text,
@@ -25,38 +29,56 @@ async def send_post(client: AsyncClient, post: ScheduledPost) -> ComAtprotoRepoC
                 for image in post.media
             ]
         )
+    )
     return await client.send_post(text=post.text, embed=images)
 
 
-async def step_schedule(db: Database, client: AsyncClient, shutdown_event: asyncio.Event) -> Optional[timedelta]:
+async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta]:
     now = datetime.now(tz=ZoneInfo('Australia/Sydney'))
     timespan_start = now.replace(hour=16, minute=0, second=0, microsecond=0) # 6:00 pm
     timespan_end = now.replace(hour=22, minute=0, second=0, microsecond=0) # 10:00 pm
     print(now, timespan_start, timespan_end)
     if now < timespan_start:
-        print(f'Sleeping from {now} until {timespan_start} (witing for start of timespan)')
+        print(f'Sleeping from {now} until {timespan_start} (waiting for start of timespan)')
         return timespan_start - now
     if now > timespan_end:
         next_timespan_start = timespan_start + timedelta(days=1)
         print(f'Sleeping from {now} until {next_timespan_start} (waiting for end of timespan)')
         return next_timespan_start - now
-    post_age_amount = timedelta(hours=8)
     recent_post = await db.post.find_first(
         order={'indexed_at': 'desc'},
         where={
             'author': {'is': {'handle': config.HANDLE}},
-            'indexed_at': {'gt': now - post_age_amount},
+            'indexed_at': {'gt': now - POST_COOLDOWN},
         }
     )
     if recent_post is not None:
-        until_post_is_old = recent_post.indexed_at + post_age_amount
+        until_post_is_old = recent_post.indexed_at + POST_COOLDOWN
         print(f'Sleeping from {now} until {until_post_is_old} (waiting for posts to age)')
         return until_post_is_old - now
-    next_post = await db.scheduledpost.find_first(
-        order={'id': 'asc'},
-        where={'status': 'scheduled'},
-        include={'media': True},
+    recent_image_post = await db.post.find_first(
+        order={'indexed_at': 'desc'},
+        where={
+            'author': {'is': {'handle': config.HANDLE}},
+            'indexed_at': {'gt': now - IMAGE_POST_COOLDOWN},
+            'media_count': {'gt': 0},
+        }
     )
+    next_post = None
+    if recent_image_post is None:
+        print('There is no recent image post, gonna try post a post with an image')
+        next_post = await db.scheduledpost.find_first(
+            order={'id': 'asc'},
+            where={'status': 'scheduled', 'media': {'some': {}}},
+            include={'media': True},
+        )
+    if next_post is None:
+        print('Gonna post a text-only post')
+        next_post = await db.scheduledpost.find_first(
+            order={'id': 'asc'},
+            where={'status': 'scheduled', 'media': {'none': {}}},
+            include={'media': True},
+        )
     if next_post is None:
         print('There are no posts to schedule, sleeping for a bit')
         return timedelta(minutes=10)
@@ -81,9 +103,9 @@ async def run_schedule(db: Database, client: AsyncClient, shutdown_event: asynci
         # Wait a bit for the firehose to catch up and so we don't immediately post shit
         await sleep_on(shutdown_event, 60 * 5)
         while not shutdown_event.is_set():
-            sleep_for = await step_schedule(db, client, shutdown_event)
+            sleep_for = await step_schedule(db, client)
             if sleep_for is not None:
                 await sleep_on(shutdown_event, sleep_for.total_seconds())
     else:
-        await step_schedule(db, client, shutdown_event)
+        await step_schedule(db, client)
 
