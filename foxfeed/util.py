@@ -69,7 +69,10 @@ def ensure_string(s: str) -> str:
     return s
 
 
-async def sleep_on(event: asyncio.Event, timeout: float) -> bool:
+async def sleep_on(event: Optional[asyncio.Event], timeout: float) -> bool:
+    if event is None:
+        await asyncio.sleep(timeout)
+        return False
     try:
         await asyncio.wait_for(event.wait(), timeout)
         return True
