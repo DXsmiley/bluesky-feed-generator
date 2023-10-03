@@ -30,6 +30,13 @@ from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
 from atproto.xrpc_client.models.app.bsky.feed.defs import PostView
 from atproto import models
 
+from pydantic import BaseModel
+
+
+# We use an event that will never be set as a "default" argument,
+# makes the code cleaner than passing Optional[asyncio.Event]s around
+_NEVER_SET_EVENT = asyncio.Event()
+
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -74,42 +81,33 @@ async def make_bsky_client(db: Database) -> AsyncClient:
 
 
 async def request_and_retry_on_ratelimit(
-    max_attempts: int,
-    f: Callable[[U], Coroutine[Any, Any, T]],
-    a: U,
+    function: Callable[[U], Coroutine[Any, Any, T]],
+    argument: U,
     *,
-    stop_event: Optional[asyncio.Event] = None,
+    max_attempts: int,
+    stop_event: asyncio.Event,
 ) -> T:
     if max_attempts < 1:
         raise ValueError("max_attempts must be at least 1")
     for _ in range(max_attempts - 1):
-        if stop_event is not None and stop_event.is_set():
+        if stop_event.is_set():
             break
         try:
-            return await f(a)
+            return await function(argument)
         except atproto.exceptions.RequestException as e:
             if e.response and e.response.status_code == 500:
-                await (
-                    asyncio.sleep(2) if stop_event is None else sleep_on(stop_event, 2)
-                )
+                await sleep_on(stop_event, 2)
             elif e.response and e.response.status_code == 429:
                 reset_at = int(e.response.headers.get("ratelimit-reset", None))
                 time_to_wait = reset_at - time.time() + 1
-                await (
-                    asyncio.sleep(time_to_wait)
-                    if stop_event is None
-                    else sleep_on(stop_event, time_to_wait)
-                )
+                await sleep_on(stop_event, time_to_wait)
             else:
                 raise
-    return await f(a)
+    return await function(argument)
 
 
 class HasCursor(Protocol):
     cursor: Optional[str]
-
-
-from pydantic import BaseModel
 
 
 QueryParams = TypeVar("QueryParams", bound=BaseModel)
@@ -121,20 +119,20 @@ async def paginate(
     query: Callable[[QueryParams], Coroutine[Any, Any, QueryResult]],
     getval: Callable[[QueryResult], List[U]],
     *,
-    stop_event: Optional[asyncio.Event] = None,
+    stop_event: asyncio.Event,
 ) -> AsyncIterable[U]:
-    if stop_event is not None and stop_event.is_set():
+    if stop_event.is_set():
         return
     r = await request_and_retry_on_ratelimit(
-        3, query, start_query, stop_event=stop_event
+        query, start_query, max_attempts=3, stop_event=stop_event
     )
     for i in getval(r):
         yield i
-    while r.cursor is not None and (stop_event is None or not stop_event.is_set()):
+    while r.cursor is not None and not stop_event.is_set():
         r = await request_and_retry_on_ratelimit(
-            3,
             query,
             start_query.model_copy(update={"cursor": r.cursor}),
+            max_attempts=3,
             stop_event=stop_event,
         )
         for i in getval(r):
@@ -142,10 +140,9 @@ async def paginate(
 
 
 def get_followers(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[ProfileView]:
     return paginate(
-        # {"actor": did},
         models.AppBskyGraphGetFollowers.Params(actor=did),
         client.app.bsky.graph.get_followers,
         lambda r: r.followers,
@@ -154,7 +151,7 @@ def get_followers(
 
 
 def get_follows(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         models.AppBskyGraphGetFollows.Params(actor=did),
@@ -165,7 +162,7 @@ def get_follows(
 
 
 def get_feeds(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[GeneratorView]:
     return paginate(
         models.AppBskyFeedGetActorFeeds.Params(actor=did),
@@ -176,7 +173,7 @@ def get_feeds(
 
 
 def get_posts(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[FeedViewPost]:
     return paginate(
         models.AppBskyFeedGetAuthorFeed.Params(actor=did),
@@ -187,15 +184,15 @@ def get_posts(
 
 
 async def get_specific_posts(
-    client: AsyncClient, uris: List[str], stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uris: List[str], stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[PostView]:
     for block in chunkify(uris, 25):
-        if stop_event is not None and stop_event.is_set():
+        if stop_event.is_set():
             return
         posts = await request_and_retry_on_ratelimit(
-            3,
             client.app.bsky.feed.get_posts,
             models.AppBskyFeedGetPosts.Params(uris=block),
+            max_attempts=3,
             stop_event=stop_event
         )
         for i in posts.posts:
@@ -203,15 +200,15 @@ async def get_specific_posts(
 
 
 async def get_specific_profiles(
-    client: AsyncClient, dids: List[str], stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, dids: List[str], stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[ProfileViewDetailed]:
     for block in chunkify(dids, 25):
-        if stop_event is not None and stop_event.is_set():
+        if stop_event.is_set():
             return
         users = await request_and_retry_on_ratelimit(
-            3,
             client.app.bsky.actor.get_profiles,
             models.AppBskyActorGetProfiles.Params(actors=block),
+            max_attempts=3,
             stop_event=stop_event
         )
         for i in users.profiles:
@@ -219,7 +216,7 @@ async def get_specific_profiles(
 
 
 def get_likes(
-    client: AsyncClient, uri: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uri: str, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[Like]:
     return paginate(
         models.AppBskyFeedGetLikes.Params(uri=uri),
@@ -230,7 +227,7 @@ def get_likes(
 
 
 def get_actor_likes(
-    client: AsyncClient, actor: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, actor: str, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[FeedViewPost]:
     return paginate(
         models.AppBskyFeedGetActorLikes.Params(actor=actor),
@@ -241,7 +238,7 @@ def get_actor_likes(
 
 
 def get_mute_lists(
-    client: AsyncClient, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[ListView]:
     return paginate(
         models.AppBskyGraphGetListMutes.Params(),
@@ -252,7 +249,7 @@ def get_mute_lists(
 
 
 def get_mutes(
-    client: AsyncClient, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         models.AppBskyGraphGetMutes.Params(),
@@ -263,7 +260,7 @@ def get_mutes(
 
 
 def get_list(
-    client: AsyncClient, uri: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uri: str, stop_event: asyncio.Event = _NEVER_SET_EVENT
 ) -> AsyncIterable[ListItemView]:
     return paginate(
         models.AppBskyGraphGetList.Params(list=uri),
@@ -280,10 +277,10 @@ async def as_detailed_profiles(
         AsyncIterable[ProfileView],
     ],
     arg: str,
-    stop_event: Optional[asyncio.Event] = None,
+    stop_event: asyncio.Event = _NEVER_SET_EVENT,
 ) -> AsyncIterable[ProfileViewDetailed]:
     async for chunk in achunkify(func(client, arg, stop_event), 25):
-        if stop_event is not None and stop_event.is_set():
+        if stop_event.is_set():
             return
         async for i in get_specific_profiles(client, [i.did for i in chunk], stop_event):
             yield i
