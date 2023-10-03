@@ -54,7 +54,7 @@ def codegen_for_query(function_name: str, output_model: str, sql: str) -> Iterat
     for i in sorted(set(arguments)):
         yield f'        {i} = escape({i}),'
     yield '    )'
-    yield f'    result = await db.query_raw(query, model=foxfeed.database.{output_model})'
+    yield f'    result = await db.query_raw(query, model=foxfeed.database.{output_model}) # type: ignore'
     yield '    return result'
     yield ''
 

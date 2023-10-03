@@ -1,4 +1,4 @@
-import foxfeed.monkeypatch
+import foxfeed.monkeypatch  # type: ignore
 
 import asyncio
 import sys

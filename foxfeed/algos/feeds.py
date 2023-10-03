@@ -75,4 +75,12 @@ algo_details: List[AlgorithmDetails] = [
         "generator": generators.top_feed,
         "enable": False,
     },
+    {
+        "record_name": "quotes-feed",
+        "display_name": "🦊 Quotes",
+        "description": "(in development)",
+        "handler": handlers.quotes_feed,
+        "generator": None,
+        "enable": False,
+    }
 ]

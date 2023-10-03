@@ -5,8 +5,7 @@ import foxfeed.database
 from foxfeed.database import Database, ScorePostsOutputModel
 import foxfeed.gen.db
 
-from typing import List, Callable, Iterator, Literal, Optional, Coroutine, Any, TypeVar
-from typing_extensions import LiteralString
+from typing import List, Callable, Iterator, Literal, Optional, Coroutine, Any
 from .feed_names import FeedName
 
 import foxfeed.gender

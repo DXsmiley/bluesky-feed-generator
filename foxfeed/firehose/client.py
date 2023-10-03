@@ -1,3 +1,5 @@
+# type: ignore
+
 import typing as t
 
 import asyncio
@@ -104,7 +106,7 @@ class AsyncFirehoseSubscribeReposClient(AsyncFirehoseClient):
 
     def __init__(
         self,
-        params: t.Optional[t.Union[dict, 'models.ComAtprotoSyncSubscribeRepos.Params']] = None,
+        params: t.Optional[t.Union['models.ComAtprotoSyncSubscribeRepos.Params', 'models.ComAtprotoSyncSubscribeRepos.ParamsDict']] = None,
         base_uri: t.Optional[str] = None,
     ) -> None:
         params_model = get_or_create(params, models.ComAtprotoSyncSubscribeRepos.Params)

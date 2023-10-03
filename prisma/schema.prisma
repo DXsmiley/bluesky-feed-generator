@@ -66,6 +66,10 @@ model Post {
   labels String[]
   last_rescan DateTime?
   is_pinned Boolean @default(false)
+  embed_uri String?
+  embed_cid String?
+  // embed_post Post? @relation("QuoteSkeets", fields: [embed_uri], references: [uri])
+  // embedded_by Post[] @relation("QuoteSkeets")
   // audit_log AuditLog[]
   // Media URLs
   m0 String?

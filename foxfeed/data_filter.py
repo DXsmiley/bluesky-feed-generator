@@ -1,12 +1,11 @@
 from atproto.xrpc_client import models
-from atproto.xrpc_client.models.utils import is_record_type
+from foxfeed.util import is_record_type
 
 from foxfeed.logger import logger
 from foxfeed.firehose.data_stream import OpsByType
 
-from typing import List, Callable, Coroutine, Any
+from typing import List, Callable, Coroutine, Any, Union, Dict, Tuple
 from prisma.types import PostCreateWithoutRelationsInput, LikeCreateWithoutRelationsInput
-import prisma.errors
 
 from foxfeed.database import Database, care_about_storing_user_data_preemptively
 from foxfeed.load_known_furries import parse_datetime
@@ -67,6 +66,36 @@ async def post_exists_cached(db: Database, uri: str) -> bool:
 
 
 
+EmbedType = Union[
+    None,
+    'models.AppBskyEmbedImages.Main',
+    'models.AppBskyEmbedExternal.Main',
+    'models.AppBskyEmbedRecord.Main',
+    'models.AppBskyEmbedRecordWithMedia.Main',
+]
+
+
+def get_images(author_did: str, embed: EmbedType) -> Tuple[int, Dict[int, str]]:
+    if is_record_type(embed, models.AppBskyEmbedRecordWithMedia):
+        embed = embed.media
+    if is_record_type(embed, models.AppBskyEmbedImages):
+        num_with_alt_text = len([i for i in embed.images if (i.alt or '').strip() != ""])
+        image_urls = {
+            index: f"https://av-cdn.bsky.app/img/feed_thumbnail/plain/{author_did}/{image.image.ref}@jpeg"
+            for index, image in enumerate(embed.images)
+        }
+        return (num_with_alt_text, image_urls)
+    return (0, {})
+
+
+def get_quoted_skeet(embed: EmbedType) -> Union[Tuple[str, str], Tuple[None, None]]:
+    if is_record_type(embed, models.AppBskyEmbedRecordWithMedia):
+        embed = embed.record
+    if is_record_type(embed, models.AppBskyEmbedRecord):
+        return (embed.record.uri, embed.record.cid)
+    return (None, None)
+
+
 async def operations_callback(db: Database, ops: OpsByType) -> None:
     posts_to_create: List[PostCreateWithoutRelationsInput] = []
 
@@ -74,21 +103,10 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         author_did = created_post["author"]
         record = created_post["record"]
 
-        # if record.embed is not None:
-        #     print(type(record.embed))
-        #     print(record.embed)
-
         inlined_text = record.text.replace("\n", " ")
-        images = (
-            record.embed.images
-            if record.embed is not None and is_record_type(record.embed, models.AppBskyEmbedImages)
-            else []
-        )
-        images_with_alt_text = [i for i in images if (i.alt or '').strip() != ""]
-        image_urls = {
-            index: f"https://av-cdn.bsky.app/img/feed_thumbnail/plain/{author_did}/{image.image.ref}@jpeg"
-            for index, image in enumerate(images)
-        }
+        
+        num_with_alt_text, image_urls = get_images(author_did, record.embed)
+        embed_uri, embed_cid = get_quoted_skeet(record.embed)
 
         reply_parent = None
         try:
@@ -116,7 +134,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         if await user_exists_cached(db, author_did):
             logger.info(
-                f"New furry post (with images: {len(images)}, labels: {labels}): {inlined_text}"
+                f"New furry post (is quote: {embed_uri is not None}, with images: {len(image_urls)}, labels: {labels}): {inlined_text}"
             )
             post_dict: PostCreateWithoutRelationsInput = {
                 "uri": created_post["uri"],
@@ -126,13 +144,15 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
                 "authorId": created_post["author"],
                 "text": record.text,
                 "mentions_fursuit": mentions_fursuit(record.text),
-                "media_count": len(images),
-                "media_with_alt_text_count": len(images_with_alt_text),
+                "media_count": len(image_urls),
+                "media_with_alt_text_count": num_with_alt_text,
                 "m0": image_urls.get(0, None),
                 "m1": image_urls.get(1, None),
                 "m2": image_urls.get(2, None),
                 "m3": image_urls.get(3, None),
                 "labels": labels,
+                "embed_uri": embed_uri,
+                "embed_cid": embed_cid,
             }
             posts_to_create.append(post_dict)
 

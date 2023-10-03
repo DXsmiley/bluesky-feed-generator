@@ -104,7 +104,7 @@ def toggle_post_pin(
     )
 
 
-def post(enable_admin_controls: bool, post_: Post, colour: str = 'white') -> Node:
+def post(enable_admin_controls: bool, post_: Post, quote: Optional[Post] = None, colour: str = 'white') -> Node:
     text = re.sub(r"\n+", " • ", post_.text, re.MULTILINE)
     profile_image = (
         img(src=post_.author.avatar, width="30px", height="30px", class_="profile")
@@ -139,7 +139,14 @@ def post(enable_admin_controls: bool, post_: Post, colour: str = 'white') -> Nod
             if url is not None
         ]
     )
-    return div(mainline, images, class_="post")
+    qq = (
+        None if quote is None else
+        div(
+            post(False, quote),
+            style='padding-left: 20px; border-left: 4px solid lightgrey;'
+        )
+    )
+    return div(mainline, images, qq, class_="post")
 
 
 def feeds_page(names: List[str]) -> Node:
@@ -148,7 +155,7 @@ def feeds_page(names: List[str]) -> Node:
 
 
 def feed_page(
-    enable_admin_controls: bool, feed_name: str, full_posts: List[Optional[Post]]
+    enable_admin_controls: bool, feed_name: str, full_posts: List[Tuple[Optional[Post], Optional[Post]]], next_cursor: Optional[str]
 ) -> Node:
     return wrap_body(
         f"Fox Feed - Feeds - {feed_name}",
@@ -156,9 +163,10 @@ def feed_page(
         a(href=f"/feed/{feed_name}/stats")(p("stats")),
         *[
             p('(post was deleted)') if i is None
-            else post(enable_admin_controls, i)
-            for i in full_posts
+            else post(enable_admin_controls, i, q)
+            for i, q in full_posts
         ],
+        a(href=f"/feed/{feed_name}?cursor={next_cursor}")(p("next page")) if next_cursor else None,
     )
 
 

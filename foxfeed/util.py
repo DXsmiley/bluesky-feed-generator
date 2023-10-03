@@ -1,13 +1,34 @@
 import asyncio
 from datetime import datetime
-from typing import List, TypeVar, Union, Callable, Dict, Coroutine, Any, Optional, Iterable, AsyncIterable
+import types
+from typing import Protocol, Type, List, TypeVar, Union, Callable, Dict, Coroutine, Any, Optional, Iterable, AsyncIterable
+from typing_extensions import TypeGuard
 from itertools import chain
 from collections import defaultdict
+from atproto.xrpc_client.models.base import ModelBase
+from atproto.xrpc_client.models.dot_dict import DotDict
+
+from atproto.xrpc_client.models.utils import is_record_type as _is_record_type
 
 
 K = TypeVar("K")
 T = TypeVar("T")
 U = TypeVar("U")
+
+
+
+Model = TypeVar('Model', bound=ModelBase)
+
+
+class HasAMainModel(Protocol[Model]):
+    Main: Type[Model]
+
+
+def is_record_type(model: Union[None, ModelBase, DotDict], expected_type: HasAMainModel[Model]) -> TypeGuard[Model]:
+    assert isinstance(expected_type, types.ModuleType)
+    if model is None:
+        return False
+    return _is_record_type(model, expected_type)
 
 
 def mentions_fursuit(text: str) -> bool:
@@ -62,7 +83,7 @@ async def join_unless(queue: 'asyncio.Queue[Any]', event: asyncio.Event):
     if not event.is_set():
         queue_task = asyncio.create_task(queue.join())
         wait_task = asyncio.create_task(event.wait())
-        done, pending = await asyncio.wait(
+        _, pending = await asyncio.wait(
             [queue_task, wait_task],
             return_when=asyncio.FIRST_COMPLETED
         )

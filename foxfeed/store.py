@@ -1,5 +1,5 @@
 from foxfeed.database import Database
-from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileView, ProfileViewDetailed
+from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileViewDetailed
 from atproto.xrpc_client.models.app.bsky.feed.defs import (
     PostView,
     FeedViewPost,
@@ -7,13 +7,14 @@ from atproto.xrpc_client.models.app.bsky.feed.defs import (
 from foxfeed import gender
 import random
 import prisma.errors
-from atproto.xrpc_client.models.app.bsky.embed import images
+from atproto.xrpc_client.models.app.bsky.embed import images, record, record_with_media
 from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
 from atproto.xrpc_client.models.com.atproto.label.defs import Label
-from foxfeed.util import parse_datetime, ensure_string, mentions_fursuit
+from atproto.xrpc_client import models
+from foxfeed.util import parse_datetime, ensure_string, mentions_fursuit, is_record_type
 from datetime import datetime
 
-from typing import Optional, List
+from typing import Optional, List, Union, Tuple
 
 
 async def store_user(
@@ -103,13 +104,32 @@ def labels_to_strings(labels: List[Label]) -> List[str]:
     ]
 
 
+def get_media(p: PostView) -> List[images.ViewImage]:
+    if isinstance(p.embed, record_with_media.View) and isinstance(p.embed.media, images.View):
+        return p.embed.media.images
+    if isinstance(p.embed, images.View):
+        return p.embed.images
+    return []
+
+
+def get_quoted_skeet(p: PostView) -> Union[Tuple[str, str], Tuple[None, None]]:
+    if isinstance(p.embed, record_with_media.View) and isinstance(p.embed.record, record.ViewRecord):
+        return (p.embed.record.uri, p.embed.record.cid)
+    if isinstance(p.embed, record.ViewRecord):
+        return (p.embed.uri, p.embed.cid)
+    return (None, None)
+
+
 async def store_post2(db: Database, p: PostView, reply_parent: Optional[str], reply_root: Optional[str], now: datetime) -> None:
-    media = p.embed.images if isinstance(p.embed, images.View) else []
+    media = get_media(p)
     media_with_alt_text = sum(i.alt != "" for i in media)
     # if verbose:
     #     print(f'- ({p.uri}, {media_count} images, {p.likeCount or 0} likes) - {p.record["text"]}')
-    text = ensure_string(p.record.text or '')
+    text = '(p.record was not a models.AppBskyFeedPost)'
+    if is_record_type(p.record, models.AppBskyFeedPost):
+        text = ensure_string(p.record.text or '')
     labels = labels_to_strings(p.labels or [])
+    embed_uri, embed_cid = get_quoted_skeet(p)
     create: prisma.types.PostCreateInput = {
         "uri": p.uri,
         "cid": p.cid,
@@ -128,7 +148,8 @@ async def store_post2(db: Database, p: PostView, reply_parent: Optional[str], re
         "m1": None if len(media) <= 1 else media[1].thumb,
         "m2": None if len(media) <= 2 else media[2].thumb,
         "m3": None if len(media) <= 3 else media[3].thumb,
-        # "last_rescan": now, # Maybe we should set this???
+        "embed_uri": embed_uri,
+        "embed_cid": embed_cid,
     }
     update: prisma.types.PostUpdateInput = {
         "like_count": p.like_count or 0,
@@ -142,6 +163,8 @@ async def store_post2(db: Database, p: PostView, reply_parent: Optional[str], re
         "m2": None if len(media) <= 2 else media[2].thumb,
         "m3": None if len(media) <= 3 else media[3].thumb,
         "last_rescan": now,
+        "embed_uri": embed_uri,
+        "embed_cid": embed_cid,
     }
     await db.post.upsert(
         where={"uri": p.uri},

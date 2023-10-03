@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Callable, Coroutine, Any
 
 import foxfeed.database
-from foxfeed.database import Database
+from foxfeed.database import Database, Post
 
 from typing_extensions import TypedDict
 
@@ -34,7 +34,7 @@ PLACEHOLDER_FEED: List[FeedItem] = [
 ]
 
 
-def chronological_feed(post_query_filter: PostWhereInput) -> HandlerType:
+def chronological_feed(post_query_filter: PostWhereInput, pfilter: Optional[Callable[[Database, Post], Coroutine[Any, Any, bool]]] = None) -> HandlerType:
     async def handler(db: Database, cursor: Optional[str], limit: int) -> HandlerResult:
         if cursor:
             cursor_parts = cursor.split("::")
@@ -62,7 +62,12 @@ def chronological_feed(post_query_filter: PostWhereInput) -> HandlerType:
             order=[{"indexed_at": "desc"}, {"cid": "desc"}],
         )
 
-        feed: List[FeedItem] = [{"post": post.uri} for post in posts]
+        feed: List[FeedItem] = [
+            {"post": post.uri}
+            for post in posts
+            if pfilter is None or await pfilter(db, post)
+        ]
+
         cursor = (
             f"{int(posts[-1].indexed_at.timestamp() * 1000)}::{posts[-1].cid}"
             if posts
@@ -136,4 +141,20 @@ fursuit_feed = chronological_feed(
             }
         ]
     }
+)
+
+
+async def quote_in_db(db: Database, p: Post) -> bool:
+    if p.embed_uri is None:
+        return False
+    r = await db.post.find_first(where={"uri": p.embed_uri})
+    return r is not None
+
+
+quotes_feed = chronological_feed(
+    {
+        "author": {"is": foxfeed.database.user_is_in_fox_feed},
+        "NOT": [{"embed_uri": None}]
+    },
+    quote_in_db
 )

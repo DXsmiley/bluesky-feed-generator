@@ -8,11 +8,10 @@ import foxfeed.web.interface
 import foxfeed.algos.feeds
 import foxfeed.database
 import foxfeed.web.jwt_verification
-from foxfeed.database import Database
+from foxfeed.database import Database, Post
 from foxfeed.bsky import AsyncClient
 from foxfeed.web.ratelimit import Ratelimit
 from foxfeed import config
-from foxfeed.metrics import daterange
 import foxfeed.algos.generators
 from termcolor import cprint
 import aiojobs.aiohttp
@@ -269,20 +268,26 @@ def create_route_table(
     @routes.get("/feed/{feed}")
     async def get_feed(request: web.Request) -> web.Response:
         feed_name = request.match_info.get("feed", "")
+        cursor = request.rel_url.query.get('cursor', None)
         algo = algos_by_short_name.get(feed_name)
         if algo is None:
             return web.HTTPNotFound(text="Feed not found")
 
-        posts = (await algo(db, None, 50))["feed"]
+        result = await algo(db, cursor, 50)
+        posts = result["feed"]
         full_posts = [
-            await db.post.find_first(
-                where={"uri": i["post"]}, include={"author": True}
-            )
+            await db.post.find_first(where={"uri": i["post"]}, include={"author": True})
             for i in posts
         ]
 
+        with_quotes: List[Tuple[Optional[Post], Optional[Post]]] = [
+            (i, None if i.embed_uri is None else await db.post.find_first(where={"uri": i.embed_uri}, include={"author": True}))
+            for i in full_posts
+            if i is not None
+        ]
+
         page = foxfeed.web.interface.feed_page(
-            await is_admin(request), feed_name, full_posts
+            await is_admin(request), feed_name, with_quotes, result["cursor"]
         )
 
         return web.Response(text=str(page), content_type="text/html")

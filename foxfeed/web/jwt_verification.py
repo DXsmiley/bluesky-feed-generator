@@ -1,5 +1,5 @@
 import jwt
-import multibase
+import multibase # type: ignore
 import aiohttp
 from foxfeed.config import SERVICE_DID
 from typing import Optional, Callable, Coroutine, Any, Tuple
@@ -53,7 +53,7 @@ async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
 
     pubkey_multibase = await get_pubkey_from_server(did)
 
-    decoded = multibase.decode(pubkey_multibase)
+    decoded = multibase.decode(pubkey_multibase) # type: ignore
     assert isinstance(decoded, bytes)
 
     ecpk = EllipticCurvePublicKey.from_encoded_point(SECP256K1(), decoded)

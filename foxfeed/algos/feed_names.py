@@ -8,4 +8,5 @@ FeedName = Literal[
     "fursuit-feed",
     "bisexy",
     "top-feed",
+    "quotes-feed",
 ]

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Union, Optional, TypeVar
+from typing import List, Union, Optional, TypeVar, overload
 
 
 T = TypeVar('T')
@@ -48,7 +48,15 @@ class Args:
     forever: bool
 
 
-def take(args: List[str], tflag: str, fflag: Optional[str] = None, *, default: T = None) -> Union[bool, T]:
+# It's possible to write this without @overload (pyright is happy but mypy complains)
+
+@overload
+def take(args: List[str], tflag: str, fflag: Optional[str] = None) -> Union[bool, None]: ...
+
+@overload
+def take(args: List[str], tflag: str, fflag: Optional[str] = None, *, default: T) -> Union[bool, T]: ...
+
+def take(args: List[str], tflag: str, fflag: Optional[str] = None, *, default: Optional[T] = None) -> Union[bool, Optional[T]]:
     if fflag is not None and fflag in args and tflag in args:
         raise ValueError(f'Contradictory flags {tflag} and {fflag} both present')
     elif tflag in args:

@@ -2,7 +2,7 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Optional
+from typing import Coroutine, Any, Callable, List, TypeVar, Generic
 from typing_extensions import TypedDict
 import traceback
 from datetime import datetime
@@ -11,13 +11,15 @@ from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
 from foxfeed.firehose.client import AsyncFirehoseSubscribeReposClient
 from atproto.firehose import parse_subscribe_repos_message
-from atproto.xrpc_client.models.utils import get_or_create, is_record_type
+from atproto.xrpc_client.models.utils import get_or_create
 from atproto.xrpc_client.models.common import XrpcError
 from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
+from foxfeed.util import is_record_type
 
 from termcolor import cprint
 
-from foxfeed.util import parse_datetime, wait_interruptable
+from foxfeed.util import parse_datetime
+
 
 # from atproto.xrpc_client.models.unknown_type import UnknownRecordType
 

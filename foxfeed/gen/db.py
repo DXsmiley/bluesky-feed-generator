@@ -140,5 +140,5 @@ async def score_posts(
         include_guy_votes = escape(include_guy_votes),
         lmt = escape(lmt),
     )
-    result = await db.query_raw(query, model=foxfeed.database.ScorePostsOutputModel)
+    result = await db.query_raw(query, model=foxfeed.database.ScorePostsOutputModel) # type: ignore
     return result
