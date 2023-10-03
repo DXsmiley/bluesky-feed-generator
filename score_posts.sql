@@ -23,6 +23,7 @@ WITH "LikeCount" AS (
 ), table1 AS (
     SELECT
         post.uri AS uri,
+        post.embed_uri AS embed_uri,
         post."authorId" as author,
         post.indexed_at as indexed_at,
         post.labels as labels,
@@ -62,6 +63,7 @@ WITH "LikeCount" AS (
 ), table2 AS (
     SELECT
         uri,
+        embed_uri,
         author,
         author_is_fem,
         indexed_at,
@@ -87,7 +89,14 @@ WITH "LikeCount" AS (
         author_is_fem,
         indexed_at,
         labels,
-        (score * (1 / POWER(2, RANK() OVER (PARTITION BY author ORDER BY score DESC) - 1))) AS score
+        (
+            score
+            * (1 / POWER(2, RANK() OVER (PARTITION BY author ORDER BY score DESC) - 1))
+            * (
+                CASE WHEN embed_uri IS NULL THEN 1
+                ELSE (1 / POWER(2, RANK() OVER (PARTITION BY embed_uri ORDER BY score DESC) - 1)) END
+            )
+        ) AS score
     FROM table2
 )
 
