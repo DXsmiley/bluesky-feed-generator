@@ -281,9 +281,12 @@ async def find_furries_raw(
         (get_mutuals, "coolkoinu.bsky.social"),
         (get_mutuals, "gutterbunny.bsky.social"),
         (get_mutuals, "zoeydogy.bsky.social"),
+        (get_mutuals, "meanshep.bsky.social"),
+        (get_mutuals, "zempy3.bsky.social"),
+        (get_mutuals, "jamievx.com"),
     ]
 
-    cprint("Loading furries from furrtli.st", "blue", force_color=True)
+    cprint("Loading furries from furryli.st", "blue", force_color=True)
     furrylist = await client.app.bsky.actor.get_profile({"actor": "furryli.st"})
     yield (furrylist, True)
     async for other in as_detailed_profiles(client, get_follows, furrylist.did, policy):
