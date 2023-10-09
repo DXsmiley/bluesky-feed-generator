@@ -4,6 +4,10 @@ from foxfeed.database import make_database_connection
 from foxfeed.algos.generators import LOOKBACK_HARD_LIMIT
 from foxfeed.metrics import METRICS_MAXIMUM_LOOKBACK
 
+
+POST_MAX_AGE = timedelta(days=60)
+
+
 async def main():
     now = datetime.utcnow()
     db = await make_database_connection(timeout=120)
@@ -30,8 +34,10 @@ async def main():
     )
     print('Deleted', c, 'blueskyclientsessions')
 
-    # c = await db.post.delete_many(where={'indexed_at': {'lt': now - LOOKBACK_HARD_LIMIT}})
-    # print('Deleted', c, 'posts')
+    c = await db.post.delete_many(
+        where={'indexed_at': {'lt': now - POST_MAX_AGE}}
+    )
+    print('Deleted', c, 'posts')
 
 
 asyncio.run(main())
