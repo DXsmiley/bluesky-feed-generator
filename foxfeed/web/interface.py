@@ -6,8 +6,6 @@ from prisma.models import Post, Actor, ScheduledPost
 from foxfeed.util import interleave, groupby
 from foxfeed.metrics import FeedMetrics, FeedMetricsSlice
 from foxfeed import image
-import io
-import base64
 
 
 T = TypeVar("T")

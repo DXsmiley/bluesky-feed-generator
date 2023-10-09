@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime, timedelta
+
 import atproto
 import atproto.exceptions
 from foxfeed.config import HANDLE, PASSWORD
@@ -12,6 +14,7 @@ from typing import (
     Optional,
     Protocol,
     AsyncIterable,
+    Union,
 )
 import time
 from foxfeed.util import sleep_on, chunkify, achunkify
@@ -33,10 +36,50 @@ from atproto import models
 from pydantic import BaseModel
 
 
+class Policy:
+
+    def __init__(self, stop_event: asyncio.Event, ratelimit_timespan: timedelta, ratelimit_limit: int):
+        self.stop_event = stop_event
+        self.ratelimit_timespan = ratelimit_timespan
+        self.ratelimit_limit = ratelimit_limit
+        self.reset_at = datetime.now() - ratelimit_timespan
+        self.counter = 0
+        self.lock = asyncio.Lock()
+
+    async def count_and_wait(self):
+        async with self.lock:
+            now = datetime.now()
+            if now > self.reset_at:
+                self.reset_at = now + self.ratelimit_timespan
+                self.counter = 0
+            self.counter += 1
+            if self.counter > self.ratelimit_limit:
+                await sleep_on(self.stop_event, (self.reset_at - now).total_seconds())
+
+
+PolicyType = Optional[Union[asyncio.Event, Policy]]
+
+
+async def count_and_wait_if_policy(policy: PolicyType) -> None:
+    if isinstance(policy, Policy):
+        await policy.count_and_wait()
+
+
+async def sleep_on_stop_event(policy_or_stop_event: PolicyType, timeout: float) -> None:
+    if isinstance(policy_or_stop_event, Policy):
+        await sleep_on(policy_or_stop_event.stop_event, timeout)
+    if isinstance(policy_or_stop_event, asyncio.Event):
+        await sleep_on(policy_or_stop_event, timeout)
+
+
 # We use an event that will never be set as a "default" argument,
 # makes the code cleaner than passing Optional[asyncio.Event]s around
-def ev_set(stop_event: Optional[asyncio.Event] = None):
-    return stop_event is not None and stop_event.is_set()
+def ev_set(policy_or_stop_event: PolicyType) -> bool:
+    if isinstance(policy_or_stop_event, Policy):
+        return policy_or_stop_event.stop_event.is_set()
+    if isinstance(policy_or_stop_event, asyncio.Event):
+        return policy_or_stop_event.is_set()
+    return False
 
 
 T = TypeVar("T")
@@ -86,22 +129,23 @@ async def request_and_retry_on_ratelimit(
     argument: U,
     *,
     max_attempts: int,
-    stop_event: Optional[asyncio.Event],
+    policy: PolicyType,
 ) -> T:
     if max_attempts < 1:
         raise ValueError("max_attempts must be at least 1")
     for _ in range(max_attempts - 1):
-        if ev_set(stop_event):
+        if ev_set(policy):
             break
         try:
+            await count_and_wait_if_policy(policy)
             return await function(argument)
         except atproto.exceptions.RequestException as e:
             if e.response and e.response.status_code == 500:
-                await sleep_on(stop_event, 2)
+                await sleep_on_stop_event(policy, 2)
             elif e.response and e.response.status_code == 429:
                 reset_at = int(e.response.headers.get("ratelimit-reset", None))
                 time_to_wait = reset_at - time.time() + 1
-                await sleep_on(stop_event, time_to_wait)
+                await sleep_on_stop_event(policy, time_to_wait)
             else:
                 raise
     return await function(argument)
@@ -120,168 +164,168 @@ async def paginate(
     query: Callable[[QueryParams], Coroutine[Any, Any, QueryResult]],
     getval: Callable[[QueryResult], List[U]],
     *,
-    stop_event: Optional[asyncio.Event],
+    policy: PolicyType,
 ) -> AsyncIterable[U]:
-    if ev_set(stop_event):
+    if ev_set(policy):
         return
     r = await request_and_retry_on_ratelimit(
-        query, start_query, max_attempts=3, stop_event=stop_event
+        query, start_query, max_attempts=3, policy=policy
     )
     for i in getval(r):
         yield i
-    while r.cursor is not None and not ev_set(stop_event):
+    while r.cursor is not None and not ev_set(policy):
         r = await request_and_retry_on_ratelimit(
             query,
             start_query.model_copy(update={"cursor": r.cursor}),
             max_attempts=3,
-            stop_event=stop_event,
+            policy=policy,
         )
         for i in getval(r):
             yield i
 
 
 def get_followers(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, policy: PolicyType = None
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         models.AppBskyGraphGetFollowers.Params(actor=did),
         client.app.bsky.graph.get_followers,
         lambda r: r.followers,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 def get_follows(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, policy: PolicyType = None
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         models.AppBskyGraphGetFollows.Params(actor=did),
         client.app.bsky.graph.get_follows,
         lambda r: r.follows,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 def get_feeds(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, policy: PolicyType = None
 ) -> AsyncIterable[GeneratorView]:
     return paginate(
         models.AppBskyFeedGetActorFeeds.Params(actor=did),
         client.app.bsky.feed.get_actor_feeds,
         lambda r: r.feeds,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 def get_posts(
-    client: AsyncClient, did: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, did: str, policy: PolicyType = None
 ) -> AsyncIterable[FeedViewPost]:
     return paginate(
         models.AppBskyFeedGetAuthorFeed.Params(actor=did),
         client.app.bsky.feed.get_author_feed,
         lambda r: r.feed,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 async def get_specific_posts(
-    client: AsyncClient, uris: List[str], stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uris: List[str], policy: PolicyType = None
 ) -> AsyncIterable[PostView]:
     for block in chunkify(uris, 25):
-        if ev_set(stop_event):
+        if ev_set(policy):
             return
         posts = await request_and_retry_on_ratelimit(
             client.app.bsky.feed.get_posts,
             models.AppBskyFeedGetPosts.Params(uris=block),
             max_attempts=3,
-            stop_event=stop_event
+            policy=policy
         )
         for i in posts.posts:
             yield i
 
 
 async def get_specific_profiles(
-    client: AsyncClient, dids: List[str], stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, dids: List[str], policy: PolicyType = None
 ) -> AsyncIterable[ProfileViewDetailed]:
     for block in chunkify(dids, 25):
-        if ev_set(stop_event):
+        if ev_set(policy):
             return
         users = await request_and_retry_on_ratelimit(
             client.app.bsky.actor.get_profiles,
             models.AppBskyActorGetProfiles.Params(actors=block),
             max_attempts=3,
-            stop_event=stop_event
+            policy=policy
         )
         for i in users.profiles:
             yield i
 
 
 def get_likes(
-    client: AsyncClient, uri: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uri: str, policy: PolicyType = None
 ) -> AsyncIterable[Like]:
     return paginate(
         models.AppBskyFeedGetLikes.Params(uri=uri),
         client.app.bsky.feed.get_likes,
         lambda r: r.likes,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 def get_actor_likes(
-    client: AsyncClient, actor: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, actor: str, policy: PolicyType = None
 ) -> AsyncIterable[FeedViewPost]:
     return paginate(
         models.AppBskyFeedGetActorLikes.Params(actor=actor),
         client.app.bsky.feed.get_actor_likes,
         lambda r: r.feed,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 def get_mute_lists(
-    client: AsyncClient, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, policy: PolicyType = None
 ) -> AsyncIterable[ListView]:
     return paginate(
         models.AppBskyGraphGetListMutes.Params(),
         client.app.bsky.graph.get_list_mutes,
         lambda r: r.lists,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 def get_mutes(
-    client: AsyncClient, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, policy: PolicyType = None
 ) -> AsyncIterable[ProfileView]:
     return paginate(
         models.AppBskyGraphGetMutes.Params(),
         client.app.bsky.graph.get_mutes,
         lambda r: r.mutes,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 def get_list(
-    client: AsyncClient, uri: str, stop_event: Optional[asyncio.Event] = None
+    client: AsyncClient, uri: str, policy: PolicyType = None
 ) -> AsyncIterable[ListItemView]:
     return paginate(
         models.AppBskyGraphGetList.Params(list=uri),
         client.app.bsky.graph.get_list,
         lambda r: r.items,
-        stop_event=stop_event,
+        policy=policy,
     )
 
 
 async def as_detailed_profiles(
     client: AsyncClient,
     func: Callable[
-        [AsyncClient, str, Optional[asyncio.Event]],
+        [AsyncClient, str, PolicyType],
         AsyncIterable[ProfileView],
     ],
     arg: str,
-    stop_event: Optional[asyncio.Event] = None
+    policy: PolicyType = None
 ) -> AsyncIterable[ProfileViewDetailed]:
-    async for chunk in achunkify(func(client, arg, stop_event), 25):
-        if ev_set(stop_event):
+    async for chunk in achunkify(func(client, arg, policy), 25):
+        if ev_set(policy):
             return
-        async for i in get_specific_profiles(client, [i.did for i in chunk], stop_event):
+        async for i in get_specific_profiles(client, [i.did for i in chunk], policy):
             yield i
