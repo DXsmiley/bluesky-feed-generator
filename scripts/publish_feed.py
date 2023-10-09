@@ -13,8 +13,7 @@ from typing import Optional
 from foxfeed.algos.feeds import algo_details, environment_variable_name_for
 from foxfeed.database import make_database_connection
 from foxfeed.bsky import make_bsky_client
-import io
-from PIL import Image
+from foxfeed import image
 
 dotenv.load_dotenv()
 
@@ -35,15 +34,10 @@ HOSTNAME: str = os.environ['HOSTNAME']
 SERVICE_DID: Optional[str] = None
 
 
-def load_image_and_scale(path: str, max_sidelength: int) -> bytes:
-    img = Image.open(path)
-    w, h = img.size
-    scale_factor = max_sidelength / max(w, h)
-    if scale_factor > 1:
-        img = img.resize((int(w * scale_factor), int(h * scale_factor)))
-    bts = io.BytesIO()
-    img.save(bts, format='PNG')
-    return bts.getvalue()
+def load_image_and_scale(path: str) -> bytes:
+    img = image.open(path)
+    img = image.scale_down(img, 128)
+    return image.to_bytes(img, 'PNG')
 
 
 async def register(client: AsyncClient, record_name: str, display_name: str, description: str, avatar_blob: Optional[BlobRef], alive: bool) -> str:
@@ -89,7 +83,7 @@ async def main():
 
     avatar_blob = None
     if avatar_path:
-        avatar_data = load_image_and_scale(avatar_path, 128)
+        avatar_data = load_image_and_scale(avatar_path)
         avatar_blob = (await client.com.atproto.repo.upload_blob(avatar_data, timeout=30)).blob
 
     for i in algo_details:

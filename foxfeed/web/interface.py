@@ -2,9 +2,12 @@ from foxfeed.web import html
 from foxfeed.web.html import Node, head, img, div, h3, h4, p, span, a, UnescapedString
 import re
 from typing import List, Tuple, Union, TypeVar, Optional, Callable
-from prisma.models import Post, Actor
+from prisma.models import Post, Actor, ScheduledPost
 from foxfeed.util import interleave, groupby
 from foxfeed.metrics import FeedMetrics, FeedMetricsSlice
+from foxfeed import image
+import io
+import base64
 
 
 T = TypeVar("T")
@@ -17,6 +20,7 @@ _navbar = [
     a(href="/pinned_posts")("pins"),
     a(href="/user/puppyfox.bsky.social")("me"),
     a(href="/quickflag")("quickflag"),
+    a(href="/schedule")("schedule"),
 ]
 
 navbar = div(*interleave(" | ", _navbar))
@@ -352,6 +356,32 @@ def quickflag_page(enable_admin_controls: bool, users: List[Actor]) -> Node:
         *[user_main(enable_admin_controls, i, i.posts or []) for i in users],
         h3("(end)"),
         a("refresh page for more users", href="/quickflag"),
+    )
+
+
+def data_to_small_dataurl(b: bytes) -> str:
+    img = image.from_bytes(b)
+    img = image.scale_down(img, 96)
+    return image.to_dataurl(img)
+
+
+def scheduled_posts_page(posts: List[ScheduledPost]) -> Node:
+    return wrap_body(
+        "Fox Feed - Scheduled Posts",
+        h3("Scheduled Posts"),
+        *[
+            div(
+                p(i.status, ' - ', re.sub(r"\n+", " • ", i.text, re.MULTILINE)),
+                *[
+                    div(
+                        img(src=data_to_small_dataurl(m.data.decode())),
+                        p(m.alt_text)
+                    )
+                    for m in (i.media or [])
+                ]
+            )
+            for i in posts
+        ]
     )
 
 

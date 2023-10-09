@@ -521,5 +521,21 @@ def create_route_table(
         assert isinstance(pin, bool)
         await db.post.update(where={"uri": uri}, data={"is_pinned": pin})
         return web.HTTPOk(text=("pinned post" if pin else "unpinned post"))
+    
+    @routes.get("/schedule")
+    @require_admin_login
+    async def schedule(request: web.Request) -> web.Response:
+        failed = await db.scheduledpost.find_many(
+            order={'id': 'desc'},
+            where={'status': {'in': ['failed', 'attempting']}},
+            include={'media': True},
+        )
+        scheduled = await db.scheduledpost.find_many(
+            order={'id': 'asc'},
+            where={'status': 'scheduled'},
+            include={'media': True},
+        )
+        page = foxfeed.web.interface.scheduled_posts_page(failed + scheduled)
+        return web.Response(text=str(page), content_type="text/html")
 
     return routes
