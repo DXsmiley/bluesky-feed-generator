@@ -72,8 +72,6 @@ async def sleep_on_stop_event(policy_or_stop_event: PolicyType, timeout: float) 
         await sleep_on(policy_or_stop_event, timeout)
 
 
-# We use an event that will never be set as a "default" argument,
-# makes the code cleaner than passing Optional[asyncio.Event]s around
 def ev_set(policy_or_stop_event: PolicyType) -> bool:
     if isinstance(policy_or_stop_event, Policy):
         return policy_or_stop_event.stop_event.is_set()
