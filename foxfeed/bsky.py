@@ -34,8 +34,6 @@ from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
 from atproto.xrpc_client.models.app.bsky.feed.defs import PostView
 from atproto import models
 
-from pydantic import BaseModel
-
 
 class Policy:
 
