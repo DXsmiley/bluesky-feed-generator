@@ -15,6 +15,7 @@ from typing import (
     Protocol,
     AsyncIterable,
     Union,
+    Dict,
 )
 import time
 from foxfeed.util import sleep_on, chunkify, achunkify
@@ -149,16 +150,17 @@ async def request_and_retry_on_ratelimit(
     return await function(argument)
 
 
-class HasCursor(Protocol):
+class ModelWithCursor(Protocol):
     cursor: Optional[str]
+    def model_copy(self, *, update: Dict[str, Any]) -> 'ModelWithCursor': ...
 
 
-QueryParams = TypeVar("QueryParams", bound=BaseModel)
-QueryResult = TypeVar("QueryResult", bound=HasCursor)
+QueryParams = TypeVar("QueryParams", bound=ModelWithCursor)
+QueryResult = TypeVar("QueryResult", bound=ModelWithCursor)
 
 
 async def paginate(
-    start_query: QueryParams,
+    params: QueryParams,
     query: Callable[[QueryParams], Coroutine[Any, Any, QueryResult]],
     getval: Callable[[QueryResult], List[U]],
     *,
@@ -167,14 +169,14 @@ async def paginate(
     if ev_set(policy):
         return
     r = await request_and_retry_on_ratelimit(
-        query, start_query, max_attempts=3, policy=policy
+        query, params, max_attempts=3, policy=policy
     )
     for i in getval(r):
         yield i
     while r.cursor is not None and not ev_set(policy):
         r = await request_and_retry_on_ratelimit(
             query,
-            start_query.model_copy(update={"cursor": r.cursor}),
+            params.model_copy(update={"cursor": r.cursor}),
             max_attempts=3,
             policy=policy,
         )
