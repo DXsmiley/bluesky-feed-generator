@@ -1,12 +1,13 @@
 import asyncio
 from datetime import datetime
 import types
-from typing import Protocol, Type, List, TypeVar, Union, Callable, Dict, Coroutine, Any, Optional, Iterable, AsyncIterable
-from typing_extensions import TypeGuard
+from typing import Final, ClassVar, Mapping, Protocol, Type, Literal, List, TypeVar, Union, Callable, Dict, Coroutine, Any, Optional, Iterable, AsyncIterable
+from typing_extensions import TypeGuard, LiteralString
 from itertools import chain
 from collections import defaultdict
 from atproto.xrpc_client.models.base import ModelBase
 from atproto.xrpc_client.models.dot_dict import DotDict
+from pydantic.fields import FieldInfo
 
 from atproto.xrpc_client.models.utils import is_record_type as _is_record_type
 
@@ -17,7 +18,13 @@ U = TypeVar("U")
 
 
 
-Model = TypeVar('Model', bound=ModelBase)
+class ModelWithDiscriminator(Protocol):
+    model_fields: ClassVar[Dict[str, FieldInfo]]
+    @property
+    def py_type(self) -> LiteralString: ...
+
+
+Model = TypeVar('Model', bound=ModelWithDiscriminator)
 
 
 class HasAMainModel(Protocol[Model]):
@@ -26,9 +33,7 @@ class HasAMainModel(Protocol[Model]):
 
 def is_record_type(model: Union[None, ModelBase, DotDict], expected_type: HasAMainModel[Model]) -> TypeGuard[Model]:
     assert isinstance(expected_type, types.ModuleType)
-    if model is None:
-        return False
-    return _is_record_type(model, expected_type)
+    return isinstance(model, (ModelBase, DotDict)) and _is_record_type(model, expected_type)
 
 
 def mentions_fursuit(text: str) -> bool:

@@ -1,34 +1,105 @@
-# type: ignore
-
-import typing as t
-
 import asyncio
-from atproto.exceptions import FirehoseDecodingError, FirehoseError
-from atproto.firehose.client import _WebsocketClientBase, _print_exception, _handle_frame_decoding_error, AsyncOnMessageCallback, OnCallbackErrorCallback, _handle_websocket_error_or_stop, _MAX_MESSAGE_SIZE_BYTES
+import random
+import socket
+import traceback
+import typing as t
+from copy import deepcopy
+from urllib.parse import urlencode
+
+from websockets.client import connect as aconnect
+from websockets.exceptions import (
+    ConnectionClosedError,
+    ConnectionClosedOK,
+    InvalidHandshake,
+    PayloadTooBig,
+    ProtocolError,
+)
+
+from atproto.exceptions import DAGCBORDecodingError, FirehoseDecodingError, FirehoseError
 from atproto.firehose.models import ErrorFrame, Frame, MessageFrame
 from atproto.xrpc_client import models
-from atproto.xrpc_client.models.utils import get_model_as_dict, get_or_create
-from atproto.xrpc_client.models import get_model_as_dict
 from atproto.xrpc_client.models.common import XrpcError
-import traceback
+
 from foxfeed.util import sleep_on
-from websockets.client import connect as aconnect
 
 
-if t.TYPE_CHECKING:
-    from atproto.firehose.models import MessageFrame
+_BASE_WEBSOCKET_URI = 'wss://bsky.social/xrpc'
+_MAX_MESSAGE_SIZE_BYTES = 1024 * 1024 * 5  # 5MB
+
+OnMessageCallback = t.Callable[['MessageFrame'], t.Generator[t.Any, None, t.Any]]
+AsyncOnMessageCallback = t.Callable[['MessageFrame'], t.Coroutine[t.Any, t.Any, t.Any]]
+
+OnCallbackErrorCallback = t.Callable[[BaseException], None]
 
 
-class AsyncFirehoseClient(_WebsocketClientBase):
+def _build_websocket_uri(
+    method: str, base_uri: t.Optional[str] = None, params: t.Optional[t.Dict[str, t.Any]] = None
+) -> str:
+    if base_uri is None:
+        base_uri = _BASE_WEBSOCKET_URI
+
+    query_string = ''
+    if params:
+        query_string = f'?{urlencode(params)}'
+
+    return f'{base_uri}/{method}{query_string}'
+
+
+def _handle_frame_decoding_error(exception: Exception) -> None:
+    if isinstance(exception, (DAGCBORDecodingError, FirehoseDecodingError)):
+        # Ignore an invalid firehose frame that could not be properly decoded.
+        # It's better to ignore one frame rather than stop the whole connection
+        # or trap into an infinite loop of reconnections.
+        return
+
+    raise exception
+
+
+def _print_exception(exception: BaseException) -> None:
+    traceback.print_exception(type(exception), exception, exception.__traceback__)
+
+
+def _handle_websocket_error_or_stop(exception: Exception) -> bool:
+    """Returns if the connection should be properly being closed or reraise exception."""
+    if isinstance(exception, (ConnectionClosedOK,)):
+        return True
+    if isinstance(exception, (ConnectionClosedError, InvalidHandshake, PayloadTooBig, ProtocolError, socket.gaierror)):
+        return False
+    if isinstance(exception, FirehoseError):
+        raise exception
+
+    raise FirehoseError from exception
+
+
+class AsyncFirehoseClient:
     def __init__(
         self, method: str, base_uri: t.Optional[str] = None, params: t.Optional[t.Dict[str, t.Any]] = None
     ) -> None:
-        super().__init__(method, base_uri, params)
+        self._method = method
+        self._base_uri = base_uri
+        self._params = params
+
+        self._reconnect_no = 0
+        self._max_reconnect_delay_sec = 64
 
         self._loop = asyncio.get_event_loop()
         self._stop_event = asyncio.Event()
 
         self._on_message_callback: t.Optional[AsyncOnMessageCallback] = None
+
+    def update_params(self, params: t.Dict[str, t.Any]) -> None:
+        """Update params.
+
+        Warning:
+            If you are using `params` arg at the client start, you must care about keeping params up to date.
+            Otherwise, your client will be rolled back to the previous state (cursor) on reconnecting.
+        """
+        self._params = deepcopy(params)
+
+    @property
+    def _websocket_uri(self) -> str:
+        # the user should care about updated params by himself
+        return _build_websocket_uri(self._method, self._base_uri, self._params)
 
     async def _process_raw_frame(self, data: bytes) -> None:
         frame = Frame.from_bytes(data)
@@ -54,6 +125,12 @@ class AsyncFirehoseClient(_WebsocketClientBase):
 
     def _get_async_client(self):
         return aconnect(self._websocket_uri, max_size=_MAX_MESSAGE_SIZE_BYTES, close_timeout=0.2)
+    
+    def _get_reconnection_delay(self) -> int:
+        base_sec = 2**self._reconnect_no
+        rand_sec = random.uniform(-0.5, 0.5)  # noqa: S311
+
+        return min(base_sec, self._max_reconnect_delay_sec) + rand_sec
 
     async def start(self,
         on_message_callback: AsyncOnMessageCallback,
@@ -106,13 +183,8 @@ class AsyncFirehoseSubscribeReposClient(AsyncFirehoseClient):
 
     def __init__(
         self,
-        params: t.Optional[t.Union['models.ComAtprotoSyncSubscribeRepos.Params', 'models.ComAtprotoSyncSubscribeRepos.ParamsDict']] = None,
+        params: 'models.ComAtprotoSyncSubscribeRepos.ParamsDict',
         base_uri: t.Optional[str] = None,
     ) -> None:
-        params_model = get_or_create(params, models.ComAtprotoSyncSubscribeRepos.Params)
-
-        params_dict = None
-        if params_model:
-            params_dict = get_model_as_dict(params_model)
-
-        super().__init__(method='com.atproto.sync.subscribeRepos', base_uri=base_uri, params=params_dict)
+        
+        super().__init__(method='com.atproto.sync.subscribeRepos', base_uri=base_uri, params=dict(params))

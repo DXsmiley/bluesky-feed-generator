@@ -2,8 +2,8 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, TypeVar, Generic
-from typing_extensions import TypedDict
+from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union
+from typing_extensions import TypedDict, TypeGuard
 import traceback
 from datetime import datetime
 
@@ -13,18 +13,17 @@ from foxfeed.firehose.client import AsyncFirehoseSubscribeReposClient
 from atproto.firehose import parse_subscribe_repos_message
 from atproto.xrpc_client.models.utils import get_or_create
 from atproto.xrpc_client.models.common import XrpcError
+from atproto.xrpc_client.models.base import ModelBase
+from atproto.xrpc_client.models.dot_dict import DotDict
 from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
 from foxfeed.util import is_record_type
 
 from termcolor import cprint
 
-from foxfeed.util import parse_datetime
-
-
-# from atproto.xrpc_client.models.unknown_type import UnknownRecordType
-
+from foxfeed.util import parse_datetime, Model, HasAMainModel
 from foxfeed.logger import logger
 from foxfeed.database import Database
+
 
 if t.TYPE_CHECKING:
     from atproto.firehose.models import MessageFrame
@@ -73,122 +72,87 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
     for op in commit.ops:
         uri = AtUri.from_str(f"at://{commit.repo}/{op.path}")
 
-        # print(uri.collection, op.action)
+        record_raw_data = None if op.cid is None else car.blocks.get(op.cid)
+        record = None if record_raw_data is None else get_or_create(record_raw_data, strict=False)
+
+        def check(r: Union[ModelBase, DotDict, None], expected_type: HasAMainModel[Model]) -> TypeGuard[Model]:
+            return (
+                uri.collection == expected_type.Main.model_fields['py_type'].default
+                and is_record_type(r, expected_type)
+            )
+        
+        def check_delete(expected_type: HasAMainModel[Model]) -> bool:
+            return uri.collection == expected_type.Main.model_fields['py_type'].default
 
         if op.action == "update":
-            if not op.cid:
-                continue
-            # not supported yet
-            # print('update!!!')
-            record_raw_data = car.blocks.get(op.cid)
-            if not record_raw_data:
-                continue
-            record = get_or_create(record_raw_data, strict=False)
-            # print(record)
-            if record is not None:
-                if uri.collection == models.ids.AppBskyActorProfile and is_record_type(
-                    record, models.AppBskyActorProfile
-                ):
-                    # print('profile update!')
-                    # print(record)
-                    pass
-                elif uri.collection == models.ids.AppBskyFeedGenerator and is_record_type(
-                    record, models.AppBskyFeedGenerator
-                ):
-                    pass
-                elif uri.collection == models.ids.AppBskyGraphList and is_record_type(
-                    record, models.AppBskyGraphList
-                ):
-                    pass
-                else:
-                    cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
-                    print(record)
+            if check(record, models.AppBskyActorProfile):
+                pass
+            elif check(record, models.AppBskyFeedGenerator):
+                pass
+            elif check(record, models.AppBskyGraphList):
+                pass
+            else:
+                cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
+                print(record)
 
         elif op.action == "create":
-            if not op.cid:
-                continue
-
-            record_raw_data = car.blocks.get(op.cid)
-            if not record_raw_data:
-                continue
-
-            record = get_or_create(record_raw_data, strict=False)
-            # assert isinstance(record, ModelBase)
-
-            if record is not None:
-                if uri.collection == models.ids.AppBskyFeedLike and is_record_type(
-                    record, models.AppBskyFeedLike
-                ):
-                    operation_by_type["likes"]["created"].append(
-                        {
-                            "uri": str(uri),
-                            "cid": str(op.cid),
-                            "author": commit.repo,
-                            "record": record,
-                        }
-                    )
-                elif uri.collection == models.ids.AppBskyFeedPost and is_record_type(
-                    record, models.AppBskyFeedPost
-                ):
-                    operation_by_type["posts"]["created"].append(
-                        {
-                            "uri": str(uri),
-                            "cid": str(op.cid),
-                            "author": commit.repo,
-                            "record": record,
-                        }
-                    )
-                elif uri.collection == models.ids.AppBskyGraphFollow and is_record_type(
-                    record, models.AppBskyGraphFollow
-                ):
-                    operation_by_type["follows"]["created"].append(
-                        {
-                            "uri": str(uri),
-                            "cid": str(op.cid),
-                            "author": commit.repo,
-                            "record": record,
-                        }
-                    )
-                elif uri.collection == models.ids.AppBskyFeedRepost and is_record_type(
-                    record, models.AppBskyFeedRepost
-                ):
-                    pass
-                elif uri.collection == models.ids.AppBskyGraphBlock and is_record_type(
-                    record, models.AppBskyGraphBlock
-                ):
-                    pass
-                elif uri.collection == models.ids.AppBskyGraphList and is_record_type(
-                    record, models.AppBskyGraphList
-                ):
-                    pass
-                elif uri.collection == models.ids.AppBskyGraphListitem and is_record_type(
-                    record, models.AppBskyGraphListitem
-                ):
-                    pass
-                elif uri.collection == models.ids.AppBskyActorProfile and is_record_type(
-                    record, models.AppBskyActorProfile
-                ):
-                    pass
-                elif uri.collection == models.ids.AppBskyFeedGenerator and is_record_type(
-                    record, models.AppBskyFeedGenerator
-                ):
-                    pass
-                else:
-                    cprint(f'created something else idk {uri.collection}', 'red', force_color=True)
-                    print(record)
+            if op.cid is None:
+                print('Create where op.cid is None, this is weird')
+            elif check(record, models.AppBskyFeedLike):
+                operation_by_type["likes"]["created"].append(
+                    {
+                        "uri": str(uri),
+                        "cid": str(op.cid),
+                        "author": commit.repo,
+                        "record": record,
+                    }
+                )
+            elif check(record, models.AppBskyFeedPost):
+                operation_by_type["posts"]["created"].append(
+                    {
+                        "uri": str(uri),
+                        "cid": str(op.cid),
+                        "author": commit.repo,
+                        "record": record,
+                    }
+                )
+            elif check(record, models.AppBskyGraphFollow):
+                operation_by_type["follows"]["created"].append(
+                    {
+                        "uri": str(uri),
+                        "cid": str(op.cid),
+                        "author": commit.repo,
+                        "record": record,
+                    }
+                )
+            elif check(record, models.AppBskyFeedRepost):
+                pass
+            elif check(record, models.AppBskyGraphBlock):
+                pass
+            elif check(record, models.AppBskyGraphList):
+                pass
+            elif check(record, models.AppBskyGraphListitem):
+                pass
+            elif check(record, models.AppBskyActorProfile):
+                pass
+            elif check(record, models.AppBskyFeedGenerator):
+                pass
+            else:
+                cprint(f'created something else idk {uri.collection}', 'red', force_color=True)
+                print(record)
 
         elif op.action == "delete":
-            if uri.collection == models.ids.AppBskyFeedLike:
+            if check_delete(models.AppBskyFeedLike):
                 operation_by_type["likes"]["deleted"].append({"uri": str(uri)})
-            elif uri.collection == models.ids.AppBskyFeedPost:
+            elif check_delete(models.AppBskyFeedPost):
                 operation_by_type["posts"]["deleted"].append({"uri": str(uri)})
-            elif uri.collection == models.ids.AppBskyGraphFollow:
+            elif check_delete(models.AppBskyGraphFollow):
                 operation_by_type["follows"]["deleted"].append({"uri": str(uri)})
-            elif uri.collection == models.ids.AppBskyFeedRepost:
+            elif check_delete(models.AppBskyFeedRepost):
                 pass
-            elif uri.collection == models.ids.AppBskyGraphListitem:
+            elif check_delete(models.AppBskyGraphListitem):
                 pass
-            elif uri.collection == models.ids.AppBskyGraphBlock:
+            elif check_delete(models.AppBskyGraphBlock):
                 pass
             else:
                 cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
@@ -235,7 +199,7 @@ async def _run(
 ) -> None:
     state = await db.subscriptionstate.find_first(where={"service": name})
     print('Starting firehose state:', None if state is None else state.model_dump_json())
-    params = subscribe_repos.Params(cursor=state.cursor if state else None)
+    params = subscribe_repos.ParamsDict(cursor=state.cursor if state else None)
     client = AsyncFirehoseSubscribeReposClient(params)
 
     messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=20)
