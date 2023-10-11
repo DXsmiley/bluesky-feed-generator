@@ -126,12 +126,12 @@ async def request_and_retry_on_ratelimit(
     *,
     max_attempts: int,
     policy: PolicyType,
-) -> T:
+) -> Optional[T]:
     if max_attempts < 1:
         raise ValueError("max_attempts must be at least 1")
     for _ in range(max_attempts - 1):
         if ev_set(policy):
-            break
+            return None
         try:
             await count_and_wait_if_policy(policy)
             return await function(argument)
@@ -144,6 +144,8 @@ async def request_and_retry_on_ratelimit(
                 await sleep_on_stop_event(policy, time_to_wait)
             else:
                 raise
+    if ev_set(policy):
+        return None
     return await function(argument)
 
 
@@ -168,17 +170,19 @@ async def paginate(
     r = await request_and_retry_on_ratelimit(
         query, params, max_attempts=3, policy=policy
     )
-    for i in getval(r):
-        yield i
-    while r.cursor is not None and not ev_set(policy):
+    if r is not None:
+        for i in getval(r):
+            yield i
+    while r is not None and r.cursor is not None and not ev_set(policy):
         r = await request_and_retry_on_ratelimit(
             query,
             params.model_copy(update={"cursor": r.cursor}),
             max_attempts=3,
             policy=policy,
         )
-        for i in getval(r):
-            yield i
+        if r is not None:
+            for i in getval(r):
+                yield i
 
 
 def get_followers(
@@ -237,8 +241,9 @@ async def get_specific_posts(
             max_attempts=3,
             policy=policy
         )
-        for i in posts.posts:
-            yield i
+        if posts is not None:
+            for i in posts.posts:
+                yield i
 
 
 async def get_specific_profiles(
@@ -253,8 +258,9 @@ async def get_specific_profiles(
             max_attempts=3,
             policy=policy
         )
-        for i in users.profiles:
-            yield i
+        if users is not None:
+            for i in users.profiles:
+                yield i
 
 
 def get_likes(
