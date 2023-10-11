@@ -136,8 +136,8 @@ async def request_and_retry_on_ratelimit(
             await count_and_wait_if_policy(policy)
             return await function(argument)
         except atproto.exceptions.RequestException as e:
-            if e.response and e.response.status_code == 500:
-                await sleep_on_stop_event(policy, 2)
+            if e.response and e.response.status_code in (500, 502):
+                await sleep_on_stop_event(policy, 5)
             elif e.response and e.response.status_code == 429:
                 reset_at = int(e.response.headers.get("ratelimit-reset", None))
                 time_to_wait = reset_at - time.time() + 1
