@@ -99,7 +99,6 @@ def run_verification_method(token: str, vm: VerificationMethod) -> None:
 
 
 async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
-    print(bearer)
     if bearer is None or not bearer.startswith("Bearer "):
         return None
     token = bearer[7:]
