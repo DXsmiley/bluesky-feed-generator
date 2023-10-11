@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 import atproto
 import atproto.exceptions
-from foxfeed.config import HANDLE, PASSWORD
 from foxfeed.database import Database
 from typing import (
     Callable,
@@ -86,10 +85,10 @@ U = TypeVar("U")
 AsyncClient = atproto.AsyncClient
 
 
-async def _login_from_handle_and_password() -> AsyncClient:
-    print("Attempting login with handle and password")
+async def _login_from_handle_and_password(handle: str, password: str) -> AsyncClient:
+    print("Attempting login with handle and password:", handle)
     client = AsyncClient()
-    await client.login(login=HANDLE, password=PASSWORD)
+    await client.login(login=handle, password=password)
     return client
 
 
@@ -100,25 +99,25 @@ async def _login_from_session_string(string: str) -> AsyncClient:
     return client
 
 
-async def _login_from_best_source(db: Database) -> AsyncClient:
+async def _login_from_best_source(db: Database, handle: str, password: str) -> AsyncClient:
     session = await db.blueskyclientsession.find_first(
-        where={"handle": HANDLE},
+        where={"handle": handle},
         order={"created_at": "desc"},
     )
     try:
         assert session is not None
         client = await _login_from_session_string(session.session_string)
     except:
-        client = await _login_from_handle_and_password()
-    await db.blueskyclientsession.delete_many(where={"handle": HANDLE})
+        client = await _login_from_handle_and_password(handle, password)
+    await db.blueskyclientsession.delete_many(where={"handle": handle})
     await db.blueskyclientsession.create(
-        data={"handle": HANDLE, "session_string": client.export_session_string()}
+        data={"handle": handle, "session_string": client.export_session_string()}
     )
     return client
 
 
-async def make_bsky_client(db: Database) -> AsyncClient:
-    return await _login_from_best_source(db)
+async def make_bsky_client(db: Database, handle: str, password: str) -> AsyncClient:
+    return await _login_from_best_source(db, handle, password)
 
 
 async def request_and_retry_on_ratelimit(

@@ -5,17 +5,14 @@ from .feed_names import FeedName
 from typing import TypedDict, List, Optional
 
 
-def environment_variable_name_for(record_name: FeedName) -> str:
-    return "FEED_URI_" + record_name.upper().replace("-", "_")
-
-
 class AlgorithmDetails(TypedDict):
     record_name: FeedName
     display_name: str
     description: str
     handler: handlers.HandlerType
     generator: Optional[generators.GeneratorType]
-    enable: bool
+    show_on_main_account: bool
+    show_on_personal_account: bool
 
 
 algo_details: List[AlgorithmDetails] = [
@@ -25,7 +22,8 @@ algo_details: List[AlgorithmDetails] = [
         "description": "Algorithmic furry feed! Details at bsky.probablyaweb.site",
         "handler": handlers.fox_feed,
         "generator": generators.fox_feed,
-        "enable": True,
+        "show_on_main_account": True,
+        "show_on_personal_account": True,
     },
     {
         "record_name": "vix-feed",
@@ -33,7 +31,8 @@ algo_details: List[AlgorithmDetails] = [
         "description": "Algorithmic furry feed for posts from women! Details at bsky.probablyaweb.site",
         "handler": handlers.vix_feed,
         "generator": generators.vix_feed,
-        "enable": True,
+        "show_on_main_account": True,
+        "show_on_personal_account": True,
     },
     {
         "record_name": "fursuit-feed",
@@ -41,7 +40,8 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.fursuit_feed,
         "generator": None,
-        "enable": True,
+        "show_on_main_account": True,
+        "show_on_personal_account": True,
     },
     {
         "record_name": "fresh-feed",
@@ -49,7 +49,8 @@ algo_details: List[AlgorithmDetails] = [
         "description": "New and upcomming posts from furry bluesky! Details at bsky.probablyaweb.site",
         "handler": handlers.fresh_feed,
         "generator": generators.fresh_feed,
-        "enable": True,
+        "show_on_main_account": True,
+        "show_on_personal_account": True,
     },
     {
         "record_name": "vix-votes",
@@ -57,7 +58,8 @@ algo_details: List[AlgorithmDetails] = [
         "description": "Top furry posts, as *voted by* furry women! Details at bsky.probablyaweb.site",
         "handler": handlers.vix_votes,
         "generator": generators.vix_votes,
-        "enable": True,
+        "show_on_main_account": True,
+        "show_on_personal_account": True,
     },
     {
         "record_name": "bisexy",
@@ -65,7 +67,8 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.bisexy,
         "generator": None,
-        "enable": False,
+        "show_on_main_account": False,
+        "show_on_personal_account": False,
     },
     {
         "record_name": "top-feed",
@@ -73,7 +76,8 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.top_feed,
         "generator": generators.top_feed,
-        "enable": False,
+        "show_on_main_account": False,
+        "show_on_personal_account": False,
     },
     {
         "record_name": "quotes-feed",
@@ -81,6 +85,7 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.quotes_feed,
         "generator": None,
-        "enable": False,
+        "show_on_main_account": False,
+        "show_on_personal_account": False,
     }
 ]

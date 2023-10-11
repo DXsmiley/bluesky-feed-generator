@@ -1,37 +1,13 @@
-#!/usr/bin/env python3
-# YOU MUST INSTALL ATPROTO SDK
-# pip3 install atproto
-
-import os
 import asyncio
-import dotenv
-from datetime import datetime
 from atproto.xrpc_client.models import ids
 from atproto.xrpc_client.models.blob_ref import BlobRef
 from atproto import AsyncClient, models
 from typing import Optional
-from foxfeed.algos.feeds import algo_details, environment_variable_name_for
+from foxfeed.algos.feeds import algo_details
 from foxfeed.database import make_database_connection
 from foxfeed.bsky import make_bsky_client
 from foxfeed import image
-
-dotenv.load_dotenv()
-
-# YOUR bluesky handle
-# Ex: user.bsky.social
-HANDLE: str = os.environ['HANDLE']
-
-# YOUR bluesky password, or preferably an App Password (found in your client settings)
-# Ex: abcd-1234-efgh-5678
-PASSWORD: str = os.environ['PASSWORD']
-
-# The hostname of the server where feed server will be hosted
-# Ex: feed.bsky.dev
-HOSTNAME: str = os.environ['HOSTNAME']
-
-
-# (Optional). Only use this if you want a service did different from did:web
-SERVICE_DID: Optional[str] = None
+from foxfeed import config
 
 
 def load_image_and_scale(path: str) -> bytes:
@@ -41,7 +17,7 @@ def load_image_and_scale(path: str) -> bytes:
 
 
 async def register(client: AsyncClient, record_name: str, display_name: str, description: str, avatar_blob: Optional[BlobRef], alive: bool) -> str:
-    feed_did = SERVICE_DID if SERVICE_DID is not None else f'did:web:{HOSTNAME}'
+    feed_did = config.SERVICE_DID
 
     if alive:
 
@@ -77,19 +53,17 @@ async def register(client: AsyncClient, record_name: str, display_name: str, des
 
 async def main():
     db = await make_database_connection()
-    client = await make_bsky_client(db)
+    client_public = await make_bsky_client(db, config.HANDLE, config.PASSWORD)
+    client_personal = await make_bsky_client(db, config.PERSONAL_HANDLE, config.PERSONAL_PASSWORD)
 
     avatar_path = './static/logo.png'
-
-    avatar_blob = None
-    if avatar_path:
-        avatar_data = load_image_and_scale(avatar_path)
-        avatar_blob = (await client.com.atproto.repo.upload_blob(avatar_data, timeout=30)).blob
+    avatar_data = load_image_and_scale(avatar_path)
+    public_blob = (await client_public.com.atproto.repo.upload_blob(avatar_data, timeout=30)).blob
+    personal_blob = (await client_personal.com.atproto.repo.upload_blob(avatar_data, timeout=30)).blob
 
     for i in algo_details:
-        uri = await register(client, i['record_name'], i['display_name'], i['description'], avatar_blob, i['enable'])
-        env_variable_name = environment_variable_name_for(i['record_name'])
-        print(f'{env_variable_name}="{uri}"')
+        print(await register(client_public, i['record_name'], i['display_name'], i['description'], public_blob, i['show_on_main_account']))
+        print(await register(client_personal, i['record_name'], i['display_name'], i['description'], personal_blob, i['show_on_personal_account']))
 
 
 if __name__ == '__main__':

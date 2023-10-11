@@ -10,9 +10,10 @@ import signal
 from foxfeed.bsky import make_bsky_client
 from foxfeed.database import make_database_connection
 from foxfeed.args import parse_args
+from foxfeed.res import Res
 
 
-async def main(args: List[str]) -> int:
+async def main(arg_strings: List[str]) -> int:
 
     shutdown_event = asyncio.Event()
     
@@ -28,28 +29,32 @@ async def main(args: List[str]) -> int:
     loop = asyncio.get_event_loop()
     loop.add_signal_handler(signal.SIGINT, _sigint_handler)
 
-    services = parse_args(list(args))
+    args = parse_args(list(arg_strings))
 
-    if isinstance(services, int):
-        return services
+    if isinstance(args, int):
+        return args
 
-    db = await make_database_connection(config.DB_URL, log_queries=services.log_db_queries)
-    client = await make_bsky_client(db)
+    db = await make_database_connection(config.DB_URL, log_queries=args.log_db_queries)
+    client = await make_bsky_client(db, config.HANDLE, config.PASSWORD)
+    personal_bsky_client = await make_bsky_client(db, config.PERSONAL_HANDLE, config.PERSONAL_PASSWORD)
 
-    if services.webserver:
+    res = Res(
+        db=db,
+        client=client,
+        personal_bsky_client=personal_bsky_client,
+        shutdown_event=shutdown_event
+    )
+
+    if args.webserver:
         await create_and_run_webapp(
             config.PORT,
-            db,
-            client,
-            services,
-            shutdown_event
+            res,
+            args,
         )
     else:
         await run_services(
-            db,
-            client,
-            shutdown_event,
-            services
+            res,
+            args
         )
     
     return 0

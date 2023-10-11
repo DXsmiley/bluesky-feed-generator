@@ -274,6 +274,7 @@ async def find_furries_raw(
 ) -> AsyncIterable[Tuple[ProfileViewDetailed, bool]]:
     known_furries: KNOWN_FURRIES_AND_CONNECTIONS = [
         (get_people_who_like_your_feeds, "puppyfox.bsky.social"),
+        (get_people_who_like_your_feeds, "foxfeed.bsky.social"),
         (get_follows, "puppyfox.bsky.social"),
         (get_mutuals, "100racs.bsky.social"),
         (get_mutuals, "glitzyfox.bsky.social"),

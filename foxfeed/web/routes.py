@@ -18,16 +18,21 @@ import aiojobs.aiohttp
 import prisma
 import scripts.find_furry_girls
 
-from typing import Callable, Coroutine, Any, Optional, Set, List, Tuple
+from typing import Callable, Coroutine, Any, Optional, Set, List, Tuple, Literal
+
+
+def algos_for(did: str, check: Literal['show_on_personal_account', 'show_on_main_account']):
+    return {
+        f"at://{did}/app.bsky.feed.generator/{i['record_name']}": i['handler']
+        for i in foxfeed.algos.feeds.algo_details
+        if i[check]
+    }
 
 
 algos = {
-    # TODO: make this slightly less hard-coded
-    (
-        "at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.generator/"
-        + i["record_name"]
-    ): i["handler"]
-    for i in foxfeed.algos.feeds.algo_details
+    # TODO: don't hard code these DIDs
+    **algos_for('did:plc:j7jc2j2htz5gxuxi2ilhbqka', 'show_on_personal_account'),
+    **algos_for('did:plc:pflgk5b7l2sbvhusjdzssnla', 'show_on_main_account'),
 }
 
 
@@ -190,11 +195,10 @@ def create_route_table(
     @routes.get("/xrpc/app.bsky.feed.getFeedSkeleton")
     async def get_feed_skeleton(request: web.Request) -> web.Response:
         feed = request.query.get("feed", default="")
+        feed_record_name = feed.split("/")[-1]
         algo = algos.get(feed)
         if not algo:
             return web.HTTPBadRequest(text="Unsupported algorithm")
-
-        feed_record_name = feed.split("/")[-1]
 
         cprint(f"Getting feed {feed_record_name}", "magenta", force_color=True)
 
