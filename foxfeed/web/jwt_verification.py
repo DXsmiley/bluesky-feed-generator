@@ -5,7 +5,6 @@ from foxfeed.config import SERVICE_DID
 from typing import Optional, Callable, Coroutine, Any, Tuple, TypeVar, Generic, List
 from collections import OrderedDict
 from time import time
-import json
 from pydantic import BaseModel
 import exceptiongroup
 
@@ -50,8 +49,6 @@ async def get_verification_methods(did: str) -> List[VerificationMethod]:
     async with aiohttp.ClientSession() as session:
         response = await session.get(f"https://plc.directory/{did}")
         blob = await response.json()
-        # TODO: allow multiple keys
-        print(json.dumps(blob, indent=4))
         return [VerificationMethod(**i) for i in blob["verificationMethod"]]
 
 
@@ -118,6 +115,7 @@ async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
         try:
             # If there's a problem, this will raise, or return normally if the JWT got verified
             run_verification_method(token, vm)
+            success_count += 1
         except Exception as e:
             exceptions.append(e)
 
