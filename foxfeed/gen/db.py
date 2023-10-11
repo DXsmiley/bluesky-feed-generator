@@ -60,8 +60,6 @@ WITH "LikeCount" AS (
             -- This is bad because it creates a way for people to de-rank others intentionally
             -- Also low-key breaks generating old snapshots
             * (0.7 + (-0.1 * ATAN(author.follower_count / 800)))
-            -- Funny :)
-            * (0.95 + (0.05 * SIN(like_count.count * 20)))
         ) AS multiplier,
         (
             like_count.count

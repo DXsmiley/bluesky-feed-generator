@@ -117,6 +117,7 @@ def vibecheck(text: str) -> VibeCheck:
         .replace("丨", " ")
         .replace("/", " ")
         .lower()
+        .replace("f-list", " ")
     )
     return VibeCheck(
         fem=_test_vibes(girl_vibes, t) is not None,

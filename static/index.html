@@ -159,17 +159,17 @@
         
         <h2 id="what">What Is Included On The Feed?</h2>
         <p>Only posts from the last 96 hours (~4 days) are considered.</p>
-        <p>Currently, "furries" constitutes anybody who is followed by at least one of a short list of major furry accounts. It does not dynamically update, and ends up including some people who are not furries. Additionally, small number of mutelists is used to exclude accounts from the feeds. This is a temporary solution before something better is built.</p>
-        <p>The feed defines "woman" as anyone with whose bio contains fem-aligned pronouns (she/her, she/they, ...), a female (♀️) or sapphic (⚢) emoji, or an age-gender indicator (e.g. 25F). Presently, those who mix fem and masc pronouns (e.g. she/he) are excluded.</p>
+        <p><b>Furries</b> means anybody who is connected with one of a short list of major furry accounts. Additionally, small number of mutelists is used to exclude accounts from the feeds. Subject to change.</p>
+        <p><b>Woman</b> means anyone who openly identifies with a fem-aligned identity. For example, those whose bio contains fem-aligned pronouns (she/her, she/they, ...), a female (♀️) or sapphic (⚢) emoji, or an age-gender indicator (e.g. 25F). Presently, those who mix fem and masc identifiers (e.g. she/he) are excluded. The full details of how this works can be seen in the <a href="https://github.com/DXsmiley/bluesky-feed-generator/blob/main/foxfeed/gender.py">source code</a>.</p>
         
         <h2 id="how">How are the feeds ranked?</h2>
         <p>Each post is scored individually, depending on its age, and the amount of <i>positive-sentiment</i> interaction its getting</p>
         <div class="center">
             <!-- MathML is so shit for humans lmao -->
             <math><mi>x</mi><mo>=</mo><mfrac><mi>T</mi><mi>β</mi></mfrac></math>
-            <math><mi>y</mi><mo>=</mo><mrow><mo>(</mo><mrow><msup><mi>L</mi><mi>γ</mi></msup><mo>+</mo><mn>2</mn></mrow><mo>)</mo></mrow><mo>∙</mo><mrow><mo>&#123;</mo><mrow><mtable><mtr><mtd><mfrac><mn>1</mn><msup><mi>x</mi><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&geq;</mo><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn><mo>-</mo><mfrac><mn>1</mn><msup><mrow><mo>(</mo><mrow><mn>2</mn><mo>-</mo><mi>x</mi></mrow><mo>)</mo></mrow><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&lt;</mo><mn>1</mn></mtd></mtr></mtable></mrow></mrow></math>
+            <math><mi>y</mi><mo>=</mo><mrow><mo>(</mo><mrow><msup><mi>L</mi><mi>γ</mi></msup><mo>+</mo><mn>5</mn></mrow><mo>)</mo></mrow><mo>∙</mo><mrow><mo>(</mo><mrow><mn>0.7</mn><mo>+</mo><mn>-0.1</mn><mo>∙</mo><mrow><msup><mi>tan</mi><mn>-1</mn></msup><mo>(</mo><mrow><mfrac><mi>F</mi><mn>800</mn></mfrac></mrow><mo>)</mo></mrow></mrow><mo>)</mo></mrow><mo>∙</mo><mrow><mo>&#123;</mo><mrow><mtable><mtr><mtd><mfrac><mn>1</mn><msup><mi>x</mi><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&geq;</mo><mn>1</mn></mtd></mtr><mtr><mtd><mn>2</mn><mo>-</mo><mfrac><mn>1</mn><msup><mrow><mo>(</mo><mrow><mn>2</mn><mo>-</mo><mi>x</mi></mrow><mo>)</mo></mrow><mi>α</mi></msup></mfrac></mtd><mtd><mtext>if</mtext><mo> </mo><mi>x</mi><mo>&lt;</mo><mn>1</mn></mtd></mtr></mtable></mrow></mrow></math>
         </div>
-        <p>Where <i>L</i> is the number of likes and <i>T</i> is the age of the post.</p>
+        <p>Where <i>L</i> is the number of likes, <i>T</i> is the age of the post and <i>F</i> is the number of followers the author has.</p>
         <div class="center">
             <table>
                 <thead>
@@ -207,8 +207,9 @@
             </table>
         </div>
         <p>Multiple posts by the same author will occur a penalty. An author's highest-scoring post on a feed will receive a multiplier of 1, the second highest-scoring a multiplier of &half;, the third a multiplier of &frac14;, and so on.</p>
+        <p>Multiple posts quoting the same original post will occur a penalty. The highest-scoring quote of a post on a feed will receive a multiplier of 1, the second highest-scoring a multiplier of &half;, the third a multiplier of &frac14;, and so on.</p>
         <p>Posts with images but no alt-text will incur a penalty of 0.7.</p>
-        <p>After posts are scored, they are then reordered to limit the frequency of male-centric NSFW content.</p>
+        <p>After posts are scored, they are then reordered to limit the frequency of male-centric NSFW content (on feeds that may feature it).</p>
 
         <h2>What else is out there?</h2>
         <p><a href="https://furryli.st/" target="_blank">Furryli.st</a> also runs a number of furry-focussed feeds.</p>
