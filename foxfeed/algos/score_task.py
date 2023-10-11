@@ -28,6 +28,7 @@ async def refresh_posts(
         where={
             'uri': {'in': list(all_uris_in_feeds)},
             'indexed_at': {'lt': run_endtime - timedelta(minutes=20)},
+            'reply_root': None,
             'OR': [
                 {'last_rescan': None},
                 {'last_rescan': {'lt': run_endtime - timedelta(hours=6)}},

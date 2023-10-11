@@ -77,6 +77,7 @@ WITH "LikeCount" AS (
     INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
     WHERE post.indexed_at > ({current_time} - interval '96 hours')
         AND post.indexed_at < {current_time}
+        AND post.reply_root IS NULL
         -- Pinned posts get mixed into the feed in a different way, so exclude them from scoring
         AND NOT post.is_pinned
         AND NOT author.is_muted
@@ -154,7 +155,8 @@ score_by_interactions_sql_query = """
 WITH "ReplyCount" AS (
     SELECT
         post.reply_root AS uri,
-        COUNT(*) AS score
+        (3 * COUNT(*)) AS positive,
+        0 as negative
     FROM "Post" as post
     INNER JOIN "Actor" as author on post."authorId" = author.did
       AND post.reply_root IS NOT NULL
@@ -166,7 +168,8 @@ WITH "ReplyCount" AS (
 ), "QuoteCount" AS (
     SELECT
         post.embed_uri AS uri,
-        COUNT(*) AS score
+        (4 * COUNT(*)) AS positive,
+        0 AS negative
     FROM "Post" as post
     INNER JOIN "Actor" as author on post."authorId" = author.did
       AND post.embed_uri IS NOT NULL
@@ -175,16 +178,41 @@ WITH "ReplyCount" AS (
       AND NOT author.is_muted
       AND author.manual_include_in_fox_feed IS NOT FALSE
     GROUP BY post.embed_uri
-), "Everything" AS (
+), "NotLikes" AS (
+    SELECT
+        lk.post_uri AS uri,
+        0 AS positive,
+        COUNT(*) AS negative
+    FROM "Like" as lk
+    WHERE lk.created_at < {current_time}
+    GROUP BY lk.post_uri
+), "NotLikes2" AS (
+    SELECT
+        post.uri as post,
+        0 AS positive,
+        post.like_count AS negative
+    FROM "Post" as post
+    WHERE post.indexed_at < {current_time}
+), "Concated" AS (
     SELECT * FROM "ReplyCount"
     UNION ALL SELECT * FROM "QuoteCount"
+    UNION ALL SELECT * FROM "NotLikes"
+    UNION ALL SELECT * FROM "NotLikes2"
+), "Everything" AS (
+    SELECT
+        uri,
+        SUM(positive) AS positive,
+        SUM(negative) AS negative
+    FROM "Concated"
+    GROUP BY uri
 )
 
 SELECT
     uri,
-    SUM(score) AS score
+    (positive - negative) AS score
 FROM "Everything"
-GROUP BY uri
+WHERE positive + negative > 30
+  AND positive - negative > 10
 ORDER BY score DESC
 LIMIT 500
 

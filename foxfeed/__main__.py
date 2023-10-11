@@ -35,8 +35,12 @@ async def main(arg_strings: List[str]) -> int:
         return args
 
     db = await make_database_connection(config.DB_URL, log_queries=args.log_db_queries)
-    client = await make_bsky_client(db, config.HANDLE, config.PASSWORD)
-    personal_bsky_client = await make_bsky_client(db, config.PERSONAL_HANDLE, config.PERSONAL_PASSWORD)
+
+    # Gather for speed increase because each of these is actually a bit slow, and it was annoying me during testing
+    client, personal_bsky_client = await asyncio.gather(
+        make_bsky_client(db, config.HANDLE, config.PASSWORD),
+        make_bsky_client(db, config.PERSONAL_HANDLE, config.PERSONAL_PASSWORD),
+    )
 
     res = Res(
         db=db,

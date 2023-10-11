@@ -44,14 +44,16 @@ def chronological_feed(post_query_filter: PostWhereInput, pfilter: Optional[Call
             indexed_at_str, cid = cursor_parts
             indexed_at = datetime.fromtimestamp(int(indexed_at_str) / 1000)
             where: PostWhereInput = {
-                "AND": [
-                    {"indexed_at": {"lt": indexed_at}},
-                    {"cid": {"lt": cid}},
-                    post_query_filter,
-                ]
+                "indexed_at": {"lt": indexed_at},
+                "cid": {"lt": cid},
+                "reply_root": None,
+                "AND": [post_query_filter]
             }
         else:
-            where = post_query_filter
+            where = {
+                "reply_root": None,
+                "AND": [post_query_filter]
+            }
 
         # No replies
         where = {"AND": [where, {"reply_root": None}]}

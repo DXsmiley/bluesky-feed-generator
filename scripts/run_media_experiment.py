@@ -88,6 +88,7 @@ async def main():
             take=20,
             where={
                 'media_count': {'gt': 0},
+                'reply_root': None,
                 'experiment_results':
                     {
                         'none':

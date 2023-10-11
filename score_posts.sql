@@ -54,6 +54,7 @@ WITH "LikeCount" AS (
     INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
     WHERE post.indexed_at > (:current_time - interval '96 hours')
         AND post.indexed_at < :current_time
+        AND post.reply_root IS NULL
         -- Pinned posts get mixed into the feed in a different way, so exclude them from scoring
         AND NOT post.is_pinned
         AND NOT author.is_muted

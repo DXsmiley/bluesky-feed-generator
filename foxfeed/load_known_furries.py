@@ -214,8 +214,9 @@ async def load_posts_task(
             if actually_do_shit:
                 # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
                 async for post in get_posts(client, user.did, after=only_posts_after, policy=policy):
+                    await output_queue.put(StorePost(post))
+                    # Currently care about replies but aren't really fussed about likes on them TBH
                     if post.reply is None:
-                        await output_queue.put(StorePost(post))
                         await llq.put((-(post.post.like_count or 0), unique, post))
                         # hack to prevent post objects being compared against each other
                         unique += 1

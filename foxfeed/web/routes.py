@@ -159,7 +159,8 @@ def create_route_table(
         if user is None:
             return web.HTTPNotFound(text="user not found")
         posts = await db.post.find_many(
-            where={"authorId": user.did}, order={"indexed_at": "desc"}
+            where={"authorId": user.did, "reply_root": None},
+            order={"indexed_at": "desc"},
         )
         page = foxfeed.web.interface.user_page(await is_admin(request), user, posts)
         return web.Response(text=str(page), content_type="text/html")

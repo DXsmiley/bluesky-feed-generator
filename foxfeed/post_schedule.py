@@ -76,6 +76,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
         where={
             'author': {'is': {'handle': handle}},
             'indexed_at': {'gt': now - POST_COOLDOWN},
+            'reply_root': None,
         }
     )
     if recent_post is not None:
@@ -88,6 +89,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
             'author': {'is': {'handle': handle}},
             'indexed_at': {'gt': now - IMAGE_POST_COOLDOWN},
             'media_count': {'gt': 0},
+            'reply_root': None,
         }
     )
     next_post = None

@@ -128,13 +128,9 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             else [i.val for i in record.labels.values]
         )
 
-        # We're not doing anything with replies right now so we'll just ignore them to save cycles
-        if reply_parent is not None or reply_root is not None:
-            continue
-
         if await user_exists_cached(db, author_did):
             logger.info(
-                f"New furry post (is quote: {embed_uri is not None}, with images: {len(image_urls)}, labels: {labels}): {inlined_text}"
+                f"New furry post (is: {embed_uri is not None}, reply: {reply_root is not None}, images: {len(image_urls)}, labels: {labels}): {inlined_text}"
             )
             post_dict: PostCreateWithoutRelationsInput = {
                 "uri": created_post["uri"],
