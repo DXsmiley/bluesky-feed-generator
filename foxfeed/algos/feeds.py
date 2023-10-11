@@ -40,7 +40,7 @@ algo_details: List[AlgorithmDetails] = [
         "description": "(in development)",
         "handler": handlers.fursuit_feed,
         "generator": None,
-        "show_on_main_account": True,
+        "show_on_main_account": False,
         "show_on_personal_account": True,
     },
     {
@@ -77,7 +77,7 @@ algo_details: List[AlgorithmDetails] = [
         "handler": handlers.top_feed,
         "generator": generators.top_feed,
         "show_on_main_account": False,
-        "show_on_personal_account": False,
+        "show_on_personal_account": True,
     },
     {
         "record_name": "quotes-feed",
