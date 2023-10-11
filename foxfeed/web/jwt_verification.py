@@ -1,3 +1,4 @@
+import asyncio
 import jwt
 import multibase # type: ignore
 import aiohttp
@@ -43,6 +44,7 @@ async def get_pubkey_from_server(did: str) -> str:
 
 
 async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
+    print(bearer)
     if bearer is None or not bearer.startswith("Bearer "):
         return None
     token = bearer[7:]
@@ -63,3 +65,7 @@ async def verify_jwt(bearer: Optional[str]) -> Optional[str]:
     )
 
     return jwt.decode(token, key, audience=SERVICE_DID, algorithms=["ES256K"]).get("iss")
+
+
+if __name__ == '__main__':
+    asyncio.run(verify_jwt('Bearer shitass'))
