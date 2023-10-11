@@ -61,63 +61,6 @@ def sorted_by_score_desc(
     return sorted(posts, key=lambda x: x.score, reverse=True)
 
 
-# def has_trans_vibes(i: Actor) -> bool:
-#     s = ((i.displayName or "") + " " + (i.description or "")).lower()
-#     return "🏳️‍⚧️" in s or "trans" in s
-
-
-# def has_masc_vibes(i: Actor) -> bool:
-#     return (
-#         i.manual_include_in_vix_feed is not True
-#         and i.autolabel_masc_vibes
-#         and not i.autolabel_fem_vibes
-#     )
-
-
-# def has_fem_vibes(i: Actor) -> bool:
-#     return i.manual_include_in_vix_feed is True or (
-#         i.manual_include_in_vix_feed is None
-#         and i.autolabel_fem_vibes
-#         and not i.autolabel_masc_vibes
-#     )
-
-
-# def _gender_splitmix(p: List[Tuple[float, PostWithInfo]]) -> Iterator[PostWithInfo]:
-#     # Not a huge fan of this approach but uhhhhhhhh
-#     transfem = [
-#         i for _, i in p if has_trans_vibes(i.author) and has_fem_vibes(i.author)
-#     ]
-#     cisfem = [
-#         i for _, i in p if not has_trans_vibes(i.author) and has_fem_vibes(i.author)
-#     ]
-#     transmasc = [
-#         i for _, i in p if has_trans_vibes(i.author) and has_masc_vibes(i.author)
-#     ]
-#     cismasc = [
-#         i for _, i in p if not has_trans_vibes(i.author) and has_masc_vibes(i.author)
-#     ]
-#     other = [
-#         i for _, i in p if not has_fem_vibes(i.author) and not has_masc_vibes(i.author)
-#     ]
-#     lists = [transfem, cisfem, transmasc, cismasc, other]
-#     for i in range(max(map(len, lists))):
-#         for x in lists:
-#             if i < len(x):
-#                 yield x[i]
-
-
-# def gender_splitmix(ps: List[Tuple[float, PostWithInfo]]) -> List[PostWithInfo]:
-#     return list(_gender_splitmix(ps))
-
-
-# def actor_is_fem(actor: Actor):
-#     return actor.manual_include_in_vix_feed is True or (
-#         actor.manual_include_in_vix_feed is None
-#         and actor.autolabel_fem_vibes is True
-#         and actor.autolabel_masc_vibes is False
-#     )
-
-
 def post_is_masc_nsfw(p: PostScoreResult):
     return bool(p.labels) and not p.author_is_fem
 
@@ -209,6 +152,25 @@ def generator(fp: FeedParameters) -> GeneratorType:
     return f
 
 
+async def _interaction_generator(db: Database, rd: RunDetails) -> List[str]:
+    t0 = time.time()
+
+    scored_posts = await foxfeed.gen.db.score_by_interactions(
+        db,
+        current_time=rd.run_starttime
+    )
+
+    elapsed = time.time() - t0
+
+    cprint(
+        f"Scored quotes::{rd.run_version} - {len(scored_posts)} posts in {elapsed} seconds",
+        "yellow",
+        force_color=True,
+    )
+
+    return [i.uri for i in scored_posts]
+
+
 fox_feed = generator(
     FeedParameters(
         feed_name="fox-feed",
@@ -256,6 +218,8 @@ top_feed = generator(
         remix_func=top_100_chronological,
     )
 )
+
+quotes = _interaction_generator
 
 
 # bisexy = generator(

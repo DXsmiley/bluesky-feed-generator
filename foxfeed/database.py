@@ -63,3 +63,8 @@ class ScorePostsOutputModel(BaseModel):
     score: float
     labels: Optional[List[str]]
     author_is_fem: bool
+
+
+class ScoreByInteractionOutputModel(BaseModel):
+    uri: str
+    score: int

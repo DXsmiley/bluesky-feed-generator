@@ -314,6 +314,8 @@ async def find_furries_raw(
     cprint("Grabbing furry-adjacent accounts", "blue", force_color=True)
 
     for get_associations, handle in known_furries:
+        if policy.stop_event.is_set():
+            break
         profile = await client.app.bsky.actor.get_profile({"actor": handle})
         yield (profile, False)
         async for other in as_detailed_profiles(client, get_associations, profile.did, policy):

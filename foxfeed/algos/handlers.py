@@ -151,10 +151,4 @@ async def quote_in_db(db: Database, p: Post) -> bool:
     return r is not None
 
 
-quotes_feed = chronological_feed(
-    {
-        "author": {"is": foxfeed.database.user_is_in_fox_feed},
-        "NOT": [{"embed_uri": None}]
-    },
-    quote_in_db
-)
+quotes_feed = algorithmic_feed("quotes-feed")

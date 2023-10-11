@@ -56,10 +56,11 @@ async def main():
     client_public = await make_bsky_client(db, config.HANDLE, config.PASSWORD)
     client_personal = await make_bsky_client(db, config.PERSONAL_HANDLE, config.PERSONAL_PASSWORD)
 
-    avatar_path = './static/logo.png'
-    avatar_data = load_image_and_scale(avatar_path)
-    public_blob = (await client_public.com.atproto.repo.upload_blob(avatar_data, timeout=30)).blob
-    personal_blob = (await client_personal.com.atproto.repo.upload_blob(avatar_data, timeout=30)).blob
+    d1 = load_image_and_scale('./static/logo.png')
+    public_blob = (await client_public.com.atproto.repo.upload_blob(d1, timeout=30)).blob
+
+    d2 = load_image_and_scale('./static/logo-grey.png')
+    personal_blob = (await client_personal.com.atproto.repo.upload_blob(d2, timeout=30)).blob
 
     for i in algo_details:
         print(await register(client_public, i['record_name'], i['display_name'], i['description'], public_blob, i['show_on_main_account']))

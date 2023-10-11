@@ -81,11 +81,11 @@ algo_details: List[AlgorithmDetails] = [
     },
     {
         "record_name": "quotes-feed",
-        "display_name": "🦊 Quotes",
+        "display_name": "Discussion",
         "description": "(in development)",
         "handler": handlers.quotes_feed,
-        "generator": None,
+        "generator": generators.quotes,
         "show_on_main_account": False,
-        "show_on_personal_account": False,
+        "show_on_personal_account": True,
     }
 ]

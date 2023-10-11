@@ -4,7 +4,8 @@ from typing import Iterator
 OUTPUT = './foxfeed/gen/db.py'
 
 INPUT = [
-    ('score_posts', 'score_posts.sql', 'ScorePostsOutputModel')
+    ('score_posts', 'score_posts.sql', 'ScorePostsOutputModel'),
+    ('score_by_interactions', 'score_by_interaction.sql', 'ScoreByInteractionOutputModel'),
 ]
 
 HEADDER = '''
