@@ -4,7 +4,6 @@ from typing import Optional
 from prisma.models import ScheduledPost
 from backports.zoneinfo import ZoneInfo
 
-from foxfeed import config
 from foxfeed.bsky import AsyncClient
 from foxfeed.database import Database
 from foxfeed.util import sleep_on
@@ -59,6 +58,8 @@ async def send_post(client: AsyncClient, post: ScheduledPost) -> models.ComAtpro
 
 
 async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta]:
+    assert client.me is not None
+    handle = client.me.handle
     now = datetime.now(tz=ZoneInfo('Australia/Sydney'))
     timespan_start = now.replace(hour=16, minute=0, second=0, microsecond=0) # 6:00 pm
     timespan_end = now.replace(hour=22, minute=0, second=0, microsecond=0) # 10:00 pm
@@ -73,7 +74,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     recent_post = await db.post.find_first(
         order={'indexed_at': 'desc'},
         where={
-            'author': {'is': {'handle': config.HANDLE}},
+            'author': {'is': {'handle': handle}},
             'indexed_at': {'gt': now - POST_COOLDOWN},
         }
     )
@@ -84,7 +85,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     recent_image_post = await db.post.find_first(
         order={'indexed_at': 'desc'},
         where={
-            'author': {'is': {'handle': config.HANDLE}},
+            'author': {'is': {'handle': handle}},
             'indexed_at': {'gt': now - IMAGE_POST_COOLDOWN},
             'media_count': {'gt': 0},
         }

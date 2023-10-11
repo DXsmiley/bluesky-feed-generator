@@ -113,9 +113,7 @@ async def _run_services(
         scraper = asyncio.create_task(
             _catch_service(
                 "LOADDB",
-                foxfeed.load_known_furries.rescan_furry_accounts(
-                    res.shutdown_event, res.db, res.client, args.forever,
-                ),
+                foxfeed.load_known_furries.rescan_furry_accounts(res, args.forever),
             )
         )
     if args.scores:

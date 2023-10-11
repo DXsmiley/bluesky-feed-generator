@@ -50,8 +50,8 @@ from dataclasses import dataclass
 
 import foxfeed.algos.generators
 from foxfeed.util import parse_datetime, sleep_on, join_unless
-
 from foxfeed.store import store_like, store_post, store_user
+from foxfeed.res import Res
 
 
 async def get_mutuals(client: AsyncClient, did: str, policy: foxfeed.bsky.PolicyType) -> AsyncIterable[ProfileView]:
@@ -120,6 +120,17 @@ async def get_all_mutes(
         yield (i, j)
         if policy.stop_event.is_set():
             break
+
+
+async def get_mutes_across_clients(
+    clients: List[AsyncClient],
+    *,
+    policy: foxfeed.bsky.Policy
+) -> Set[str]:
+    return (
+        {i.did for c in clients async for _, i in get_all_mutes(c, policy=policy)}
+        - {c.me.did for c in clients if c.me is not None}
+    )
 
 
 async def no_connections(_client: AsyncClient, _did: str) -> AsyncIterable[ProfileView]:
@@ -326,6 +337,7 @@ async def load(
     shutdown_event: asyncio.Event,
     db: Database,
     client: AsyncClient,
+    personal_bsky_client: AsyncClient,
     policy: foxfeed.bsky.Policy,
     load_posts: bool = True,
     load_likes: bool = True,
@@ -333,9 +345,7 @@ async def load(
     only_posts_after = datetime.now() - foxfeed.algos.generators.LOOKBACK_HARD_LIMIT
 
     cprint("Getting muted accounts", "blue", force_color=True)
-    mutes = {
-        i.did async for _, i in get_all_mutes(client, policy=policy)
-    } - {"" if client.me is None else client.me.did}
+    mutes = await get_mutes_across_clients([client, personal_bsky_client], policy=policy)
 
     if shutdown_event.is_set():
         return
@@ -422,12 +432,14 @@ async def load(
 
 
 async def scan_once(
-    shutdown_event: asyncio.Event, db: Database, client: AsyncClient, policy: foxfeed.bsky.Policy
+    shutdown_event: asyncio.Event,
+    db: Database,
+    client: AsyncClient,
+    personal_bsky_client: AsyncClient,
+    policy: foxfeed.bsky.Policy,
 ) -> None:
     cprint("Loading list of furries", "blue", force_color=True)
-    mutes = {
-        i.did async for _, i in get_all_mutes(client, policy=policy)
-    } - {"" if client.me is None else client.me.did}
+    mutes = await get_mutes_across_clients([client, personal_bsky_client], policy=policy)
     all_furries = [
         i async for i in find_furries_clean(client, policy=policy)
     ]
@@ -451,20 +463,20 @@ async def scan_once(
 
 
 async def rescan_furry_accounts(
-    shutdown_event: asyncio.Event, db: Database, client: AsyncClient, forever: bool
+    res: Res, forever: bool
 ):
     # Actual rate limit is 3000/5 minutes,
     # however we artifically limit this part of the system
     # https://atproto.com/blog/rate-limits-pds-v3
     policy = foxfeed.bsky.Policy(
-        shutdown_event,
+        res.shutdown_event,
         timedelta(minutes=5),
         2500
     )
-    await load(shutdown_event, db, client, policy)
-    while forever and not shutdown_event.is_set():
+    await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
+    while forever and not res.shutdown_event.is_set():
         try:
-            await scan_once(shutdown_event, db, client, policy)
+            await scan_once(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
         except asyncio.CancelledError:
             break
         except KeyboardInterrupt:
@@ -472,4 +484,4 @@ async def rescan_furry_accounts(
         except Exception:
             cprint(f"error while scanning furries", color="red", force_color=True)
             traceback.print_exc()
-        await sleep_on(shutdown_event, 60 * 30)
+        await sleep_on(res.shutdown_event, 60 * 30)
