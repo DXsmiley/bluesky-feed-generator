@@ -499,7 +499,7 @@ async def create_sentinels(db: Database):
 
 
 async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed.bsky.Policy) -> bool:
-    cprint(f"There are {await db.unknownthing.count()} unknown things", "cyan", force_color=True)
+    cprint(f"There are {await db.unknownthing.count(where={'kind': {'in': ['actor', 'post']}})} unknown things", "cyan", force_color=True)
 
     max_id = await db.unknownthing.find_first(order={'id': 'desc'}, where={'kind': {'in': ['actor', 'post']}})
     if max_id is None:
