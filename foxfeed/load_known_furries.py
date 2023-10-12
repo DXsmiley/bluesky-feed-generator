@@ -575,6 +575,7 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                 )
             for post in ready_to_store:
                 await store_post3(tx, post)
+            await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
             if not_ready_to_store:
                 await tx.unknownthing.create_many(
                     data=[{'kind': 'actor', 'identifier': i.author.did} for i in not_ready_to_store],
@@ -584,7 +585,6 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                     data=[{'kind': 'post', 'identifier': i.uri} for i in not_ready_to_store],
                     skip_duplicates=True
                 )
-            await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
     
     return True
 
