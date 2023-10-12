@@ -474,7 +474,10 @@ async def scan_once(
 async def enqueue_unlinks(db: Database) -> int:
     print('Finding unlinks!')
     unlinks = await find_unlinks(db)
-    return await db.unknownthing.create_many(data=[{'kind': 'post', 'identifier': i.uri} for i in unlinks])
+    return await db.unknownthing.create_many(
+        data=[{'kind': 'post', 'identifier': i.uri} for i in unlinks],
+        skip_duplicates=True
+    )
 
 
 async def create_sentinels(db: Database):
