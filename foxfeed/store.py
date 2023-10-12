@@ -24,6 +24,7 @@ async def store_user(
     is_muted: bool,
     is_furrylist_verified: bool,
     flag_for_manual_review: bool,
+    is_external_to_network: bool,
 ) -> None:
     gender_vibes = gender.vibecheck(user.description or "")
     await db.actor.upsert(
@@ -41,6 +42,7 @@ async def store_user(
                 "autolabel_masc_vibes": gender_vibes.masc,
                 "is_furrylist_verified": is_furrylist_verified,  # TODO
                 "is_muted": is_muted,
+                "is_external_to_network": is_external_to_network,
                 "follower_count": user.followers_count or 0,
                 "following_count": user.follows_count or 0,
             },
@@ -54,6 +56,7 @@ async def store_user(
                 "autolabel_nb_vibes": gender_vibes.enby,
                 "autolabel_masc_vibes": gender_vibes.masc,
                 "is_muted": is_muted,
+                "is_external_to_network": is_external_to_network,
                 "is_furrylist_verified": is_furrylist_verified,
                 # 'flagged_for_manual_review': flag_for_manual_review,
                 "follower_count": user.followers_count or 0,
@@ -94,6 +97,22 @@ async def store_post(db: Database, post: FeedViewPost, *, now: Optional[datetime
         None if post.reply is None else post.reply.parent.uri,
         None if post.reply is None else post.reply.root.uri,
         datetime.now() if now is None else now
+    )
+
+
+async def store_post3(db: Database, post: PostView, *, now: Optional[datetime] = None) -> None:
+    root, parent = (
+        (post.record.reply.root.uri, post.record.reply.parent.uri)
+        if (is_record_type(post.record, models.AppBskyFeedPost)
+        and post.record.reply is not None)
+        else (None, None)
+    )
+    await store_post2(
+        db,
+        post,
+        parent,
+        root,
+        datetime.now() if now is None else now,
     )
 
 

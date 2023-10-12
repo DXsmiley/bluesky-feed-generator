@@ -15,7 +15,9 @@ from foxfeed.bsky import (
     get_mutes,
     get_list,
     get_specific_profiles,
+    get_specific_posts,
     as_detailed_profiles,
+    PostView
 )
 
 import foxfeed.bsky
@@ -47,10 +49,12 @@ import traceback
 from termcolor import cprint
 from dataclasses import dataclass
 
+import prisma.errors
 
 import foxfeed.algos.generators
+from foxfeed.gen.db import find_unlinks
 from foxfeed.util import parse_datetime, sleep_on, join_unless
-from foxfeed.store import store_like, store_post, store_user
+from foxfeed.store import store_like, store_post, store_post3, store_user
 from foxfeed.res import Res
 
 
@@ -146,7 +150,7 @@ KNOWN_FURRIES_AND_CONNECTIONS = List[
 @dataclass
 class StoreUser:
     user: ProfileViewDetailed
-    is_furrlist_verified: bool
+    is_furrylist_verified: bool
     is_muted: bool
 
 
@@ -176,8 +180,9 @@ async def store_to_db_task(
                     db,
                     item.user,
                     is_muted=item.is_muted,
-                    is_furrylist_verified=item.is_furrlist_verified,
+                    is_furrylist_verified=item.is_furrylist_verified,
                     flag_for_manual_review=False,
+                    is_external_to_network=False,
                 )
             elif isinstance(item, StorePost):
                 await store_post(db, item.post)
@@ -456,6 +461,7 @@ async def scan_once(
             is_furrylist_verified=verified,
             flag_for_manual_review=False,
             is_muted=(user.did in mutes),
+            is_external_to_network=False,
         )
     # some accounts may have previously been in the dataset but are now excluded
     await db.actor.update_many(
@@ -463,6 +469,127 @@ async def scan_once(
         data={"is_muted": True},
     )
     cprint("Done", "blue", force_color=True)
+
+
+async def enqueue_unlinks(db: Database) -> int:
+    print('Finding unlinks!')
+    unlinks = await find_unlinks(db)
+    return await db.unknownthing.create_many(data=[{'kind': 'post', 'identifier': i.uri} for i in unlinks])
+
+
+async def create_sentinels(db: Database):
+    await db.actor.upsert(
+        where={'did': 'unknown'},
+        data={
+            'create': {
+                'did': 'unknown',
+                'handle': 'unknown',
+                'is_muted': True,
+            },
+            'update': {
+                'did': 'unknown',
+                'handle': 'unknown',
+                'is_muted': True,
+            }
+        }
+    )
+
+
+async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed.bsky.Policy) -> bool:
+    cprint(f"There are {await db.unknownthing.count()} unknown things", "cyan", force_color=True)
+
+    max_id = await db.unknownthing.find_first(order={'id': 'desc'})
+    if max_id is None:
+        if await enqueue_unlinks(db):
+            return True
+        cprint("No unknown things to load", "blue", force_color=True)
+        return False
+    
+    block_size = 200
+
+    cprint("Loading unknown users", "blue", force_color=True)
+    while x := await db.unknownthing.find_many(
+        take=block_size,
+        order={'id': 'asc'},
+        where={'id': {'lte': max_id.id}, 'kind': 'actor'},
+    ):
+        users = [i async for i in get_specific_profiles(client, [i.identifier for i in x], policy)]
+        # Need to check HERE in order to not process an incomplete set of profiles and then accidentally
+        # drop incomplete work from the table. This is bad design, like the fact there's this weird edge case this actually.
+        # Might just want to raise an exception from within the bsky queries TBH.
+        if policy.stop_event.is_set():
+            break
+        gone = {i.identifier for i in x} - {i.did for i in users}
+        async with db.tx() as tx:
+            for did in gone:
+                await tx.actor.create(
+                    data={
+                        'did': did,
+                        'handle': 'deleted',
+                        'is_muted': True,
+                    }
+                )
+            for user in users:
+                cprint(f'{user.handle} {user.display_name}', 'yellow', force_color=True)
+                await store_user(tx, user, is_muted=False, is_furrylist_verified=False, flag_for_manual_review=False, is_external_to_network=True)
+            await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
+
+    cprint("Loading unknown posts", "blue", force_color=True)
+    while x := await db.unknownthing.find_many(
+        take=25,
+        order={'id': 'asc'},
+        where={'id': {'lte': max_id.id}, 'kind': 'post'},
+    ):
+        posts = [i async for i in get_specific_posts(client, [i.identifier for i in x], policy)]
+        if policy.stop_event.is_set():
+            break
+        # query didn't return information about these posts, assume they've been deleted
+        gone = {i.identifier for i in x} - {i.uri for i in posts}
+        author_dids = [i.author.did for i in posts]
+        author_dids_we_have = [
+            i.did
+            for i in await db.actor.find_many(where={'did': {'in': author_dids}})
+        ]
+        ready_to_store = [
+            i
+            for i in posts
+            if i.author.did in author_dids_we_have
+        ]
+        not_ready_to_store = [
+            i
+            for i in posts
+            if i.author.did not in author_dids_we_have
+        ]
+        async with db.tx() as tx:
+            for i in gone:
+                await tx.post.create(
+                    data={
+                        'uri': i,
+                        'cid': 'unknown',
+                        'text': 'unknown',
+                        'is_deleted': True,
+                        'mentions_fursuit': False,
+                        'authorId': 'unknown',
+                        'media_count': 0,
+                    }
+                )
+            for post in ready_to_store:
+                await store_post3(tx, post)
+            if not_ready_to_store:
+                await tx.unknownthing.create_many(
+                    data=[{'kind': 'actor', 'identifier': i.author.did} for i in not_ready_to_store],
+                    skip_duplicates=True
+                )
+                await tx.unknownthing.create_many(
+                    data=[{'kind': 'post', 'identifier': i.uri} for i in not_ready_to_store],
+                    skip_duplicates=True
+                )
+            await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
+        if not_ready_to_store:
+            # Need to get some authors before trying to store posts again, so we break here
+            break
+    
+    return True
 
 
 async def rescan_furry_accounts(
@@ -476,15 +603,20 @@ async def rescan_furry_accounts(
         timedelta(minutes=5),
         2500
     )
-    await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
+    await create_sentinels(res.db)
     while forever and not res.shutdown_event.is_set():
-        try:
-            await scan_once(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
-        except asyncio.CancelledError:
-            break
-        except KeyboardInterrupt:
-            break
-        except Exception:
-            cprint(f"error while scanning furries", color="red", force_color=True)
-            traceback.print_exc()
-        await sleep_on(res.shutdown_event, 60 * 30)
+        did_work = await load_unknown_things(res.db, res.client, policy)
+        if not did_work:
+            await asyncio.sleep(5)
+    # await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
+    # while forever and not res.shutdown_event.is_set():
+    #     try:
+    #         await scan_once(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
+    #     except asyncio.CancelledError:
+    #         break
+    #     except KeyboardInterrupt:
+    #         break
+    #     except Exception:
+    #         cprint(f"error while scanning furries", color="red", force_color=True)
+    #         traceback.print_exc()
+    #     await sleep_on(res.shutdown_event, 60 * 30)

@@ -27,7 +27,7 @@ async def make_database_connection(
 
 care_about_storing_user_data_preemptively: ActorWhereInput = {
     "is_muted": False,
-    "OR": [{"manual_include_in_fox_feed": True}, {"manual_include_in_fox_feed": None}],
+    "OR": [{"manual_include_in_fox_feed": True}, {"manual_include_in_fox_feed": None, "is_external_to_network": False}],
 }
 
 
@@ -68,3 +68,6 @@ class ScorePostsOutputModel(BaseModel):
 class ScoreByInteractionOutputModel(BaseModel):
     uri: str
     score: int
+
+class FindUnlinksOutputModel(BaseModel):
+    uri: str

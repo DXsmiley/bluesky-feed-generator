@@ -10,6 +10,7 @@ WITH "LikeCount" AS (
     AND lk.created_at < :current_time
     AND NOT liker.is_muted
     AND liker.manual_include_in_fox_feed IS NOT FALSE
+    AND liker.is_external_to_network IS FALSE
     AND (
         :include_guy_votes
         OR liker.manual_include_in_vix_feed IS TRUE
@@ -24,9 +25,9 @@ WITH "LikeCount" AS (
     SELECT
         post.uri AS uri,
         post.embed_uri AS embed_uri,
-        post."authorId" as author,
-        post.indexed_at as indexed_at,
-        post.labels as labels,
+        post."authorId" AS author,
+        post.indexed_at AS indexed_at,
+        post.labels AS labels,
         (
             EXTRACT(EPOCH FROM (:current_time - post.indexed_at)) /
             EXTRACT(EPOCH FROM interval :beta)
@@ -54,11 +55,13 @@ WITH "LikeCount" AS (
     INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
     WHERE post.indexed_at > (:current_time - interval '96 hours')
         AND post.indexed_at < :current_time
+        AND post.is_deleted IS FALSE
         AND post.reply_root IS NULL
         -- Pinned posts get mixed into the feed in a different way, so exclude them from scoring
         AND NOT post.is_pinned
         AND NOT author.is_muted
         AND author.manual_include_in_fox_feed IS NOT FALSE
+        AND author.is_external_to_network IS FALSE
 ), table2 AS (
     SELECT
         uri,

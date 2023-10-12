@@ -37,6 +37,7 @@ model Actor {
   // New things which are slightly more granular, allowing for computation on 
   // database QUERY rather than database INSERT
   is_muted Boolean @default(false)
+  is_external_to_network Boolean @default(false)
   is_furrylist_verified Boolean @default(false)
   autolabel_masc_vibes Boolean @default(false)
   autolabel_nb_vibes Boolean @default(false)
@@ -54,6 +55,8 @@ model Post {
   cid String
   reply_parent String?
   reply_root String?
+  // reply_root_post Post? @relation("all_replies", fields: [reply_root], references: [uri], onDelete: Cascade)
+  // all_replies Post[] @relation("all_replies")
   indexed_at DateTime @default(now())
   like_count Int @default(0)
   text String
@@ -66,6 +69,7 @@ model Post {
   labels String[]
   last_rescan DateTime?
   is_pinned Boolean @default(false)
+  is_deleted Boolean @default(false)
   embed_uri String?
   embed_cid String?
   // embed_post Post? @relation("QuoteSkeets", fields: [embed_uri], references: [uri])
@@ -102,6 +106,14 @@ model Like {
   @@index([attributed_feed, created_at])
   @@index([post_uri, liker_id])
   @@unique([post_uri, liker_id])
+}
+
+model UnknownThing {
+  id Int @id @default(autoincrement())
+  kind String
+  identifier String
+  @@index([kind, id])
+  @@unique([kind, identifier])
 }
 
 model PostScore {

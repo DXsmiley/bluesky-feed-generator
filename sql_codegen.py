@@ -6,6 +6,7 @@ OUTPUT = './foxfeed/gen/db.py'
 INPUT = [
     ('score_posts', 'score_posts.sql', 'ScorePostsOutputModel'),
     ('score_by_interactions', 'score_by_interaction.sql', 'ScoreByInteractionOutputModel'),
+    ('find_unlinks', 'find_unlinks.sql', 'FindUnlinksOutputModel'),
 ]
 
 HEADDER = '''
@@ -46,7 +47,8 @@ def codegen_for_query(function_name: str, output_model: str, sql: str) -> Iterat
     # Function signature
     yield f'async def {function_name}('
     yield '    db: foxfeed.database.Database,'
-    yield '    *,'
+    if arguments:
+        yield '    *,'
     for i in sorted(set(arguments)):
         yield f'    {i}: Arg,'
     yield f') -> List[foxfeed.database.{output_model}]:'

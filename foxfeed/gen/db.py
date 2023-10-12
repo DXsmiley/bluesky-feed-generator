@@ -33,6 +33,7 @@ WITH "LikeCount" AS (
     AND lk.created_at < {current_time}
     AND NOT liker.is_muted
     AND liker.manual_include_in_fox_feed IS NOT FALSE
+    AND liker.is_external_to_network IS FALSE
     AND (
         {include_guy_votes}
         OR liker.manual_include_in_vix_feed IS TRUE
@@ -47,9 +48,9 @@ WITH "LikeCount" AS (
     SELECT
         post.uri AS uri,
         post.embed_uri AS embed_uri,
-        post."authorId" as author,
-        post.indexed_at as indexed_at,
-        post.labels as labels,
+        post."authorId" AS author,
+        post.indexed_at AS indexed_at,
+        post.labels AS labels,
         (
             EXTRACT(EPOCH FROM ({current_time} - post.indexed_at)) /
             EXTRACT(EPOCH FROM interval {beta})
@@ -82,6 +83,7 @@ WITH "LikeCount" AS (
         AND NOT post.is_pinned
         AND NOT author.is_muted
         AND author.manual_include_in_fox_feed IS NOT FALSE
+        AND author.is_external_to_network IS FALSE
 ), table2 AS (
     SELECT
         uri,
@@ -155,7 +157,7 @@ score_by_interactions_sql_query = """
 WITH "ReplyCount" AS (
     SELECT
         post.reply_root AS uri,
-        (3 * COUNT(*)) AS positive,
+        COUNT(*) AS positive,
         0 as negative
     FROM "Post" as post
     INNER JOIN "Actor" as author on post."authorId" = author.did
@@ -168,7 +170,7 @@ WITH "ReplyCount" AS (
 ), "QuoteCount" AS (
     SELECT
         post.embed_uri AS uri,
-        (4 * COUNT(*)) AS positive,
+        (3 * COUNT(*)) AS positive,
         0 AS negative
     FROM "Post" as post
     INNER JOIN "Actor" as author on post."authorId" = author.did
@@ -178,26 +180,9 @@ WITH "ReplyCount" AS (
       AND NOT author.is_muted
       AND author.manual_include_in_fox_feed IS NOT FALSE
     GROUP BY post.embed_uri
-), "NotLikes" AS (
-    SELECT
-        lk.post_uri AS uri,
-        0 AS positive,
-        COUNT(*) AS negative
-    FROM "Like" as lk
-    WHERE lk.created_at < {current_time}
-    GROUP BY lk.post_uri
-), "NotLikes2" AS (
-    SELECT
-        post.uri as post,
-        0 AS positive,
-        post.like_count AS negative
-    FROM "Post" as post
-    WHERE post.indexed_at < {current_time}
 ), "Concated" AS (
     SELECT * FROM "ReplyCount"
     UNION ALL SELECT * FROM "QuoteCount"
-    UNION ALL SELECT * FROM "NotLikes"
-    UNION ALL SELECT * FROM "NotLikes2"
 ), "Everything" AS (
     SELECT
         uri,
@@ -211,8 +196,7 @@ SELECT
     uri,
     (positive - negative) AS score
 FROM "Everything"
-WHERE positive + negative > 30
-  AND positive - negative > 10
+WHERE positive - negative > 4
 ORDER BY score DESC
 LIMIT 500
 
@@ -227,4 +211,19 @@ async def score_by_interactions(
         current_time = escape(current_time),
     )
     result = await db.query_raw(query, model=foxfeed.database.ScoreByInteractionOutputModel) # type: ignore
+    return result
+
+find_unlinks_sql_query = """
+SELECT p1.embed_uri AS uri FROM "Post" as p1 LEFT OUTER JOIN "Post" as p2 ON p1.embed_uri = p2.uri WHERE p2.uri IS NULL AND p1.embed_uri LIKE '%/app.bsky.feed.post/%'
+UNION SELECT p1.reply_root AS uri FROM "Post" as p1 LEFT OUTER JOIN "Post" as p2 ON p1.reply_root = p2.uri WHERE p2.uri IS NULL AND p1.reply_root LIKE '%/app.bsky.feed.post/%'
+UNION SELECT p1.reply_parent AS uri FROM "Post" as p1 LEFT OUTER JOIN "Post" as p2 ON p1.reply_parent = p2.uri WHERE p2.uri IS NULL AND p1.reply_parent LIKE '%/app.bsky.feed.post/%'; 
+
+"""
+
+async def find_unlinks(
+    db: foxfeed.database.Database,
+) -> List[foxfeed.database.FindUnlinksOutputModel]:
+    query = find_unlinks_sql_query.format(
+    )
+    result = await db.query_raw(query, model=foxfeed.database.FindUnlinksOutputModel) # type: ignore
     return result

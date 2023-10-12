@@ -34,10 +34,11 @@ async def main():
     )
     print('Deleted', c, 'blueskyclientsessions')
 
-    c = await db.post.delete_many(
-        where={'indexed_at': {'lt': now - POST_MAX_AGE}}
-    )
-    print('Deleted', c, 'posts')
+    # Can't do this while we're trying to complete our graph trees
+    # c = await db.post.delete_many(
+    #     where={'indexed_at': {'lt': now - POST_MAX_AGE}}
+    # )
+    # print('Deleted', c, 'posts')
 
 
 asyncio.run(main())
