@@ -498,7 +498,7 @@ async def create_sentinels(db: Database):
 async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed.bsky.Policy) -> bool:
     cprint(f"There are {await db.unknownthing.count()} unknown things", "cyan", force_color=True)
 
-    max_id = await db.unknownthing.find_first(order={'id': 'desc'})
+    max_id = await db.unknownthing.find_first(order={'id': 'desc'}, where={'kind': {'in': ['actor', 'post']}})
     if max_id is None:
         if await enqueue_unlinks(db):
             return True
@@ -531,7 +531,14 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                 )
             for user in users:
                 cprint(f'{user.handle} {user.display_name}', 'yellow', force_color=True)
-                await store_user(tx, user, is_muted=False, is_furrylist_verified=False, flag_for_manual_review=False, is_external_to_network=True)
+                await store_user(
+                    tx,
+                    user,
+                    is_muted=False,
+                    is_furrylist_verified=False,
+                    flag_for_manual_review=False,
+                    is_external_to_network=True
+                )
             await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
 
     cprint("Loading unknown posts", "blue", force_color=True)
@@ -562,15 +569,21 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
         ]
         async with db.tx() as tx:
             for i in gone:
-                await tx.post.create(
+                await tx.post.upsert(
+                    where={'uri': i},
                     data={
-                        'uri': i,
-                        'cid': 'unknown',
-                        'text': 'unknown',
-                        'is_deleted': True,
-                        'mentions_fursuit': False,
-                        'authorId': 'unknown',
-                        'media_count': 0,
+                        'create': {
+                            'uri': i,
+                            'cid': 'unknown',
+                            'text': 'unknown',
+                            'is_deleted': True,
+                            'mentions_fursuit': False,
+                            'authorId': 'unknown',
+                            'media_count': 0,
+                        },
+                        'update': {
+                            'is_deleted': True
+                        }
                     }
                 )
             for post in ready_to_store:

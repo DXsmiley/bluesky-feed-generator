@@ -121,7 +121,7 @@ def get_quoted_skeet(embed: EmbedType) -> Union[Tuple[str, str], Tuple[None, Non
 async def operations_callback(db: Database, ops: OpsByType) -> None:
     posts_to_create: List[PostCreateWithoutRelationsInput] = []
 
-    unknown_things_to_queue: List[Tuple[str, Literal['post', 'actor']]] = []
+    unknown_things_to_queue: List[Tuple[str, Literal['post', 'actor', 'like']]] = []
 
     for created_post in ops["posts"]["created"]:
         author_did = created_post["author"]
@@ -207,17 +207,6 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             }
             posts_to_create.append(post_dict)
 
-    if unknown_things_to_queue:
-        cprint('Unknown things', 'red', force_color=True)
-        print(unknown_things_to_queue)
-        await db.unknownthing.create_many(
-            [
-                {'identifier': i, 'kind': k}
-                for i, k in unknown_things_to_queue
-            ],
-            skip_duplicates=True
-        )
-
     if posts_to_create:
         await db.post.create_many(posts_to_create, skip_duplicates=True)
 
@@ -237,37 +226,61 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         # TODO: Store out-of-network likes
 
-        # Placing user before post here results in a much better cache hit rate
-        if await user_exists_cached(db, like['author']) != 'do-care':
-            continue
-        if await post_exists_cached(db, uri) != 'do-care':
-            continue
-
-        served_post = await db.servedpost.find_first(
-            where={
-                "when": {"gt": datetime.now() - timedelta(minutes=5)},
-                "post_uri": like["record"].subject.uri,
-                "client_did": like["author"],
-            }
+        care_about_something_here = (
+            # Placing user before post here results in a much better cache hit rate
+            await user_exists_cached(db, like['author']) == 'do-care'
+            or await post_exists_cached(db, uri) == 'do-care'
         )
 
-        if served_post is None:
-            # print(f"Someone liked a post")
-            pass
-        else:
-            print(f"Someone liked a post, attirbuted to", served_post.feed_name)
+        if not care_about_something_here:
+            continue
 
-        likes_to_create.append({
-            "uri": like["uri"],
-            "cid": like["cid"],
-            "liker_id": like["author"],
-            "post_uri": like["record"].subject.uri,
-            "post_cid": like["record"].subject.cid,
-            "created_at": parse_datetime(like["record"].created_at),
-            "attributed_feed": None
-            if served_post is None
-            else served_post.feed_name,
-        })
+        can_store_immediately = True
+
+        if await user_exists_cached(db, like['author']) == 'not-here':
+            unknown_things_to_queue.append((like['author'], 'actor'))
+            can_store_immediately = False
+
+        if await post_exists_cached(db, uri) == 'not-here':
+            unknown_things_to_queue.append((uri, 'post'))
+            can_store_immediately = False
+
+        if not can_store_immediately:
+            unknown_things_to_queue.append((like['uri'], 'like'))
+        else:
+            served_post = await db.servedpost.find_first(
+                where={
+                    "when": {"gt": datetime.now() - timedelta(minutes=5)},
+                    "post_uri": like["record"].subject.uri,
+                    "client_did": like["author"],
+                }
+            )
+
+            if served_post is not None:
+                print(f"Someone liked a post, attirbuted to", served_post.feed_name)
+
+            likes_to_create.append({
+                "uri": like["uri"],
+                "cid": like["cid"],
+                "liker_id": like["author"],
+                "post_uri": like["record"].subject.uri,
+                "post_cid": like["record"].subject.cid,
+                "created_at": parse_datetime(like["record"].created_at),
+                "attributed_feed": None
+                if served_post is None
+                else served_post.feed_name,
+            })
+
+    if unknown_things_to_queue:
+        cprint('Unknown things', 'red', force_color=True)
+        print(unknown_things_to_queue)
+        await db.unknownthing.create_many(
+            [
+                {'identifier': i, 'kind': k}
+                for i, k in unknown_things_to_queue
+            ],
+            skip_duplicates=True
+        )
 
     if likes_to_create:
         await db.like.create_many(data=likes_to_create, skip_duplicates=True)
