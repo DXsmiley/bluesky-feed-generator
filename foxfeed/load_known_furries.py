@@ -604,19 +604,19 @@ async def rescan_furry_accounts(
         2500
     )
     await create_sentinels(res.db)
+    while await load_unknown_things(res.db, res.client, policy):
+        pass
+    await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
     while forever and not res.shutdown_event.is_set():
-        did_work = await load_unknown_things(res.db, res.client, policy)
-        if not did_work:
-            await asyncio.sleep(5)
-    # await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
-    # while forever and not res.shutdown_event.is_set():
-    #     try:
-    #         await scan_once(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
-    #     except asyncio.CancelledError:
-    #         break
-    #     except KeyboardInterrupt:
-    #         break
-    #     except Exception:
-    #         cprint(f"error while scanning furries", color="red", force_color=True)
-    #         traceback.print_exc()
-    #     await sleep_on(res.shutdown_event, 60 * 30)
+        try:
+            while await load_unknown_things(res.db, res.client, policy):
+                pass
+            await scan_once(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
+        except asyncio.CancelledError:
+            break
+        except KeyboardInterrupt:
+            break
+        except Exception:
+            cprint(f"error while scanning furries", color="red", force_color=True)
+            traceback.print_exc()
+        await sleep_on(res.shutdown_event, 60 * 30)

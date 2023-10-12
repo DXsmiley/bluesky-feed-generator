@@ -78,6 +78,7 @@ WITH "LikeCount" AS (
     INNER JOIN "LikeCount" as like_count on post.uri = like_count.post_uri
     WHERE post.indexed_at > ({current_time} - interval '96 hours')
         AND post.indexed_at < {current_time}
+        AND post.is_deleted IS FALSE
         AND post.reply_root IS NULL
         -- Pinned posts get mixed into the feed in a different way, so exclude them from scoring
         AND NOT post.is_pinned
@@ -217,7 +218,7 @@ find_unlinks_sql_query = """
 SELECT p1.embed_uri AS uri FROM "Post" as p1 LEFT OUTER JOIN "Post" as p2 ON p1.embed_uri = p2.uri WHERE p2.uri IS NULL AND p1.embed_uri LIKE '%/app.bsky.feed.post/%'
 UNION SELECT p1.reply_root AS uri FROM "Post" as p1 LEFT OUTER JOIN "Post" as p2 ON p1.reply_root = p2.uri WHERE p2.uri IS NULL AND p1.reply_root LIKE '%/app.bsky.feed.post/%'
 UNION SELECT p1.reply_parent AS uri FROM "Post" as p1 LEFT OUTER JOIN "Post" as p2 ON p1.reply_parent = p2.uri WHERE p2.uri IS NULL AND p1.reply_parent LIKE '%/app.bsky.feed.post/%'; 
-
+LIMIT 1000
 """
 
 async def find_unlinks(
