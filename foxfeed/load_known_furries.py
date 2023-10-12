@@ -585,9 +585,6 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                     skip_duplicates=True
                 )
             await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
-        if not_ready_to_store:
-            # Need to get some authors before trying to store posts again, so we break here
-            break
     
     return True
 
