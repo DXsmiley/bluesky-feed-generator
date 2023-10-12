@@ -58,6 +58,10 @@ from foxfeed.store import store_like, store_post, store_post3, store_user
 from foxfeed.res import Res
 
 
+# TODO: Remove this somehow
+import foxfeed.data_filter
+
+
 async def get_mutuals(client: AsyncClient, did: str, policy: foxfeed.bsky.PolicyType) -> AsyncIterable[ProfileView]:
     following_dids = {i.did async for i in get_follows(client, did, policy)}
     async for i in get_followers(client, did, policy):
@@ -543,6 +547,8 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                     is_external_to_network=True
                 )
             await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
+        for i in x:
+            await foxfeed.data_filter.user_exists_cached.drop_entry(i.identifier)
 
     cprint("Loading unknown posts", "blue", force_color=True)
     while x := await db.unknownthing.find_many(
@@ -601,6 +607,8 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                     data=[{'kind': 'post', 'identifier': i.uri} for i in not_ready_to_store],
                     skip_duplicates=True
                 )
+        for i in x:
+            await foxfeed.data_filter.post_exists_cached.drop_entry(i.identifier)
     
     return True
 

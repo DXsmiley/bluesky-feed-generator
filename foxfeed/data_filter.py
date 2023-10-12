@@ -1,3 +1,5 @@
+import asyncio
+
 from atproto.xrpc_client import models
 from foxfeed.util import is_record_type
 
@@ -8,7 +10,6 @@ from typing import List, Callable, Coroutine, Any, Union, Dict, Tuple, TypeVar, 
 from prisma.types import PostCreateWithoutRelationsInput, LikeCreateWithoutRelationsInput
 
 from foxfeed.database import Database, care_about_storing_user_data_preemptively
-from foxfeed.load_known_furries import parse_datetime
 
 from foxfeed.util import mentions_fursuit, parse_datetime
 
@@ -33,21 +34,31 @@ class CachedQuery(Generic[T]):
         self.name = function.__name__
         self.cache: 'OrderedDict[str, T]' = OrderedDict()
         self.last_log = time.time()
+        self.lock = None
 
     async def __call__(self, db: Database, key: str) -> T:
-        curtime = time.time()
-        if curtime - self.last_log > 60:
-            self.log_stats()
-            self.last_log = curtime
-        if key in self.cache:
-            self.hits += 1
-            return self.cache[key]
-        self.misses += 1
-        result = await self.function(db, key)
-        self.cache[key] = result
-        while len(self.cache) > 5_000:
-            self.cache.popitem(False)
-        return result
+        if self.lock is None:
+            self.lock = asyncio.Lock()
+        async with self.lock:
+            curtime = time.time()
+            if curtime - self.last_log > 60:
+                self.log_stats()
+                self.last_log = curtime
+            if key in self.cache:
+                self.hits += 1
+                return self.cache[key]
+            self.misses += 1
+            result = await self.function(db, key)
+            self.cache[key] = result
+            while len(self.cache) > 5_000:
+                self.cache.popitem(False)
+            return result
+        
+    async def drop_entry(self, key: str) -> None:
+        if self.lock is None:
+            self.lock = asyncio.Lock()
+        async with self.lock:
+            self.cache.pop(key, None)
     
     def log_stats(self):
         ratio = 100 * (self.hits / (self.hits + self.misses))
