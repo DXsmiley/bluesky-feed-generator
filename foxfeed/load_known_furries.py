@@ -633,7 +633,7 @@ async def rescan_furry_accounts(
     except KeyboardInterrupt:
         return
     except Exception:
-        cprint(f"error while loading known things furries", color="red", force_color=True)
+        cprint(f"error while loading unknown things", color="red", force_color=True)
         traceback.print_exc()
     await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
     while forever and not res.shutdown_event.is_set():
