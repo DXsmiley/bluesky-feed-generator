@@ -333,26 +333,33 @@ async def _list_records_from_repo(
     for rkey in sorted(keys):
         if rkey not in keys_to_find:
             continue
-        response = await request_and_retry_on_ratelimit(
-            client.com.atproto.repo.list_records,
-            models.ComAtprotoRepoListRecords.Params(
-                repo=repo,
-                collection=collection,
-                rkeyStart=get_adjacent_key(rkey),
-                limit=100,
-                # By default the query goes high-to-low keys (travels backways through time), but we want to go forward
-                reverse=True,
-            ),
-            max_attempts=3,
-            policy=policy
-        )
-        if response is None:
-            break
-        for rec in response.records:
-            response_rkey = rec.uri.split('/')[-1]
-            if response_rkey in keys_to_find:
-                keys_to_find.remove(response_rkey)
-                yield rec
+        try:
+            response = await request_and_retry_on_ratelimit(
+                client.com.atproto.repo.list_records,
+                models.ComAtprotoRepoListRecords.Params(
+                    repo=repo,
+                    collection=collection,
+                    rkeyStart=get_adjacent_key(rkey),
+                    limit=100,
+                    # By default the query goes high-to-low keys (travels backways through time), but we want to go forward
+                    reverse=True,
+                ),
+                max_attempts=3,
+                policy=policy
+            )
+        except atproto.exceptions.BadRequestError as e:
+            if e.response is not None and e.response.status_code == 400:
+                # repo not found, something's been deleted, just exit
+                return
+            raise e
+        else:
+            if response is None:
+                break
+            for rec in response.records:
+                response_rkey = rec.uri.split('/')[-1]
+                if response_rkey in keys_to_find:
+                    keys_to_find.remove(response_rkey)
+                    yield rec
 
 
 async def _list_records(
