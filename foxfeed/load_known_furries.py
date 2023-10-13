@@ -617,8 +617,8 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
 
     cprint("Loading unknown likes", "blue", force_color=True)
     while x := await db.unknownthing.find_many(
-        take=25,
-        order={'id': 'asc'},
+        take=200,
+        order={'identifier': 'asc'},
         where={'id': {'lte': max_id.id}, 'kind': 'like'},
     ):
         likes = [i async for i in get_specific_likes(client, [i.identifier for i in x], policy)]
