@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
+from dataclasses import dataclass
 
 import atproto
 import atproto.exceptions
@@ -261,6 +262,61 @@ async def get_specific_profiles(
         if users is not None:
             for i in users.profiles:
                 yield i
+
+
+@dataclass
+class LikeWithDeets:
+    uri: str
+    cid: Optional[str]
+    post_uri: str
+    post_cid: str
+    actor_did: str
+    created_at: str
+
+
+async def get_single_like(
+    client: AsyncClient, uri: str, policy: PolicyType = None
+) -> Optional[LikeWithDeets]:
+    _, _, repo, collection, record = uri.split('/')
+    try:
+        response = await request_and_retry_on_ratelimit(
+            client.com.atproto.repo.get_record,
+            models.ComAtprotoRepoGetRecord.Params(
+                repo=repo,
+                collection=collection,
+                rkey=record,
+            ),
+            max_attempts=3,
+            policy=policy
+        )
+    except atproto.exceptions.BadRequestError as e:
+        if e.response is not None and e.response.status_code == 400:
+            pass
+        else:
+            raise
+    else:
+        if response is not None:
+            assert isinstance(response.value, models.AppBskyFeedLike.Main)
+            return LikeWithDeets(
+                uri=response.uri,
+                cid=response.cid,
+                post_uri=response.value.subject.uri,
+                post_cid=response.value.subject.cid,
+                actor_did=repo,
+                created_at=response.value.created_at
+            )
+
+
+async def get_specific_likes(
+    client: AsyncClient, uris: List[str], policy: PolicyType = None
+) -> AsyncIterable[LikeWithDeets]:
+    results = await asyncio.gather(*[
+        get_single_like(client, uri, policy)
+        for uri in uris
+    ])
+    for i in results:
+        if i is not None:
+            yield i
 
 
 def get_likes(

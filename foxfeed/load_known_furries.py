@@ -16,6 +16,7 @@ from foxfeed.bsky import (
     get_list,
     get_specific_profiles,
     get_specific_posts,
+    get_specific_likes,
     as_detailed_profiles,
     PostView
 )
@@ -503,9 +504,9 @@ async def create_sentinels(db: Database):
 
 
 async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed.bsky.Policy) -> bool:
-    cprint(f"There are {await db.unknownthing.count(where={'kind': {'in': ['actor', 'post']}})} unknown things", "cyan", force_color=True)
+    cprint(f"There are {await db.unknownthing.count(where={'kind': {'in': ['actor', 'post', 'like']}})} unknown things", "cyan", force_color=True)
 
-    max_id = await db.unknownthing.find_first(order={'id': 'desc'}, where={'kind': {'in': ['actor', 'post']}})
+    max_id = await db.unknownthing.find_first(order={'id': 'desc'}, where={'kind': {'in': ['actor', 'post', 'like']}})
     if max_id is None:
         if await enqueue_unlinks(db):
             return True
@@ -609,6 +610,36 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                 )
         for i in x:
             await foxfeed.data_filter.post_exists_cached.drop_entry(i.identifier)
+
+    cprint("Loading unknown likes", "blue", force_color=True)
+    while x := await db.unknownthing.find_many(
+        take=25,
+        order={'id': 'asc'},
+        where={'id': {'lte': max_id.id}, 'kind': 'like'},
+    ):
+        likes = [i async for i in get_specific_likes(client, [i.identifier for i in x], policy)]
+        # Need to check HERE in order to not process an incomplete set of profiles and then accidentally
+        # drop incomplete work from the table. This is bad design, like the fact there's this weird edge case this actually.
+        # Might just want to raise an exception from within the bsky queries TBH.
+        if policy.stop_event.is_set():
+            break
+        async with db.tx() as tx:
+            print(f'Storing {len(likes)} likes')
+            await tx.like.create_many(
+                data=[
+                    {
+                        "uri": i.uri,
+                        "cid": i.cid or "",
+                        "post_uri": i.post_uri,
+                        "post_cid": i.post_cid,
+                        "liker_id": i.actor_did,
+                        "created_at": parse_datetime(i.created_at)
+                    }
+                    for i in likes
+                ],
+                skip_duplicates=True,
+            )
+            await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
     
     return True
 
@@ -622,7 +653,7 @@ async def rescan_furry_accounts(
     policy = foxfeed.bsky.Policy(
         res.shutdown_event,
         timedelta(minutes=5),
-        2500
+        2700
     )
     await create_sentinels(res.db)
     try:
