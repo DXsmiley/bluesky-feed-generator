@@ -617,9 +617,10 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
 
     cprint("Loading unknown likes", "blue", force_color=True)
     while x := await db.unknownthing.find_many(
-        take=200,
+        take=block_size,
         order={'identifier': 'asc'},
-        where={'id': {'lte': max_id.id}, 'kind': 'like'},
+        # Low key don't care about the ID limiter here, we care more about getting value from queries TBH
+        where={'kind': 'like'},
     ):
         likes = [i async for i in get_specific_likes(client, [i.identifier for i in x], policy)]
         # Need to check HERE in order to not process an incomplete set of profiles and then accidentally
@@ -645,6 +646,11 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
             except prisma.errors.UniqueViolationError:
                 pass
         await db.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
+        if len(x) < block_size:
+            # Need to break like this since we don't have the ID limit
+            # Otherwise we risk spinning here forever as the firehose adds new things to the work queue constantly
+            break
+            # Actually I think we risk never moving on to the main scraper at this rate lmao
     
     return True
 

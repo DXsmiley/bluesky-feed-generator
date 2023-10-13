@@ -19,7 +19,7 @@ from typing import (
     Tuple,
 )
 import time
-from foxfeed.util import sleep_on, chunkify, achunkify, groupby
+from foxfeed.util import sleep_on, chunkify, achunkify, groupby, alist
 
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import (
@@ -78,6 +78,25 @@ def ev_set(policy_or_stop_event: PolicyType) -> bool:
     if isinstance(policy_or_stop_event, asyncio.Event):
         return policy_or_stop_event.is_set()
     return False
+
+
+B32CHARS = 'abcdefghijklmnopqrstuvwxyz234567'
+
+
+def b32_decode(s: str) -> int:
+    return sum((32 ** i) * B32CHARS.index(v) for i, v in enumerate(s[::-1]))
+
+
+def b32_encode(x: int) -> str:
+    s = ''
+    while x > 0:
+        s += B32CHARS[x % 32]
+        x //= 32
+    return s[::-1]
+
+
+def get_adjacent_key(rkey: str) -> str:
+    return b32_encode(b32_decode(rkey) - 1)
 
 
 T = TypeVar("T")
@@ -307,35 +326,12 @@ async def get_single_like(
             )
 
 
-B32CHARS = 'abcdefghijklmnopqrstuvwxyz234567'
-
-
-def b32_decode(s: str) -> int:
-    return sum((32 ** i) * B32CHARS.index(v) for i, v in enumerate(s[::-1]))
-
-
-def b32_encode(x: int) -> str:
-    s = ''
-    while x > 0:
-        s += B32CHARS[x % 32]
-        x //= 32
-    return s[::-1]
-
-
-def get_adjacent_key(rkey: str) -> str:
-    return b32_encode(b32_decode(rkey) - 1)
-
-
-async def _get_specific_likes_from_repo(
+async def _list_records_from_repo(
     client: AsyncClient, repo: str, collection: str, keys: List[str], policy: PolicyType = None
-) -> Tuple[int, List[Optional[LikeWithDeets]]]:
-    if len(keys) == 1:
-        return (0, [await get_single_like(client, repo, collection, keys[0], policy)])
-    sorted_keys = sorted(keys)
-    found: Dict[str, LikeWithDeets] = {}
-    request_count = 0
-    for rkey in sorted_keys:
-        if rkey in found:
+) -> AsyncIterable[models.ComAtprotoRepoListRecords.Record]:
+    keys_to_find = set(keys)
+    for rkey in sorted(keys):
+        if rkey not in keys_to_find:
             continue
         response = await request_and_retry_on_ratelimit(
             client.com.atproto.repo.list_records,
@@ -350,40 +346,44 @@ async def _get_specific_likes_from_repo(
             max_attempts=3,
             policy=policy
         )
-        request_count += 1
-        if response is not None:
-            for i in response.records:
-                assert isinstance(i, models.ComAtprotoRepoListRecords.Record)
-                assert isinstance(i.value, models.AppBskyFeedLike.Main)
-                found[i.uri.split('/')[-1]] = LikeWithDeets(
-                    uri=i.uri,
-                    cid=i.cid,
-                    post_uri=i.value.subject.uri,
-                    post_cid=i.value.subject.cid,
-                    actor_did=repo,
-                    created_at=i.value.created_at
-                )
-    # print(repo, collection, sum(i in found for i in keys), len(keys), request_count)
-    return (len(keys) - request_count, [found.get(rkey) for rkey in keys])
+        if response is None:
+            break
+        for rec in response.records:
+            response_rkey = rec.uri.split('/')[-1]
+            if response_rkey in keys_to_find:
+                keys_to_find.remove(response_rkey)
+                yield rec
+
+
+async def _list_records(
+    client: AsyncClient, uris: List[str], policy: PolicyType = None
+) -> AsyncIterable[models.ComAtprotoRepoListRecords.Record]:
+    grouped = groupby(
+        lambda x: (x[0], x[1]),
+        [i.split('/')[2:5] for i in uris]
+    )
+    sources: List[Coroutine[Any, Any, List[models.ComAtprotoRepoListRecords.Record]]] = [
+        alist(_list_records_from_repo(client, repo, collection, [i[2] for i in x], policy))
+        for (repo, collection), x in grouped.items()
+    ]
+    for ls in await asyncio.gather(*sources):
+        for i in ls:
+            yield i
 
 
 async def get_specific_likes(
     client: AsyncClient, uris: List[str], policy: PolicyType = None
 ) -> AsyncIterable[LikeWithDeets]:
-    grouped = groupby(
-        lambda x: (x[0], x[1]),
-        [i.split('/')[2:5] for i in uris]
-    )
-    cs: List[Coroutine[Any, Any, Tuple[int, List[Optional[LikeWithDeets]]]]] = [
-        _get_specific_likes_from_repo(client, repo, collection, [i[2] for i in x], policy)
-        for (repo, collection), x in grouped.items()
-    ]
-    results: List[Tuple[int, List[Optional[LikeWithDeets]]]] = await asyncio.gather(*cs)
-    # print('Saved queries:', sum(i for i, _ in results))
-    for _, r in results:
-        for i in r:
-            if i is not None:
-                yield i
+    async for i in _list_records(client, uris, policy):
+        assert isinstance(i.value, models.AppBskyFeedLike.Main)
+        yield LikeWithDeets(
+            uri=i.uri,
+            cid=i.cid,
+            post_uri=i.value.subject.uri,
+            post_cid=i.value.subject.cid,
+            actor_did=i.uri.split('/')[2],
+            created_at=i.value.created_at,
+        )
 
 
 def get_likes(

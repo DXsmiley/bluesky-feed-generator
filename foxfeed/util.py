@@ -144,3 +144,6 @@ async def achunkify(ai: AsyncIterable[T], chunk_size: int) -> AsyncIterable[List
             chunk = []
     if len(chunk) > 0:
         yield chunk
+
+async def alist(ai: AsyncIterable[T]) -> List[T]:
+    return [i async for i in ai]
