@@ -1,5 +1,6 @@
 # pyright: reportUnusedFunction=false
 
+import asyncio
 import secrets
 from datetime import datetime, timedelta
 from aiohttp import web
@@ -18,7 +19,7 @@ import aiojobs.aiohttp
 import prisma
 import scripts.find_furry_girls
 
-from typing import Callable, Coroutine, Any, Optional, Set, List, Tuple, Literal
+from typing import Callable, Coroutine, Any, Optional, Set, List, Tuple, Literal, Union
 
 
 def algos_for(did: str, check: Literal['show_on_personal_account', 'show_on_main_account']):
@@ -100,58 +101,62 @@ def create_route_table(
     async def favicon(request: web.Request) -> web.StreamResponse:
         return web.FileResponse("./static/logo.png")
 
+    async def query_stats(now: datetime) -> List[Tuple[str, int]]:
+        async def f(s: str, c: Union[int, Coroutine[Any, Any, int]]) -> Tuple[str, int]:
+            return (s, c if isinstance(c, int) else await c)
+        return await asyncio.gather(
+            f("feeds", len(foxfeed.algos.feeds.algo_details)),
+            f("users", db.actor.count()),
+            f(
+                "> in-fox-feed",
+                db.actor.count(where=foxfeed.database.user_is_in_fox_feed),
+            ),
+            f(
+                "> in-vix-feed",
+                db.actor.count(where=foxfeed.database.user_is_in_vix_feed),
+            ),
+            f(
+                "> storing-data-for",
+                db.actor.count(
+                    where=foxfeed.database.care_about_storing_user_data_preemptively
+                ),
+            ),
+            f("posts", db.post.count()),
+            f(
+                "> posts-recent",
+                db.post.count(
+                    where={"indexed_at": {"gt": now - timedelta(hours=96)}}
+                ),
+            ),
+            f("likes", db.like.count()),
+            f(
+                "> likes-recent",
+                db.like.count(
+                    where={"created_at": {"gt": now - timedelta(hours=96)}}
+                ),
+            ),
+            f("postscores", db.postscore.count()),
+            f("servedblock", db.servedblock.count()),
+            f("servedpost", db.servedpost.count()),
+            f("unknownthings", db.unknownthing.count()),
+            f("> users", db.unknownthing.count(where={'kind': 'actor'})),
+            f("> posts", db.unknownthing.count(where={'kind': 'post'})),
+            f("> likes", db.unknownthing.count(where={'kind': 'like'})),
+        )
+
     @routes.get("/stats")
     async def stats(request: web.Request) -> web.Response:
         now = datetime.now()
-        metrics = await foxfeed.metrics.feed_metrics_for_time_range(
+        metrics_c = foxfeed.metrics.feed_metrics_for_time_range(
             db,
             None,
             now - foxfeed.metrics.METRICS_MAXIMUM_LOOKBACK,
             now,
             timedelta(hours=1),
         )
-        page = foxfeed.web.interface.stats_page(
-            [
-                ("feeds", len(foxfeed.algos.feeds.algo_details)),
-                ("users", await db.actor.count()),
-                (
-                    "in-fox-feed",
-                    await db.actor.count(where=foxfeed.database.user_is_in_fox_feed),
-                ),
-                (
-                    "in-vix-feed",
-                    await db.actor.count(where=foxfeed.database.user_is_in_vix_feed),
-                ),
-                (
-                    "storing-data-for",
-                    await db.actor.count(
-                        where=foxfeed.database.care_about_storing_user_data_preemptively
-                    ),
-                ),
-                ("posts", await db.post.count()),
-                (
-                    "posts-recent",
-                    await db.post.count(
-                        where={"indexed_at": {"gt": now - timedelta(hours=96)}}
-                    ),
-                ),
-                ("likes", await db.like.count()),
-                (
-                    "likes-recent",
-                    await db.like.count(
-                        where={"created_at": {"gt": now - timedelta(hours=96)}}
-                    ),
-                ),
-                ("postscores", await db.postscore.count()),
-                ("servedblock", await db.servedblock.count()),
-                ("servedpost", await db.servedpost.count()),
-                ("unknownthings", await db.unknownthing.count()),
-                ("- users", await db.unknownthing.count(where={'kind': 'actor'})),
-                ("- posts", await db.unknownthing.count(where={'kind': 'post'})),
-                ("- likes", await db.unknownthing.count(where={'kind': 'like'})),
-            ],
-            metrics,
-        )
+        qstats_c = query_stats(now)
+        qstats, metrics = await asyncio.gather(qstats_c, metrics_c)
+        page = foxfeed.web.interface.stats_page(qstats, metrics)
         return web.Response(text=str(page), content_type="text/html")
 
     @routes.get("/user/{handle}")

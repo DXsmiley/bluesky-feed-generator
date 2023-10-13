@@ -1,3 +1,4 @@
+import asyncio
 import math
 from foxfeed.database import Database
 from datetime import datetime, timedelta
@@ -87,10 +88,10 @@ async def feed_metrics_for_time_range(
     floor_start_and_end: Literal[True] = True
 ) -> FeedMetrics:
     f_start = floor_datetime(start, interval)
-    metrics = [
-        await feed_metrics_for_timeslice(db, feed_name, i, i + interval)
+    metrics = await asyncio.gather(*[
+        feed_metrics_for_timeslice(db, feed_name, i, i + interval)
         for i in daterange(f_start, end, interval)
-    ]
+    ])
     return FeedMetrics(
         start=f_start,
         end=f_start + interval * len(metrics),
