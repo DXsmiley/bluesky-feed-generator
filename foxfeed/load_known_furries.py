@@ -627,11 +627,11 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
         # Might just want to raise an exception from within the bsky queries TBH.
         if policy.stop_event.is_set():
             break
-        async with db.tx() as tx:
-            print(f'Storing {len(likes)} likes')
-            await tx.like.create_many(
-                data=[
-                    {
+        print(f'Storing {len(likes)} likes')
+        for i in likes:
+            try:
+                await db.like.create(
+                    data={
                         "uri": i.uri,
                         "cid": i.cid or "",
                         "post_uri": i.post_uri,
@@ -639,11 +639,12 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                         "liker_id": i.actor_did,
                         "created_at": parse_datetime(i.created_at)
                     }
-                    for i in likes
-                ],
-                skip_duplicates=True,
-            )
-            await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
+                )
+            except prisma.errors.ForeignKeyViolationError:
+                pass
+            except prisma.errors.UniqueViolationError:
+                pass
+        await db.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
     
     return True
 
