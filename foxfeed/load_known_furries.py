@@ -18,7 +18,6 @@ from foxfeed.bsky import (
     get_specific_posts,
     get_specific_likes,
     as_detailed_profiles,
-    PostView
 )
 
 import foxfeed.bsky

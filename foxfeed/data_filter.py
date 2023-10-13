@@ -19,8 +19,6 @@ from collections import OrderedDict
 
 import time
 
-from termcolor import cprint
-
 
 T = TypeVar('T')
 
@@ -96,7 +94,6 @@ async def post_exists_cached(db: Database, uri: str) -> Literal['not-here', 'do-
     ):
         return 'do-care'
     return 'dont-care'
-
 
 
 EmbedType = Union[

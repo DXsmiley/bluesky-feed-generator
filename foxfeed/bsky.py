@@ -16,7 +16,6 @@ from typing import (
     AsyncIterable,
     Union,
     Dict,
-    Tuple,
 )
 import time
 from foxfeed.util import sleep_on, chunkify, achunkify, groupby, alist
