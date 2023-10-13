@@ -146,6 +146,9 @@ def create_route_table(
                 ("servedblock", await db.servedblock.count()),
                 ("servedpost", await db.servedpost.count()),
                 ("unknownthings", await db.unknownthing.count()),
+                ("- users", await db.unknownthing.count(where={'kind': 'actor'})),
+                ("- posts", await db.unknownthing.count(where={'kind': 'post'})),
+                ("- likes", await db.unknownthing.count(where={'kind': 'like'})),
             ],
             metrics,
         )
