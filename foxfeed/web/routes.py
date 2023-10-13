@@ -145,6 +145,7 @@ def create_route_table(
                 ("postscores", await db.postscore.count()),
                 ("servedblock", await db.servedblock.count()),
                 ("servedpost", await db.servedpost.count()),
+                ("unknownthings", await db.unknownthing.count()),
             ],
             metrics,
         )
