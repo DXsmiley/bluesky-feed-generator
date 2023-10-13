@@ -27,7 +27,6 @@ async def store_user(
     is_external_to_network: bool,
 ) -> None:
     gender_vibes = gender.vibecheck(user.description or "")
-    print(user)
     await db.actor.upsert(
         where={"did": user.did},
         data={

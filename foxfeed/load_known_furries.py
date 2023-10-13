@@ -530,16 +530,17 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
         gone = {i.identifier for i in x} - {i.did for i in users}
         async with db.tx() as tx:
             for did in gone:
-                try:
-                    await tx.actor.create(
-                        data={
+                await tx.actor.upsert(
+                    where={'did': did},
+                    data={
+                        'create': {
                             'did': did,
                             'handle': 'deleted',
                             'is_muted': True,
-                        }
-                    )
-                except prisma.errors.UniqueViolationError:
-                    pass
+                        },
+                        'update': {}
+                    }
+                )
             for user in users:
                 cprint(f'{user.handle} {user.display_name}', 'yellow', force_color=True)
                 await store_user(
