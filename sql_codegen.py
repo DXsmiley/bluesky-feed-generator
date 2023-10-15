@@ -1,7 +1,9 @@
 import re
 from typing import Iterator
+import shutil
 
-OUTPUT = './foxfeed/gen/db.py'
+OUT_DIR = './foxfeed/gen/'
+OUT_FILE = 'db.py'
 
 INPUT = [
     ('score_posts', 'score_posts.sql', 'ScorePostsOutputModel'),
@@ -70,7 +72,8 @@ def codegen() -> Iterator[str]:
 
 
 if __name__ == '__main__':
+    shutil.rmtree(OUT_DIR + '/__pycache__')
     code = '\n'.join(codegen())
-    with open(OUTPUT, 'w') as f:
+    with open(OUT_DIR + OUT_FILE, 'w') as f:
         f.write(code)
 
