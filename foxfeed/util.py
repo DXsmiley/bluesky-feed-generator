@@ -145,5 +145,29 @@ async def achunkify(ai: AsyncIterable[T], chunk_size: int) -> AsyncIterable[List
     if len(chunk) > 0:
         yield chunk
 
+
 async def alist(ai: AsyncIterable[T]) -> List[T]:
     return [i async for i in ai]
+
+
+B32CHARS = 'abcdefghijklmnopqrstuvwxyz234567'
+
+
+def b32_decode(s: str) -> int:
+    return sum((32 ** i) * B32CHARS.index(v) for i, v in enumerate(s[::-1]))
+
+
+def b32_encode(x: int) -> str:
+    s = ''
+    while x > 0:
+        s += B32CHARS[x % 32]
+        x //= 32
+    return s[::-1]
+
+
+def previous_rkey(rkey: str) -> str:
+    return b32_encode(b32_decode(rkey) - 1)
+
+
+def next_rkey(rkey: str) -> str:
+    return b32_encode(b32_decode(rkey) + 1)

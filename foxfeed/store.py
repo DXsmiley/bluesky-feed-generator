@@ -101,12 +101,7 @@ async def store_post(db: Database, post: FeedViewPost, *, now: Optional[datetime
 
 
 async def store_post3(db: Database, post: PostView, *, now: Optional[datetime] = None) -> None:
-    root, parent = (
-        (post.record.reply.root.uri, post.record.reply.parent.uri)
-        if (is_record_type(post.record, models.AppBskyFeedPost)
-        and post.record.reply is not None)
-        else (None, None)
-    )
+    root, parent = get_parent_skeets(post)
     await store_post2(
         db,
         post,
@@ -136,6 +131,12 @@ def get_quoted_skeet(p: PostView) -> Union[Tuple[str, str], Tuple[None, None]]:
         return (p.embed.record.uri, p.embed.record.cid)
     if isinstance(p.embed, record.ViewRecord):
         return (p.embed.uri, p.embed.cid)
+    return (None, None)
+
+
+def get_parent_skeets(post: PostView) -> Union[Tuple[str, str], Tuple[None, None]]:
+    if is_record_type(post.record, models.AppBskyFeedPost) and post.record.reply is not None:
+        return (post.record.reply.root.uri, post.record.reply.parent.uri)
     return (None, None)
 
 

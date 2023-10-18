@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 import atproto
+from atproto.uri import AtUri
 import atproto.exceptions
 from foxfeed.database import Database
 from typing import (
@@ -18,7 +19,7 @@ from typing import (
     Dict,
 )
 import time
-from foxfeed.util import sleep_on, chunkify, achunkify, groupby, alist
+from foxfeed.util import sleep_on, chunkify, achunkify, groupby, alist, previous_rkey
 
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import (
@@ -53,7 +54,7 @@ class Policy:
                 self.counter = 0
             self.counter += 1
             if self.counter > self.ratelimit_limit:
-                await sleep_on(self.stop_event, (self.reset_at - now).total_seconds())
+                await sleep_on(self.stop_event, (self.reset_at - now).total_seconds() + 2)
 
 
 PolicyType = Optional[Union[asyncio.Event, Policy]]
@@ -77,25 +78,6 @@ def ev_set(policy_or_stop_event: PolicyType) -> bool:
     if isinstance(policy_or_stop_event, asyncio.Event):
         return policy_or_stop_event.is_set()
     return False
-
-
-B32CHARS = 'abcdefghijklmnopqrstuvwxyz234567'
-
-
-def b32_decode(s: str) -> int:
-    return sum((32 ** i) * B32CHARS.index(v) for i, v in enumerate(s[::-1]))
-
-
-def b32_encode(x: int) -> str:
-    s = ''
-    while x > 0:
-        s += B32CHARS[x % 32]
-        x //= 32
-    return s[::-1]
-
-
-def get_adjacent_key(rkey: str) -> str:
-    return b32_encode(b32_decode(rkey) - 1)
 
 
 T = TypeVar("T")
@@ -159,6 +141,8 @@ async def request_and_retry_on_ratelimit(
             if e.response and e.response.status_code in (500, 502):
                 await sleep_on_stop_event(policy, 5)
             elif e.response and e.response.status_code == 429:
+                print('Got ratelimited:')
+                print(e)
                 if "ratelimit-reset" in e.response.headers:
                     time_to_wait = int(e.response.headers["ratelimit-reset"]) - time.time() + 1
                 else:
@@ -168,6 +152,7 @@ async def request_and_retry_on_ratelimit(
                 raise
     if ev_set(policy):
         return None
+    await count_and_wait_if_policy(policy)
     return await function(argument)
 
 
@@ -328,7 +313,7 @@ async def get_single_like(
 
 
 async def _list_records_from_repo(
-    client: AsyncClient, repo: str, collection: str, keys: List[str], policy: PolicyType = None
+    client: AsyncClient, repo: str, collection: str, keys: List[str], policy: PolicyType
 ) -> AsyncIterable[models.ComAtprotoRepoListRecords.Record]:
     keys_to_find = set(keys)
     for rkey in sorted(keys):
@@ -340,7 +325,7 @@ async def _list_records_from_repo(
                 models.ComAtprotoRepoListRecords.Params(
                     repo=repo,
                     collection=collection,
-                    rkeyStart=get_adjacent_key(rkey),
+                    rkeyStart=previous_rkey(rkey),
                     limit=100,
                     # By default the query goes high-to-low keys (travels backways through time), but we want to go forward
                     reverse=True,
@@ -357,22 +342,19 @@ async def _list_records_from_repo(
             if response is None:
                 break
             for rec in response.records:
-                response_rkey = rec.uri.split('/')[-1]
+                response_rkey = AtUri.from_str(rec.uri).rkey
                 if response_rkey in keys_to_find:
                     keys_to_find.remove(response_rkey)
                     yield rec
 
 
 async def _list_records(
-    client: AsyncClient, uris: List[str], policy: PolicyType = None
+    client: AsyncClient, uris: List[AtUri], policy: PolicyType
 ) -> AsyncIterable[models.ComAtprotoRepoListRecords.Record]:
-    grouped = groupby(
-        lambda x: (x[0], x[1]),
-        [i.split('/')[2:5] for i in uris]
-    )
+    grouped = groupby(lambda x: (x.hostname, x.collection), uris)
     sources: List[Coroutine[Any, Any, List[models.ComAtprotoRepoListRecords.Record]]] = [
-        alist(_list_records_from_repo(client, repo, collection, [i[2] for i in x], policy))
-        for (repo, collection), x in grouped.items()
+        alist(_list_records_from_repo(client, repo, collection, [i.rkey for i in uris], policy))
+        for (repo, collection), uris in grouped.items()
     ]
     for ls in await asyncio.gather(*sources):
         for i in ls:
@@ -380,16 +362,17 @@ async def _list_records(
 
 
 async def get_specific_likes(
-    client: AsyncClient, uris: List[str], policy: PolicyType = None
+    client: AsyncClient, uris: List[str], policy: PolicyType
 ) -> AsyncIterable[LikeWithDeets]:
-    async for i in _list_records(client, uris, policy):
+    aturis = [AtUri.from_str(i) for i in uris]
+    async for i in _list_records(client, aturis, policy):
         assert isinstance(i.value, models.AppBskyFeedLike.Main)
         yield LikeWithDeets(
             uri=i.uri,
             cid=i.cid,
             post_uri=i.value.subject.uri,
             post_cid=i.value.subject.cid,
-            actor_did=i.uri.split('/')[2],
+            actor_did=AtUri.from_str(i.uri).hostname,
             created_at=i.value.created_at,
         )
 

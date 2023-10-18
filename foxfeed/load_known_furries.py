@@ -654,9 +654,28 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
     return True
 
 
-async def rescan_furry_accounts(
-    res: Res, forever: bool
-):
+class CatchAndReportError:
+
+    def __init__(self, label: str):
+        self._label = label
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_value: Optional[Exception], tb) -> bool:
+        if exc_value is None:
+            return False
+        if isinstance(exc_value, asyncio.CancelledError):
+            return False
+        if isinstance(exc_value, KeyboardInterrupt):
+            return False
+        cprint(f"error during {self._label}", color="red", force_color=True)
+        traceback.print_exc()
+        return True
+
+
+
+async def rescan_furry_accounts(res: Res, forever: bool) -> None:
     # Actual rate limit is 3000/5 minutes,
     # however we artifically limit this part of the system
     # https://atproto.com/blog/rate-limits-pds-v3
@@ -666,27 +685,19 @@ async def rescan_furry_accounts(
         2700
     )
     await create_sentinels(res.db)
-    try:
+    if res.shutdown_event.is_set():
+        return
+    with CatchAndReportError("loading unknown things (before loop)"):
         while await load_unknown_things(res.db, res.client, policy):
             pass
-    except asyncio.CancelledError:
+    if res.shutdown_event.is_set():
         return
-    except KeyboardInterrupt:
-        return
-    except Exception:
-        cprint(f"error while loading unknown things", color="red", force_color=True)
-        traceback.print_exc()
-    await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
+    with CatchAndReportError("full scrape"):
+        await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
     while forever and not res.shutdown_event.is_set():
-        try:
+        with CatchAndReportError("loading unknown things (within loop)"):
             while await load_unknown_things(res.db, res.client, policy):
                 pass
+        with CatchAndReportError("scan once"):
             await scan_once(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
-        except asyncio.CancelledError:
-            break
-        except KeyboardInterrupt:
-            break
-        except Exception:
-            cprint(f"error while scanning furries", color="red", force_color=True)
-            traceback.print_exc()
         await sleep_on(res.shutdown_event, 60 * 30)

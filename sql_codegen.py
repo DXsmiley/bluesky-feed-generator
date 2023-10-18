@@ -6,9 +6,9 @@ OUT_DIR = './foxfeed/gen/'
 OUT_FILE = 'db.py'
 
 INPUT = [
-    ('score_posts', 'score_posts.sql', 'ScorePostsOutputModel'),
-    ('score_by_interactions', 'score_by_interaction.sql', 'ScoreByInteractionOutputModel'),
-    ('find_unlinks', 'find_unlinks.sql', 'FindUnlinksOutputModel'),
+    ('score_posts', 'ScorePostsOutputModel'),
+    ('score_by_interactions', 'ScoreByInteractionOutputModel'),
+    ('find_unlinks', 'FindUnlinksOutputModel'),
 ]
 
 HEADDER = '''
@@ -66,13 +66,16 @@ def codegen_for_query(function_name: str, output_model: str, sql: str) -> Iterat
 
 def codegen() -> Iterator[str]:
     yield HEADDER
-    for function_name, filename, output_model in INPUT:
-        with open(filename) as f:
-            yield from codegen_for_query(function_name, output_model, f.read())
+    for name, output_model in INPUT:
+        with open('./sql/' + name + '.sql') as f:
+            yield from codegen_for_query(name, output_model, f.read())
 
 
 if __name__ == '__main__':
-    shutil.rmtree(OUT_DIR + '/__pycache__')
+    try:
+        shutil.rmtree(OUT_DIR + '__pycache__')
+    except FileNotFoundError:
+        pass
     code = '\n'.join(codegen())
     with open(OUT_DIR + OUT_FILE, 'w') as f:
         f.write(code)
