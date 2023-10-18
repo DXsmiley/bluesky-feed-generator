@@ -126,7 +126,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
             where={
                 'status': 'scheduled',
                 'media': {'some': {}},
-                'scheduled_at': {'lt': now - timedelta(minutes=0)},
+                'scheduled_at': {'lt': now - timedelta(hours=1)},
             },
             include={'media': True},
         )
@@ -137,7 +137,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
             where={
                 'status': 'scheduled',
                 'media': {'none': {}},
-                'scheduled_at': {'lt': now - timedelta(minutes=0)},
+                'scheduled_at': {'lt': now - timedelta(hours=1)},
             },
             include={'media': True},
         )
