@@ -570,11 +570,9 @@ def create_route_table(
         alt_text = data.get('alt-text', '')
         assert isinstance(alt_text, str)
         image = data.get('image', None)
-        image_content: Optional[bytes] = None
-        # Idk why this is sometimes an empty bytestring that's so weird
-        if image is not None and image != b'':
+        image_content = None
+        if isinstance(image, web.FileField):
             image_content = image.file.read()
-            assert isinstance(image_content, bytes)
         # Don't queue empty posts lol
         if text or image_content:
             await db.scheduledpost.create(

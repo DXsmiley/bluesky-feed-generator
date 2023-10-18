@@ -30,7 +30,10 @@ from typing import (
     Callable,
     Set,
     Union,
+    Type,
 )
+
+from types import TracebackType
 
 from atproto.xrpc_client.models.app.bsky.actor.defs import (
     ProfileView,
@@ -662,7 +665,12 @@ class CatchAndReportError:
     def __enter__(self):
         pass
 
-    def __exit__(self, exc_type, exc_value: Optional[Exception], tb) -> bool:
+    def __exit__(
+            self,
+            exc_type: Optional[Type[BaseException]],
+            exc_value: Optional[Exception],
+            tb: Optional[TracebackType]
+        ) -> bool:
         if exc_value is None:
             return False
         if isinstance(exc_value, asyncio.CancelledError):

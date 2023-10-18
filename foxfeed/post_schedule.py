@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, AsyncIterator
+from typing import Optional, AsyncIterator
 from prisma.models import ScheduledPost
 from backports.zoneinfo import ZoneInfo
 
