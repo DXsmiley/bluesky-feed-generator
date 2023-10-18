@@ -122,7 +122,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     if recent_image_post is None:
         print('There is no recent image post, gonna see if theres a post with an image')
         next_post = await db.scheduledpost.find_first(
-            order={'id': 'asc'},
+            order={'id': 'desc'},
             where={
                 'status': 'scheduled',
                 'media': {'some': {}},
@@ -133,7 +133,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     if next_post is None:
         print('Gonna see if there\'s a text-only post')
         next_post = await db.scheduledpost.find_first(
-            order={'id': 'asc'},
+            order={'id': 'desc'},
             where={
                 'status': 'scheduled',
                 'media': {'none': {}},

@@ -545,12 +545,12 @@ def create_route_table(
             include={'media': True},
         )
         scheduled = await db.scheduledpost.find_many(
-            order={'id': 'asc'},
+            order={'id': 'desc'},
             where={'status': 'scheduled'},
             include={'media': True},
         )
         cancelled = await db.scheduledpost.find_many(
-            order={'id': 'asc'},
+            order={'id': 'desc'},
             where={'status': 'cancelled'},
             include={'media': True},
         )
