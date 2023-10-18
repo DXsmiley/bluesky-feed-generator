@@ -39,6 +39,7 @@ model Actor {
   is_muted Boolean @default(false)
   is_external_to_network Boolean @default(false)
   is_furrylist_verified Boolean @default(false)
+  was_ever_furrylist_verified Boolean @default(false)
   autolabel_masc_vibes Boolean @default(false)
   autolabel_nb_vibes Boolean @default(false)
   autolabel_fem_vibes Boolean @default(false)

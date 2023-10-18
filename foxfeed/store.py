@@ -27,42 +27,46 @@ async def store_user(
     is_external_to_network: bool,
 ) -> None:
     gender_vibes = gender.vibecheck(user.description or "")
+    create: prisma.types.ActorCreateInput = {
+        "did": user.did,
+        "handle": user.handle,
+        "description": user.description,
+        "displayName": user.display_name,
+        "avatar": user.avatar,
+        "flagged_for_manual_review": flag_for_manual_review,
+        "autolabel_fem_vibes": gender_vibes.fem,
+        "autolabel_nb_vibes": gender_vibes.enby,
+        "autolabel_masc_vibes": gender_vibes.masc,
+        "is_furrylist_verified": is_furrylist_verified,
+        "was_ever_furrylist_verified": is_furrylist_verified,
+        "is_muted": is_muted,
+        "is_external_to_network": is_external_to_network,
+        "follower_count": user.followers_count or 0,
+        "following_count": user.follows_count or 0,
+    }
+    update: prisma.types.ActorUpdateInput = {
+        "did": user.did,
+        "handle": user.handle,
+        "description": user.description,
+        "displayName": user.display_name,
+        "avatar": user.avatar,
+        "autolabel_fem_vibes": gender_vibes.fem,
+        "autolabel_nb_vibes": gender_vibes.enby,
+        "autolabel_masc_vibes": gender_vibes.masc,
+        "is_muted": is_muted,
+        "is_external_to_network": is_external_to_network,
+        "is_furrylist_verified": is_furrylist_verified,
+        # "was_ever_furrylist_verified" is special, see below
+        "follower_count": user.followers_count or 0,
+        "following_count": user.follows_count or 0,
+    }
+    # Once this flag turns out, we don't turn it off
+    if is_furrylist_verified:
+        update["was_ever_furrylist_verified"] = True
+    # Actually do the upsert
     await db.actor.upsert(
         where={"did": user.did},
-        data={
-            "create": {
-                "did": user.did,
-                "handle": user.handle,
-                "description": user.description,
-                "displayName": user.display_name,
-                "avatar": user.avatar,
-                "flagged_for_manual_review": flag_for_manual_review,
-                "autolabel_fem_vibes": gender_vibes.fem,
-                "autolabel_nb_vibes": gender_vibes.enby,
-                "autolabel_masc_vibes": gender_vibes.masc,
-                "is_furrylist_verified": is_furrylist_verified,  # TODO
-                "is_muted": is_muted,
-                "is_external_to_network": is_external_to_network,
-                "follower_count": user.followers_count or 0,
-                "following_count": user.follows_count or 0,
-            },
-            "update": {
-                "did": user.did,
-                "handle": user.handle,
-                "description": user.description,
-                "displayName": user.display_name,
-                "avatar": user.avatar,
-                "autolabel_fem_vibes": gender_vibes.fem,
-                "autolabel_nb_vibes": gender_vibes.enby,
-                "autolabel_masc_vibes": gender_vibes.masc,
-                "is_muted": is_muted,
-                "is_external_to_network": is_external_to_network,
-                "is_furrylist_verified": is_furrylist_verified,
-                # 'flagged_for_manual_review': flag_for_manual_review,
-                "follower_count": user.followers_count or 0,
-                "following_count": user.follows_count or 0,
-            },
-        },
+        data={"create": create, "update": update},
     )
 
 

@@ -287,6 +287,7 @@ def user_main(enable_admin_controls: bool, user: Actor, posts: List[Post]) -> No
             span(class_="marker" if not user.autolabel_nb_vibes else "marker yellow"),
             span(class_="marker" if not user.autolabel_masc_vibes else "marker blue"),
             span("Verified", class_="pill") if user.is_furrylist_verified else None,
+            span("Un-verified", class_="pill") if not user.is_furrylist_verified and user.was_ever_furrylist_verified else None,
             span("Muted", class_="pill") if user.is_muted else None,
             span("External", class_="pill") if user.is_external_to_network else None,
         ),
