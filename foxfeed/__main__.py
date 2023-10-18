@@ -17,7 +17,7 @@ async def main(arg_strings: List[str]) -> int:
 
     shutdown_event = asyncio.Event()
     
-    def _sigint_handler(*_: Any) -> None:
+    def _shutdown_signal_handler(*_: Any) -> None:
         if shutdown_event.is_set():
             print("Got second shutdown signal, doing hard exit")
             print(shutdown_event)
@@ -27,7 +27,8 @@ async def main(arg_strings: List[str]) -> int:
             shutdown_event.set()
 
     loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGINT, _sigint_handler)
+    loop.add_signal_handler(signal.SIGINT, _shutdown_signal_handler)
+    loop.add_signal_handler(signal.SIGTERM, _shutdown_signal_handler)
 
     args = parse_args(list(arg_strings))
 
