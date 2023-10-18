@@ -61,7 +61,7 @@ WITH "LikeCount" AS (
         AND NOT post.is_pinned
         AND NOT author.is_muted
         AND author.manual_include_in_fox_feed IS NOT FALSE
-        AND author.is_external_to_network IS FALSE
+        AND author.is_external_to_network IS :external_posts
 ), table2 AS (
     SELECT
         uri,

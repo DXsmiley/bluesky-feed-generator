@@ -5,7 +5,7 @@ import foxfeed.database
 from foxfeed.database import Database, ScorePostsOutputModel
 import foxfeed.gen.db
 
-from typing import List, Callable, Iterator, Literal, Optional, Coroutine, Any
+from typing import List, Callable, Iterator, Literal, Optional, Coroutine, Any, Tuple
 from .feed_names import FeedName
 
 import foxfeed.gender
@@ -40,6 +40,7 @@ class FeedParameters:
     decay: Optional[StandardDecay]
     include_guy_posts: bool
     include_guy_votes: bool
+    include_some_out_of_network_posts: bool
     # lmt: int
     remix_func: Callable[
         [List[PostScoreResult]], List[PostScoreResult]
@@ -106,11 +107,24 @@ fast_time_decay = StandardDecay(
 )
 
 
+def ratio_mix(*xs: Tuple[int, List[PostScoreResult]]) -> Iterator[PostScoreResult]:
+    c = 0
+    i = 0
+    while c < len(xs):
+        c = 0
+        for n, l in xs:
+            if n*i >= len(l):
+                c += 1
+            else:
+                yield from l[i*n:i*n+n]
+        i += 1
+
+
 async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> List[str]:
     t0 = time.time()
 
     decay = fp.decay or StandardDecay(alpha=1, beta='1 hour', gamma=1)
-    scored_posts = await foxfeed.gen.db.score_posts(
+    scored_posts_in_network = await foxfeed.gen.db.score_posts(
         db,
         alpha=decay.alpha,
         beta=decay.beta,
@@ -119,7 +133,31 @@ async def create_feed(db: Database, fp: FeedParameters, rd: RunDetails) -> List[
         include_guy_posts=fp.include_guy_posts,
         include_guy_votes=fp.include_guy_votes,
         lmt=1000,
-        current_time=rd.run_starttime
+        current_time=rd.run_starttime,
+        external_posts=False,
+    )
+
+    scored_posts_out_of_network = (
+        [] if not fp.include_some_out_of_network_posts
+        else await foxfeed.gen.db.score_posts(
+            db,
+            alpha=decay.alpha,
+            beta=decay.beta,
+            gamma=decay.gamma,
+            do_time_decay=fp.decay is not None,
+            include_guy_posts=False,
+            include_guy_votes=fp.include_guy_votes,
+            lmt=100,
+            current_time=rd.run_starttime,
+            external_posts=True,
+        )
+    )
+
+    scored_posts = list(
+        ratio_mix(
+            (7, scored_posts_in_network),
+            (1, scored_posts_out_of_network)
+        )
     )
 
     ordered_posts = [i.uri for i in fp.remix_func(scored_posts)[:500]]
@@ -178,6 +216,7 @@ fox_feed = generator(
         include_guy_posts=True,
         include_guy_votes=True,
         remix_func=masc_nsfw_limiter(4),
+        include_some_out_of_network_posts=False,
     )
 )
 
@@ -187,6 +226,7 @@ vix_feed = generator(
         decay=score_time_decay,
         include_guy_posts=False,
         include_guy_votes=True,
+        include_some_out_of_network_posts=False,
     )
 )
 
@@ -196,6 +236,7 @@ fresh_feed = generator(
         decay=fast_time_decay,
         include_guy_posts=False,
         include_guy_votes=True,
+        include_some_out_of_network_posts=False,
     )
 )
 
@@ -206,6 +247,7 @@ vix_votes = generator(
         include_guy_posts=True,
         include_guy_votes=False,
         remix_func=masc_nsfw_limiter(4),
+        include_some_out_of_network_posts=True,
     )
 )
 
@@ -216,6 +258,7 @@ top_feed = generator(
         include_guy_posts=False,
         include_guy_votes=True,
         remix_func=top_100_chronological,
+        include_some_out_of_network_posts=False,
     )
 )
 

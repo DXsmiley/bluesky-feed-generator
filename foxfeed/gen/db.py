@@ -84,7 +84,7 @@ WITH "LikeCount" AS (
         AND NOT post.is_pinned
         AND NOT author.is_muted
         AND author.manual_include_in_fox_feed IS NOT FALSE
-        AND author.is_external_to_network IS FALSE
+        AND author.is_external_to_network IS {external_posts}
 ), table2 AS (
     SELECT
         uri,
@@ -136,6 +136,7 @@ async def score_posts(
     beta: Arg,
     current_time: Arg,
     do_time_decay: Arg,
+    external_posts: Arg,
     gamma: Arg,
     include_guy_posts: Arg,
     include_guy_votes: Arg,
@@ -146,6 +147,7 @@ async def score_posts(
         beta = escape(beta),
         current_time = escape(current_time),
         do_time_decay = escape(do_time_decay),
+        external_posts = escape(external_posts),
         gamma = escape(gamma),
         include_guy_posts = escape(include_guy_posts),
         include_guy_votes = escape(include_guy_votes),
