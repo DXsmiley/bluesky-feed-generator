@@ -549,7 +549,69 @@ def create_route_table(
             where={'status': 'scheduled'},
             include={'media': True},
         )
-        page = foxfeed.web.interface.scheduled_posts_page(failed + scheduled)
+        cancelled = await db.scheduledpost.find_many(
+            order={'id': 'asc'},
+            where={'status': 'cancelled'},
+            include={'media': True},
+        )
+        page = foxfeed.web.interface.scheduled_posts_page(failed + scheduled + cancelled)
         return web.Response(text=str(page), content_type="text/html")
+    
+    @routes.post("/schedule")
+    @require_admin_login
+    async def schedule_post(request: web.Request) -> web.Response:
+        data = await request.post()
+        print('Scheduling post:')
+        print(data)
+        label = data.get('maturity', 'none')
+        assert isinstance(label, str)
+        text = data.get('text', '')
+        assert isinstance(text, str)
+        alt_text = data.get('alt-text', '')
+        assert isinstance(alt_text, str)
+        image = data.get('image', None)
+        image_content: Optional[bytes] = None
+        # Idk why this is sometimes an empty bytestring that's so weird
+        if image is not None and image != b'':
+            image_content = image.file.read()
+            assert isinstance(image_content, bytes)
+        # Don't queue empty posts lol
+        if text or image_content:
+            await db.scheduledpost.create(
+                data={
+                    'text': text,
+                    'label': (None if label == 'none' else label),
+                    'media': ({
+                        'create': [
+                            {
+                                'alt_text': alt_text,
+                                'data': prisma.Base64.encode(image_content)
+                            }
+                        ]
+                    } if image_content is not None else {}
+                    )
+                }
+            )
+        return web.HTTPSeeOther("/schedule")
+    
+    @routes.post("/schedule/cancel")
+    @require_admin_login
+    async def schedule_post_cancel(request: web.Request) -> web.Response:
+        blob = await request.json()
+        id_ = blob['id']
+        assert isinstance(id_, int)
+        updated = await db.scheduledpost.update_many(
+            where={
+                'id': id_,
+                'status': 'scheduled',
+            },
+            data={
+                'status': 'cancelled'
+            }
+        )
+        if updated > 0:
+            return web.HTTPOk(text='cancelled post')
+        else:
+            return web.HTTPNotFound(text='could not cancel post??')
 
     return routes

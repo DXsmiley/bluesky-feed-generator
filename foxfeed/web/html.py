@@ -1,4 +1,4 @@
-from typing import List, Dict, Union, Iterator
+from typing import List, Dict, Union, Iterator, TypedDict
 from html import escape
 
 
@@ -64,6 +64,29 @@ h4 = Node("h4", [], {})
 br = UnescapedString("<br>")
 button = Node("button", [], {})
 span = Node("span", [], {})
+form = Node("form", [], {})
+input_ = Node("input", [], {})
+textarea = Node("textarea", [], {})
+label = Node("label", [], {})
+
+
+class RadioButtonDef(TypedDict):
+    value: str
+    label: str
+
+
+def radio_button_set(name: str, buttons: List[RadioButtonDef]) -> List[Union[Node, UnescapedString]]:
+    return [
+        j
+        for i in buttons
+        for j in
+        [
+            input_(type_='radio', name=name, value=i['value']),
+            label(i['label']),
+            br,
+        ]
+    ]
+
 
 
 def style(css: str) -> Node:

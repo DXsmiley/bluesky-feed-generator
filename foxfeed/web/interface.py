@@ -367,10 +367,40 @@ def data_to_small_dataurl(b: bytes) -> str:
 def scheduled_posts_page(posts: List[ScheduledPost]) -> Node:
     return wrap_body(
         "Fox Feed - Scheduled Posts",
+        h3("New Post"),
+        html.form(action="/schedule", method='POST', enctype="multipart/form-data")(
+            # html.input_(type=''),
+            p('Text'),
+            html.textarea(name='text'),
+            html.br,
+            p('Image alt-text'),
+            html.textarea(name='alt-text'),
+            html.br,
+            html.br,
+            html.input_(type_='file', name='image',  accept="image/png, image/jpeg"),
+            html.br,
+            html.br,
+            *html.radio_button_set(
+                'maturity',
+                [
+                    {'label': 'General', 'value': 'none'},
+                    {'label': 'Nudity', 'value': 'nudity'},
+                    {'label': 'Sexual', 'value': 'sexual'},
+                    {'label': 'Porn', 'value': 'porn'},
+                ]
+            ),
+            html.br,
+            html.input_(type_='submit'),
+        ),
         h3("Scheduled Posts"),
         *[
             div(
-                p(i.status, ' - ', re.sub(r"\n+", " • ", i.text, re.MULTILINE)),
+                p(
+                    html.button("cancel", onclick=UnescapedString(f'cancel_post({i.id})')),
+                    span(i.status, class_="pill"),
+                    span(i.label, class_="pill") if i.label is not None else None,
+                    ' ' + re.sub(r"\n+", " • ", i.text, re.MULTILINE),
+                ),
                 *[
                     div(
                         img(src=data_to_small_dataurl(m.data.decode())),

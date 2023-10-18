@@ -176,6 +176,7 @@ model ScheduledPost {
   post_uri String?
   status String @default("scheduled")
   media ScheduledMedia[]
+  scheduled_at DateTime @default(now())
   @@unique([text])
 }
 

@@ -48,3 +48,7 @@ async function set_post_pinned(uri, pin) {
     togglestrip([`${uri}-pinned-${!pin}`], `${uri}-pinned-${pin}`);
     await post('/admin/pin_post', {uri: uri, pin: pin});
 }
+
+async function cancel_post(id) {
+    await post('/schedule/cancel', {id: id});
+}

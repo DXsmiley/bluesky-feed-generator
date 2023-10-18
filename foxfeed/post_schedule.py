@@ -1,19 +1,36 @@
 import asyncio
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List, AsyncIterator
 from prisma.models import ScheduledPost
 from backports.zoneinfo import ZoneInfo
 
 from foxfeed.bsky import AsyncClient
 from foxfeed.database import Database
-from foxfeed.util import sleep_on
+from foxfeed.util import sleep_on, parse_datetime, alist
 from atproto.xrpc_client import models
 
+import re
 import traceback
 
 
 POST_COOLDOWN = timedelta(hours=8)
 IMAGE_POST_COOLDOWN = timedelta(hours=40)
+
+
+async def find_facets(client: AsyncClient, data: bytes) -> AsyncIterator[models.AppBskyRichtextFacet.Main]:
+    mention = rb'@([a-zA-Z0-9-_]+\.)+[a-zA-Z0-9-_]+'
+    for item in re.finditer(mention, data):
+        handle = item.group(0).decode('utf-8').replace('@', '')
+        user = await client.app.bsky.actor.get_profile({'actor': handle})
+        yield models.AppBskyRichtextFacet.Main(
+            features=[
+                models.AppBskyRichtextFacet.Mention(did=user.did)
+            ],
+            index=models.AppBskyRichtextFacet.ByteSlice(
+                byteStart=item.start(0),
+                byteEnd=item.end(0),
+            ),
+        )
 
 
 async def send_post(client: AsyncClient, post: ScheduledPost) -> models.ComAtprotoRepoCreateRecord.Response:
@@ -40,13 +57,15 @@ async def send_post(client: AsyncClient, post: ScheduledPost) -> models.ComAtpro
             ]
         )
     )
+    facets = await alist(find_facets(client, post.text.encode('utf-8')))
     record = models.AppBskyFeedPost.Main(
         createdAt = client.get_current_time_iso(),
         text = post.text,
         reply = None,
         embed = images,
         langs = ['en'],
-        labels = labels
+        labels = labels,
+        facets = facets,
     )
     return await client.com.atproto.repo.create_record(
         models.ComAtprotoRepoCreateRecord.Data(
@@ -71,6 +90,13 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
         next_timespan_start = timespan_start + timedelta(days=1)
         print(f'Sleeping from {now} until {next_timespan_start} (waiting for end of timespan)')
         return next_timespan_start - now
+    recent_posts_on_bsky = (await client.app.bsky.feed.get_author_feed({'actor': handle})).feed
+    if recent_posts_on_bsky:
+        posted_at = parse_datetime(recent_posts_on_bsky[0].post.indexed_at).astimezone(tz=timezone.utc)
+        until_post_is_old = posted_at + POST_COOLDOWN
+        print(f'Sleeping from {now} until {until_post_is_old} (waiting for posts to age, got from bsky directly)')
+        if now < until_post_is_old:
+            return until_post_is_old - now
     recent_post = await db.post.find_first(
         order={'indexed_at': 'desc'},
         where={
@@ -81,7 +107,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     )
     if recent_post is not None:
         until_post_is_old = recent_post.indexed_at + POST_COOLDOWN
-        print(f'Sleeping from {now} until {until_post_is_old} (waiting for posts to age)')
+        print(f'Sleeping from {now} until {until_post_is_old} (waiting for posts to age, got from db)')
         return until_post_is_old - now
     recent_image_post = await db.post.find_first(
         order={'indexed_at': 'desc'},
@@ -94,17 +120,25 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     )
     next_post = None
     if recent_image_post is None:
-        print('There is no recent image post, gonna try post a post with an image')
+        print('There is no recent image post, gonna see if theres a post with an image')
         next_post = await db.scheduledpost.find_first(
             order={'id': 'asc'},
-            where={'status': 'scheduled', 'media': {'some': {}}},
+            where={
+                'status': 'scheduled',
+                'media': {'some': {}},
+                'scheduled_at': {'lt': now - timedelta(minutes=0)},
+            },
             include={'media': True},
         )
     if next_post is None:
-        print('Gonna post a text-only post')
+        print('Gonna see if there\'s a text-only post')
         next_post = await db.scheduledpost.find_first(
             order={'id': 'asc'},
-            where={'status': 'scheduled', 'media': {'none': {}}},
+            where={
+                'status': 'scheduled',
+                'media': {'none': {}},
+                'scheduled_at': {'lt': now - timedelta(minutes=0)},
+            },
             include={'media': True},
         )
     if next_post is None:
@@ -126,7 +160,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
         return timedelta(minutes=10)
 
 
-async def run_schedule(db: Database, client: AsyncClient, shutdown_event: asyncio.Event, run_forever: bool):
+async def run_schedule(db: Database, client: AsyncClient, shutdown_event: asyncio.Event, run_forever: bool) -> None:
     if run_forever:
         # Wait a bit for the firehose to catch up and so we don't immediately post shit
         await sleep_on(shutdown_event, 60 * 5)

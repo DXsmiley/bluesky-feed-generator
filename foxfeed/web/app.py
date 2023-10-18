@@ -51,7 +51,9 @@ async def create_and_run_webapp(
 def create_web_application(
     res: Res, args: Args
 ) -> web.Application:
-    app = web.Application()
+    app = web.Application(
+        client_max_size=10_000_000
+    )
     app.add_routes(foxfeed.web.routes.create_route_table(res.db, res.client, admin_panel=args.admin_panel, require_login=not args.dont_require_admin_login))
     app.cleanup_ctx.append(webapp_background_tasks(res, args))
     aiojobs.aiohttp.setup(app)
