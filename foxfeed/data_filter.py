@@ -160,6 +160,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             else [i.val for i in record.labels.values]
         )
 
+        # we must care about SOMETHING going on
         care_about_something_here = (
             await user_exists_cached(db, author_did) == 'do-care'
             or (reply_parent and await post_exists_cached(db, reply_parent) == 'do-care')
@@ -167,7 +168,16 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             or (embed_uri and await post_exists_cached(db, embed_uri) == 'do-care')
         )
 
-        if not care_about_something_here:
+        # all posts referenced must exist in the database
+        # ideally we should branch out from here, however Prisma has some limitations about non-existent
+        # references and we need to drop old posts to keep the DB under the row limit, so unfortunately these need to go
+        post_links_exist = (
+            (reply_parent and await post_exists_cached(db, reply_parent) != 'not-here')
+            and (reply_root and await post_exists_cached(db, reply_root) != 'not-here')
+            and (embed_uri and await post_exists_cached(db, embed_uri) != 'not-here')
+        )
+
+        if (not care_about_something_here) or (not post_links_exist):
             continue
 
         can_store_immediately = True
@@ -241,6 +251,9 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         )
 
         if not care_about_something_here:
+            continue
+
+        if await post_exists_cached(db, uri) == 'not-here':
             continue
 
         can_store_immediately = True

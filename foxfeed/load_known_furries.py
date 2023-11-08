@@ -510,8 +510,9 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
 
     max_id = await db.unknownthing.find_first(order={'id': 'desc'}, where={'kind': {'in': ['actor', 'post', 'like']}})
     if max_id is None:
-        if await enqueue_unlinks(db):
-            return True
+        # Currently not finding unlinks since it might add stuff to the DB that's before the post-drop timestamp
+        # if await enqueue_unlinks(db):
+        #     return True
         cprint("No unknown things to load", "blue", force_color=True)
         return False
     
