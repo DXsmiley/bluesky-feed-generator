@@ -134,6 +134,8 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                 pass
             elif check(record, models.AppBskyGraphListitem):
                 pass
+            elif check(record, models.AppBskyGraphListblock):
+                pass
             elif check(record, models.AppBskyActorProfile):
                 pass
             elif check(record, models.AppBskyFeedGenerator):
