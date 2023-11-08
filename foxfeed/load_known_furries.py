@@ -556,6 +556,7 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
             await tx.unknownthing.delete_many(where={'id': {'in': [i.id for i in x]}})
         for i in x:
             await foxfeed.data_filter.user_exists_cached.drop_entry(i.identifier)
+        await asyncio.sleep(0.2)
 
     cprint("Loading unknown posts", "blue", force_color=True)
     while x := await db.unknownthing.find_many(
@@ -616,6 +617,7 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                 )
         for i in x:
             await foxfeed.data_filter.post_exists_cached.drop_entry(i.identifier)
+        await asyncio.sleep(0.2)
 
     cprint("Loading unknown likes", "blue", force_color=True)
     while x := await db.unknownthing.find_many(
@@ -653,6 +655,7 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
             # Otherwise we risk spinning here forever as the firehose adds new things to the work queue constantly
             break
             # Actually I think we risk never moving on to the main scraper at this rate lmao
+        await asyncio.sleep(0.2)
     
     return True
 
