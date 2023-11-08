@@ -13,8 +13,8 @@ import re
 import traceback
 
 
-POST_COOLDOWN = timedelta(hours=8)
-IMAGE_POST_COOLDOWN = timedelta(hours=40)
+POST_COOLDOWN = timedelta(hours=36)
+IMAGE_POST_COOLDOWN = timedelta(hours=72)
 
 
 async def find_facets(client: AsyncClient, data: bytes) -> AsyncIterator[models.AppBskyRichtextFacet.Main]:
