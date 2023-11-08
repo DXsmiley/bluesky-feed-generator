@@ -36,10 +36,26 @@ async def main():
 
     # Can't do this while we're trying to complete our graph trees
     c = await db.like.delete_many(where={'created_at': {'lt': now - POST_MAX_AGE}})
-    print('Deleted', c, 'likes')
+    print('Deleted', c, 'old likes')
 
     c = await db.post.delete_many(where={'indexed_at': {'lt': now - POST_MAX_AGE}})
-    print('Deleted', c, 'posts')
+    print('Deleted', c, 'old posts')
 
+    c = await db.post.delete_many(
+        where={
+            'indexed_at': {'lt': now - LOOKBACK_HARD_LIMIT * 2},
+            'author': {
+                'is': {
+                    'OR': [
+                        {'is_external_to_network': True},
+                        {'manual_include_in_fox_feed': False},
+                        {'flagged_for_manual_review': True},
+                        {'is_muted': True},
+                    ]
+                }
+            }
+        }
+    )
+    print('Deleted', c, 'old-ish posts from people who we\'re not that interested in')
 
 asyncio.run(main())
