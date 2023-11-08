@@ -10,7 +10,7 @@ POST_MAX_AGE = timedelta(days=60)
 
 async def main():
     now = datetime.utcnow()
-    db = await make_database_connection(timeout=120)
+    db = await make_database_connection(timeout=300)
 
     print('Cleaning up the database...')
 
@@ -40,6 +40,23 @@ async def main():
 
     c = await db.post.delete_many(where={'indexed_at': {'lt': now - POST_MAX_AGE}})
     print('Deleted', c, 'old posts')
+
+    c = await db.like.delete_many(
+        where={
+            'created_at': {'lt': now - LOOKBACK_HARD_LIMIT * 2},
+            'liker': {
+                'is': {
+                    'OR': [
+                        {'is_external_to_network': True},
+                        {'manual_include_in_fox_feed': False},
+                        {'flagged_for_manual_review': True},
+                        {'is_muted': True},
+                    ]
+                }
+            }
+        }
+    )
+    print('Deleted', c, 'old-ish likes from people who we\'re not that interested in')
 
     c = await db.post.delete_many(
         where={
