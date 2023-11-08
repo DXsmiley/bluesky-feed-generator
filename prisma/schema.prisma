@@ -49,6 +49,14 @@ model Actor {
   // Whenever we push updates to things, we might want to reconsider what's in the database
   rescan_version_number Int @default(0)
   @@index([did])
+  // Trying to make the db cleanup operation faster lmao, this sucks
+  @@index([is_muted, did])
+  @@index([is_external_to_network, did])
+  @@index([is_furrylist_verified, did])
+  @@index([was_ever_furrylist_verified, did])
+  @@index([manual_include_in_fox_feed, did])
+  @@index([manual_include_in_vix_feed, did])
+  @@index([flagged_for_manual_review, did])
 }
 
 model Post {
