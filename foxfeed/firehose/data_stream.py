@@ -155,6 +155,8 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                 pass
             elif check_delete(models.AppBskyGraphBlock):
                 pass
+            elif check_delete(models.AppBskyGraphListblock):
+                pass
             else:
                 cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
 
