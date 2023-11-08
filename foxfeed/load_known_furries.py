@@ -543,8 +543,8 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                         'update': {}
                     }
                 )
+            cprint(f'updating {len(users)} unknown users', 'yellow', force_color=True)
             for user in users:
-                cprint(f'{user.handle} {user.display_name}', 'yellow', force_color=True)
                 await store_user(
                     tx,
                     user,
