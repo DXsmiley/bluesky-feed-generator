@@ -9,8 +9,9 @@ from datetime import datetime
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
-from foxfeed.firehose.client import AsyncFirehoseSubscribeReposClient
-from atproto.firehose import parse_subscribe_repos_message
+# from atproto.firehose.client import AsyncFirehoseClient as AsyncFirehoseR
+from atproto.firehose import parse_subscribe_repos_message, AsyncFirehoseSubscribeReposClient
+from atproto.firehose.client import aconnect, _MAX_MESSAGE_SIZE_BYTES
 from atproto.xrpc_client.models.utils import get_or_create
 from atproto.xrpc_client.models.common import XrpcError
 from atproto.xrpc_client.models.base import ModelBase
@@ -191,6 +192,11 @@ async def run(
     print("Finished run(...) due to stream stop event")
 
 
+class AFSRCpatched(AsyncFirehoseSubscribeReposClient):
+    def _get_async_client(self):
+        return aconnect(self._websocket_uri, max_size=_MAX_MESSAGE_SIZE_BYTES, close_timeout=0.2)
+
+
 async def _run(
     db: Database,
     name: str,
@@ -199,8 +205,8 @@ async def _run(
 ) -> None:
     state = await db.subscriptionstate.find_first(where={"service": name})
     print('Starting firehose state:', None if state is None else state.model_dump_json())
-    params = subscribe_repos.ParamsDict(cursor=state.cursor if state else None)
-    client = AsyncFirehoseSubscribeReposClient(params)
+    params = subscribe_repos.Params(cursor=state.cursor if state else None)
+    client = AFSRCpatched(params)
 
     messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=20)
 
@@ -244,14 +250,14 @@ async def _run(
                 if not stream_stop_event.is_set():
                     await process_message(message)
             except Exception as e:
-                on_error_handler(e)
+                await on_error_handler(e)
             finally:
                 messages_to_process.task_done()
 
     async def on_message_handler(message: "MessageFrame") -> None:
         await messages_to_process.put(message)
 
-    def on_error_handler(exception: BaseException) -> None:
+    async def on_error_handler(exception: BaseException) -> None:
         if isinstance(exception, KeyboardInterrupt):
             # This has the potential to bubble waaaaaay up the stack so IDK if this is smart
             # It shouldn't really be occuring here anyway during production tho TBH
@@ -265,7 +271,8 @@ async def _run(
 
     async def ender() -> None:
         await stream_stop_event.wait()
-        client.stop()
+        print('ender() for stream stop event!')
+        await client.stop()
 
     worker = asyncio.create_task(process_messages_forever())
     end_w = asyncio.create_task(ender())

@@ -1,3 +1,5 @@
+raise Exception('deprecated file, keeping it for reference, do not use')
+
 import asyncio
 import random
 import socket
