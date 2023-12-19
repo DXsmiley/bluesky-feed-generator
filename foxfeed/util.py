@@ -49,6 +49,8 @@ def parse_datetime(s: str) -> datetime:
         r"%Y-%m-%dT%H:%M:%S",
         r"%Y-%m-%dT%H:%M:%S.%f+00:00",
         r"%Y-%m-%dT%H:%M:%S+00:00",
+        r"%Y-%m-%dT%H:%M:%S.%f+0000",
+        r"%Y-%m-%dT%H:%M:%S+0000",
     ]
     for fmt in formats:
         try:
