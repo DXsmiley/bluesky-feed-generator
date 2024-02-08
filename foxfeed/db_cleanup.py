@@ -67,7 +67,7 @@ async def drop_limited(
         condition: Where,
         get_id: Callable[[Model], WhereUnique]
     ):
-    CHUNK_SIZE = 1000
+    CHUNK_SIZE = 512
     while True:
         start = datetime.utcnow()
         if start > end_at:
@@ -78,18 +78,12 @@ async def drop_limited(
             await table.delete(where=get_id(i))
         end = datetime.utcnow()
         seconds = (end - start).total_seconds()
-        print(f'> dropped {len(found)} rows in {seconds:.0f} seconds')
+        print(f'> dropped {len(found)} rows in {seconds:.1f} seconds')
         if len(found) < CHUNK_SIZE:
             break
 
 
-async def main():
-    now = datetime.utcnow()
-    end_at = now + timedelta(minutes=1)
-    db = await make_database_connection(timeout=300)
-
-    print('Cleaning up the database...')
-
+async def delete_things(now: datetime, end_at: datetime, db: Database):
     postscore_max_version = await db.postscore.find_first(order={'version': 'desc'})
     if postscore_max_version is not None:
         await drop(
@@ -170,9 +164,20 @@ async def main():
     )
 
 
-if __name__ == '__main__':
-    if '--forever' in sys.argv:
+async def main(*, forever: bool):
+    now = datetime.utcnow()
+    end_at = now + timedelta(minutes=1)
+    db = await make_database_connection(timeout=300)
+
+    print('Cleaning up the database...')
+
+    if forever:
         while True:
-            asyncio.run(main())
+            await delete_things(now, end_at, db)
     else:
-        asyncio.run(main())
+        await delete_things(now, end_at, db)
+
+
+if __name__ == '__main__':
+    forever = '--forever' in sys.argv
+    asyncio.run(main(forever=forever))
