@@ -1,3 +1,4 @@
+import sys
 import asyncio
 from datetime import datetime, timedelta
 from foxfeed.database import make_database_connection, Database
@@ -170,4 +171,8 @@ async def main():
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    if '--forever' in sys.argv:
+        while True:
+            asyncio.run(main())
+    else:
+        asyncio.run(main())
