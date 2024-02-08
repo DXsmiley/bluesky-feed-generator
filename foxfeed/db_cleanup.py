@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
-from foxfeed.database import make_database_connection
+from foxfeed.database import make_database_connection, Database
 from foxfeed.algos.generators import LOOKBACK_HARD_LIMIT
 from foxfeed.metrics import METRICS_MAXIMUM_LOOKBACK
 from prisma.bases import _PrismaModel
@@ -14,7 +14,9 @@ POST_MAX_AGE = timedelta(days=60)
 T = TypeVar('T')
 Where = TypeVar('Where', contravariant=True)
 WhereUnique = TypeVar('WhereUnique', contravariant=True)
-Model = TypeVar('Model', bound=_PrismaModel, covariant=True)
+
+Model = TypeVar('Model', bound=_PrismaModel)
+ModelCo = TypeVar('ModelCo', bound=_PrismaModel, covariant=True)
 
 
 class FindMany(Protocol, Generic[Where, Model]):
@@ -34,8 +36,8 @@ class DeleteMany(Protocol, Generic[Where]):
     async def __call__(self, where: Where) -> int: ...
 
 
-class Delete(Protocol, Generic[WhereUnique, Model]):
-    async def __call__(self, where: WhereUnique, include: None = None) -> Optional[Model]: ...
+class Delete(Protocol, Generic[WhereUnique, ModelCo]):
+    async def __call__(self, where: WhereUnique, include: None = None) -> Optional[ModelCo]: ...
 
 
 class Table(Protocol, Generic[Where, WhereUnique, Model]):
@@ -166,4 +168,6 @@ async def main():
         lambda x: {'uri': x.uri},
     )
 
-asyncio.run(main())
+
+if __name__ == '__main__':
+    asyncio.run(main())
