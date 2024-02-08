@@ -66,7 +66,7 @@ async def drop_limited(
         condition: Where,
         get_id: Callable[[Model], WhereUnique]
     ):
-    CHUNK_SIZE = 500
+    CHUNK_SIZE = 1000
     while True:
         start = datetime.utcnow()
         if start > end_at:
