@@ -9,7 +9,7 @@ from prisma.bases import _PrismaModel
 from typing import Awaitable, Protocol, Callable, TypeVar, Generic, Optional, List
 
 
-POST_MAX_AGE = timedelta(days=60)
+POST_MAX_AGE = timedelta(days=30)
 
 
 T = TypeVar('T')
@@ -51,13 +51,14 @@ class Table(Protocol, Generic[Where, WhereUnique, Model]):
 
 
 
-async def drop(description: str, f: Awaitable[int]) -> None:
+async def drop(description: str, f: Awaitable[int]) -> int:
     start = datetime.now()
     print(description)
     num_rows = await f
     end = datetime.now()
     seconds = (end - start).total_seconds()
     print(f'> dropped {num_rows} rows in {seconds:.0f} seconds')
+    return num_rows
 
 
 async def drop_limited(
@@ -66,8 +67,9 @@ async def drop_limited(
         table: Table[Where, WhereUnique, Model],
         condition: Where,
         get_id: Callable[[Model], WhereUnique]
-    ):
+    ) -> int:
     CHUNK_SIZE = 512
+    total_deleted = 0
     while True:
         start = datetime.utcnow()
         if start > end_at:
@@ -75,39 +77,43 @@ async def drop_limited(
         print(description)
         found: List[Model] = await table.find_many(where=condition, take=CHUNK_SIZE)
         for i in found:
-            await table.delete(where=get_id(i))
+            if await table.delete(where=get_id(i)) is not None:
+                total_deleted += 1
         end = datetime.utcnow()
         seconds = (end - start).total_seconds()
         print(f'> dropped {len(found)} rows in {seconds:.1f} seconds')
         if len(found) < CHUNK_SIZE:
             break
+    return total_deleted
 
 
-async def delete_things(now: datetime, end_at: datetime, db: Database):
+async def delete_things(now: datetime, end_at: datetime, db: Database) -> int:
+    deleted = 0 # did delete something
+
     postscore_max_version = await db.postscore.find_first(order={'version': 'desc'})
     if postscore_max_version is not None:
-        await drop(
+        deleted += await drop(
             'Deleting postscores',
             db.postscore.delete_many(where={'version': {'not': postscore_max_version.version}})
         )
 
-    await drop(
+    deleted += await drop(
         'Deleting servedblocks',
         db.servedblock.delete_many(where={'when': {'lt': now - METRICS_MAXIMUM_LOOKBACK}})
     )
 
-    await drop(
+    deleted += await drop(
         'Deleting servedposts',
         db.servedpost.delete_many(where={'when': {'lt': now - METRICS_MAXIMUM_LOOKBACK}})
     )
 
-    await drop(
+    deleted += await drop(
         'Deleting blueskyclientsessions',
         db.blueskyclientsession.delete_many(where={'created_at': {'lt': now - timedelta(days=7)}})
     )
 
     # Can't do this while we're trying to complete our graph trees
-    await drop_limited(
+    deleted += await drop_limited(
         end_at,
         'Deleting old likes',
         db.like,
@@ -115,7 +121,7 @@ async def delete_things(now: datetime, end_at: datetime, db: Database):
         lambda x: {'uri': x.uri},
     )
 
-    await drop_limited(
+    deleted += await drop_limited(
         end_at,
         'Deleting old posts',
         db.post,
@@ -123,7 +129,7 @@ async def delete_things(now: datetime, end_at: datetime, db: Database):
         lambda x: {'uri': x.uri}
     )
 
-    await drop_limited(
+    deleted += await drop_limited(
         end_at,
         'Deleting old likes from accounts outside the main cluster',
         db.like,
@@ -143,7 +149,7 @@ async def delete_things(now: datetime, end_at: datetime, db: Database):
         lambda x: {'uri': x.uri},
     )
 
-    await drop_limited(
+    deleted += await drop_limited(
         end_at,
         'Deleting old posts from accounts outside the main cluster',
         db.post,
@@ -163,6 +169,8 @@ async def delete_things(now: datetime, end_at: datetime, db: Database):
         lambda x: {'uri': x.uri},
     )
 
+    return deleted
+
 
 async def main(*, forever: bool):
     now = datetime.utcnow()
@@ -173,7 +181,9 @@ async def main(*, forever: bool):
 
     if forever:
         while True:
-            await delete_things(now, end_at, db)
+            deleted = await delete_things(now, end_at, db)
+            if deleted == 0:
+                await asyncio.sleep(120)
     else:
         await delete_things(now, end_at, db)
 
