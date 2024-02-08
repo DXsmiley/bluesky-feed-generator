@@ -66,9 +66,9 @@ async def drop_limited(
         description: str,
         table: Table[Where, WhereUnique, Model],
         condition: Where,
-        get_id: Callable[[Model], WhereUnique]
+        get_id: Callable[[Model], Where]
     ) -> int:
-    CHUNK_SIZE = 512
+    CHUNK_SIZE = 1 << 12
     total_deleted = 0
     while True:
         start = datetime.utcnow()
@@ -77,8 +77,10 @@ async def drop_limited(
         print(description)
         found: List[Model] = await table.find_many(where=condition, take=CHUNK_SIZE)
         total_deleted += len(found)
-        for i in found:
-            await table.delete(where=get_id(i))
+        wheres: List[Where] = [get_id(i) for i in found]
+        await table.delete_many(where={'OR': wheres})
+        # for i in found:
+        #     await table.delete(where=get_id(i))
         end = datetime.utcnow()
         seconds = (end - start).total_seconds()
         print(f'> dropped {len(found)} rows in {seconds:.1f} seconds')
