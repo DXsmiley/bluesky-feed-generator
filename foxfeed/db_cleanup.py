@@ -76,9 +76,9 @@ async def drop_limited(
             break
         print(description)
         found: List[Model] = await table.find_many(where=condition, take=CHUNK_SIZE)
+        total_deleted += len(found)
         for i in found:
-            if await table.delete(where=get_id(i)) is not None:
-                total_deleted += 1
+            await table.delete(where=get_id(i))
         end = datetime.utcnow()
         seconds = (end - start).total_seconds()
         print(f'> dropped {len(found)} rows in {seconds:.1f} seconds')
@@ -173,19 +173,18 @@ async def delete_things(now: datetime, end_at: datetime, db: Database) -> int:
 
 
 async def main(*, forever: bool):
-    now = datetime.utcnow()
-    end_at = now + timedelta(minutes=1)
     db = await make_database_connection(timeout=300)
 
     print('Cleaning up the database...')
 
-    if forever:
-        while True:
-            deleted = await delete_things(now, end_at, db)
-            if deleted == 0:
-                await asyncio.sleep(120)
-    else:
-        await delete_things(now, end_at, db)
+    while True:
+        now = datetime.utcnow()
+        end_at = now + timedelta(minutes=1)
+        deleted = await delete_things(now, end_at, db)
+        if not forever:
+            break
+        if deleted == 0:
+            await asyncio.sleep(120)
 
 
 if __name__ == '__main__':
