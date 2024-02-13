@@ -146,7 +146,7 @@ async def request_and_retry_on_ratelimit(
                 if "ratelimit-reset" in e.response.headers:
                     time_to_wait = int(e.response.headers["ratelimit-reset"]) - time.time() + 1
                 else:
-                    time_to_wait = 10
+                    time_to_wait = 60 * 5
                 await sleep_on_stop_event(policy, time_to_wait)
             else:
                 raise
