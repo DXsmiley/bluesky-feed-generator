@@ -18,6 +18,7 @@ from termcolor import cprint
 import aiojobs.aiohttp
 import prisma
 import scripts.find_furry_girls
+import gc
 
 from typing import Callable, Coroutine, Any, Optional, Set, List, Tuple, Literal, Union
 
@@ -590,6 +591,10 @@ def create_route_table(
                     )
                 }
             )
+        del data
+        del image_content
+        del image
+        print('garbage:', gc.collect())
         return web.HTTPSeeOther("/schedule")
     
     @routes.post("/schedule/cancel")
