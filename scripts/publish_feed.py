@@ -1,6 +1,6 @@
 import asyncio
-from atproto.xrpc_client.models import ids
-from atproto.xrpc_client.models.blob_ref import BlobRef
+from atproto_client.models import ids
+from atproto_client.models.blob_ref import BlobRef
 from atproto import AsyncClient, models
 from typing import Optional
 from foxfeed.algos.feeds import algo_details

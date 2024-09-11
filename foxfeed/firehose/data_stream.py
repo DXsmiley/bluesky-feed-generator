@@ -2,7 +2,7 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union
+from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union, Dict
 from typing_extensions import TypedDict, TypeGuard
 import traceback
 from datetime import datetime
@@ -10,24 +10,24 @@ from datetime import datetime
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
 # from atproto.firehose.client import AsyncFirehoseClient as AsyncFirehoseR
-from atproto.firehose import parse_subscribe_repos_message, AsyncFirehoseSubscribeReposClient
-from atproto.firehose.client import aconnect, _MAX_MESSAGE_SIZE_BYTES
-from atproto.xrpc_client.models.utils import get_or_create
-from atproto.xrpc_client.models.common import XrpcError
-from atproto.xrpc_client.models.base import ModelBase
-from atproto.xrpc_client.models.dot_dict import DotDict
-from atproto.xrpc_client.models.com.atproto.sync import subscribe_repos
+from atproto_firehose import parse_subscribe_repos_message, AsyncFirehoseSubscribeReposClient
+from atproto_firehose.client import aconnect, _MAX_MESSAGE_SIZE_BYTES
+from atproto_client.models.utils import get_or_create
+from atproto_client.models.common import XrpcError
+from atproto_client.models.base import ModelBase
+from atproto_client.models.dot_dict import DotDict
+from atproto_client.models.com.atproto.sync import subscribe_repos
 from foxfeed.util import is_record_type
 
 from termcolor import cprint
 
-from foxfeed.util import parse_datetime, Model, HasAMainModel
+from foxfeed.util import parse_datetime, Model, HasARecordModel
 from foxfeed.logger import logger
 from foxfeed.database import Database
 
 
 if t.TYPE_CHECKING:
-    from atproto.firehose.models import MessageFrame
+    from atproto_firehose.models import MessageFrame
 
 
 T = TypeVar("T")
@@ -50,10 +50,10 @@ class OpsPosts(TypedDict, Generic[T]):
 
 
 class OpsByType(TypedDict):
-    posts: OpsPosts[models.AppBskyFeedPost.Main]
+    posts: OpsPosts[models.AppBskyFeedPost.Record]
     reposts: OpsPosts[None]
-    likes: OpsPosts[models.AppBskyFeedLike.Main]
-    follows: OpsPosts[models.AppBskyGraphFollow.Main]
+    likes: OpsPosts[models.AppBskyFeedLike.Record]
+    follows: OpsPosts[models.AppBskyGraphFollow.Record]
 
 
 OPERATIONS_CALLBACK_TYPE = Callable[[Database, OpsByType], Coroutine[Any, Any, None]]
@@ -76,14 +76,17 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
         record_raw_data = None if op.cid is None else car.blocks.get(op.cid)
         record = None if record_raw_data is None else get_or_create(record_raw_data, strict=False)
 
-        def check(r: Union[ModelBase, DotDict, None], expected_type: HasAMainModel[Model]) -> TypeGuard[Model]:
+        if record is not None and not isinstance(record, (ModelBase, DotDict)):
+            continue
+
+        def check(r: Union[ModelBase, DotDict, None], expected_type: HasARecordModel[Model]) -> TypeGuard[Model]:
             return (
-                uri.collection == expected_type.Main.model_fields['py_type'].default
+                uri.collection == expected_type.Record.model_fields['py_type'].default
                 and is_record_type(r, expected_type)
             )
         
-        def check_delete(expected_type: HasAMainModel[Model]) -> bool:
-            return uri.collection == expected_type.Main.model_fields['py_type'].default
+        def check_delete(expected_type: HasARecordModel[Model]) -> bool:
+            return uri.collection == expected_type.Record.model_fields['py_type'].default
 
         if op.action == "update":
             if check(record, models.AppBskyActorProfile):
@@ -226,6 +229,14 @@ async def _run(
                 print('Handle', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Migrate):
                 print('Migrate', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Info):
+                print('Info', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Account):
+                print('Account', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.Identity):
+                print('Identity', commit.model_dump_json())
+            elif isinstance(commit, subscribe_repos.RepoOp):
+                print('RepoOp', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Commit):
                 ops = _get_ops_by_type(commit)
                 await operations_callback(db, ops)

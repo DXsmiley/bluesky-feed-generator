@@ -1,6 +1,6 @@
 import asyncio
 
-from atproto.xrpc_client import models
+from atproto import models
 from foxfeed.util import is_record_type
 
 from foxfeed.logger import logger
@@ -99,6 +99,7 @@ async def post_exists_cached(db: Database, uri: str) -> Literal['not-here', 'do-
 EmbedType = Union[
     None,
     'models.AppBskyEmbedImages.Main',
+    'models.AppBskyEmbedVideo.Main',
     'models.AppBskyEmbedExternal.Main',
     'models.AppBskyEmbedRecord.Main',
     'models.AppBskyEmbedRecordWithMedia.Main',

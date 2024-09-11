@@ -7,7 +7,7 @@ from backports.zoneinfo import ZoneInfo
 from foxfeed.bsky import AsyncClient
 from foxfeed.database import Database
 from foxfeed.util import sleep_on, parse_datetime, alist
-from atproto.xrpc_client import models
+from atproto_client import models
 
 import re
 import traceback
@@ -27,8 +27,8 @@ async def find_facets(client: AsyncClient, data: bytes) -> AsyncIterator[models.
                 models.AppBskyRichtextFacet.Mention(did=user.did)
             ],
             index=models.AppBskyRichtextFacet.ByteSlice(
-                byteStart=item.start(0),
-                byteEnd=item.end(0),
+                byte_start=item.start(0),
+                byte_end=item.end(0),
             ),
         )
 
@@ -58,8 +58,8 @@ async def send_post(client: AsyncClient, post: ScheduledPost) -> models.ComAtpro
         )
     )
     facets = await alist(find_facets(client, post.text.encode('utf-8')))
-    record = models.AppBskyFeedPost.Main(
-        createdAt = client.get_current_time_iso(),
+    record = models.AppBskyFeedPost.Record(
+        created_at = client.get_current_time_iso(),
         text = post.text,
         reply = None,
         embed = images,

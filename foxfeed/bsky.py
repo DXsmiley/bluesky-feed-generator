@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 import atproto
-from atproto.uri import AtUri
+from atproto import AtUri
 import atproto.exceptions
 from foxfeed.database import Database
 from typing import (
@@ -22,17 +22,17 @@ import time
 from foxfeed.util import sleep_on, chunkify, achunkify, groupby, alist, previous_rkey
 
 
-from atproto.xrpc_client.models.app.bsky.actor.defs import (
+from atproto_client.models.app.bsky.actor.defs import (
     ProfileView,
     ProfileViewDetailed,
 )
-from atproto.xrpc_client.models.app.bsky.feed.defs import (
+from atproto_client.models.app.bsky.feed.defs import (
     FeedViewPost,
     GeneratorView,
 )
-from atproto.xrpc_client.models.app.bsky.graph.defs import ListView, ListItemView
-from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
-from atproto.xrpc_client.models.app.bsky.feed.defs import PostView
+from atproto_client.models.app.bsky.graph.defs import ListView, ListItemView
+from atproto_client.models.app.bsky.feed.get_likes import Like
+from atproto_client.models.app.bsky.feed.defs import PostView
 from atproto import models
 
 
@@ -301,7 +301,7 @@ async def get_single_like(
             raise
     else:
         if response is not None:
-            assert isinstance(response.value, models.AppBskyFeedLike.Main)
+            assert isinstance(response.value, models.AppBskyFeedLike.Record)
             return LikeWithDeets(
                 uri=response.uri,
                 cid=response.cid,
@@ -325,7 +325,7 @@ async def _list_records_from_repo(
                 models.ComAtprotoRepoListRecords.Params(
                     repo=repo,
                     collection=collection,
-                    rkeyStart=previous_rkey(rkey),
+                    rkey_start=previous_rkey(rkey),
                     limit=100,
                     # By default the query goes high-to-low keys (travels backways through time), but we want to go forward
                     reverse=True,
@@ -366,7 +366,7 @@ async def get_specific_likes(
 ) -> AsyncIterable[LikeWithDeets]:
     aturis = [AtUri.from_str(i) for i in uris]
     async for i in _list_records(client, aturis, policy):
-        assert isinstance(i.value, models.AppBskyFeedLike.Main)
+        assert isinstance(i.value, models.AppBskyFeedLike.Record)
         yield LikeWithDeets(
             uri=i.uri,
             cid=i.cid,

@@ -2,4 +2,5 @@
     "typeCheckingMode": "strict",
     "reportPrivateImportUsage": false,
     "reportUnnecessaryIsInstance": false,
+    "reportMissingTypeStubs": false,
 }

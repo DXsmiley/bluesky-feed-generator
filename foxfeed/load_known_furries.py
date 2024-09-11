@@ -35,16 +35,16 @@ from typing import (
 
 from types import TracebackType
 
-from atproto.xrpc_client.models.app.bsky.actor.defs import (
+from atproto_client.models.app.bsky.actor.defs import (
     ProfileView,
     ProfileViewDetailed,
 )
-from atproto.xrpc_client.models.app.bsky.feed.defs import (
+from atproto_client.models.app.bsky.feed.defs import (
     FeedViewPost,
     ReasonRepost,
 )
-from atproto.xrpc_client.models.app.bsky.graph.defs import ListView
-from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
+from atproto_client.models.app.bsky.graph.defs import ListView
+from atproto_client.models.app.bsky.feed.get_likes import Like
 
 import gzip
 import json

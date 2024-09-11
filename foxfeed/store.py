@@ -1,16 +1,16 @@
 from foxfeed.database import Database
-from atproto.xrpc_client.models.app.bsky.actor.defs import ProfileViewDetailed
-from atproto.xrpc_client.models.app.bsky.feed.defs import (
+from atproto_client.models.app.bsky.actor.defs import ProfileViewDetailed
+from atproto_client.models.app.bsky.feed.defs import (
     PostView,
     FeedViewPost,
 )
 from foxfeed import gender
 import random
 import prisma.errors
-from atproto.xrpc_client.models.app.bsky.embed import images, record, record_with_media
-from atproto.xrpc_client.models.app.bsky.feed.get_likes import Like
-from atproto.xrpc_client.models.com.atproto.label.defs import Label
-from atproto.xrpc_client import models
+from atproto_client.models.app.bsky.embed import images, record, record_with_media
+from atproto_client.models.app.bsky.feed.get_likes import Like
+from atproto_client.models.com.atproto.label.defs import Label
+from atproto_client import models
 from foxfeed.util import parse_datetime, ensure_string, mentions_fursuit, is_record_type
 from datetime import datetime
 

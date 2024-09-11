@@ -19,8 +19,8 @@ from websockets.exceptions import (
 
 from atproto.exceptions import DAGCBORDecodingError, FirehoseDecodingError, FirehoseError
 from atproto.firehose.models import ErrorFrame, Frame, MessageFrame
-from atproto.xrpc_client import models
-from atproto.xrpc_client.models.common import XrpcError
+from atproto_client import models
+from atproto_client.models.common import XrpcError
 
 from foxfeed.util import sleep_on
 

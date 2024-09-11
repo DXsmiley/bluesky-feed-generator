@@ -5,11 +5,11 @@ from typing import ClassVar, Protocol, Type, List, TypeVar, Union, Callable, Dic
 from typing_extensions import TypeGuard, LiteralString
 from itertools import chain
 from collections import defaultdict
-from atproto.xrpc_client.models.base import ModelBase
-from atproto.xrpc_client.models.dot_dict import DotDict
+from atproto_client.models.base import ModelBase
+from atproto_client.models.dot_dict import DotDict
 from pydantic.fields import FieldInfo
 
-from atproto.xrpc_client.models.utils import is_record_type as _is_record_type
+from atproto_client.models.utils import is_record_type as _is_record_type
 
 
 K = TypeVar("K")
@@ -31,8 +31,15 @@ class HasAMainModel(Protocol[Model]):
     Main: Type[Model]
 
 
-def is_record_type(model: Union[None, ModelBase, DotDict], expected_type: HasAMainModel[Model]) -> TypeGuard[Model]:
+class HasARecordModel(Protocol[Model]):
+    Record: Type[Model]
+
+
+def is_record_type(model: Union[None, ModelBase, DotDict], expected_type: Union[HasAMainModel[Model], HasARecordModel[Model]]) -> TypeGuard[Model]:
     assert isinstance(expected_type, types.ModuleType)
+    # This is a wild hack
+    if hasattr(expected_type, 'Main'):
+        expected_type.Record = expected_type.Main
     return isinstance(model, (ModelBase, DotDict)) and _is_record_type(model, expected_type)
 
 
