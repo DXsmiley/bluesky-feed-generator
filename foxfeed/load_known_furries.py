@@ -549,7 +549,8 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
                         'update': {}
                     }
                 )
-            cprint(f'updating {len(users)} unknown users', 'yellow', force_color=True)
+            if users:
+                cprint(f'updating {len(users)} unknown users', 'yellow', force_color=True)
             for user in users:
                 await store_user(
                     tx,
@@ -638,7 +639,8 @@ async def load_unknown_things(db: Database, client: AsyncClient, policy: foxfeed
         # Might just want to raise an exception from within the bsky queries TBH.
         if policy.stop_event.is_set():
             break
-        print(f'Storing {len(likes)} likes')
+        if likes:
+            print(f'Storing {len(likes)} likes')
         for i in likes:
             try:
                 await db.like.create(
