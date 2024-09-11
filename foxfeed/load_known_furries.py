@@ -406,6 +406,11 @@ async def load(
         )
     )
 
+    if client.me is not None:
+        await post_load_queue.put(client.me)
+    if personal_bsky_client.me is not None:
+        await post_load_queue.put(personal_bsky_client.me)
+
     async for furry, is_furrlist_verified in find_furries_clean(
         client, policy=policy
     ):
