@@ -13,7 +13,7 @@ PostScore = prisma.models.PostScore
 
 
 async def make_database_connection(
-    url: Optional[str] = None, timeout: int = 10, log_queries: bool = False
+    url: Optional[str] = None, timeout: int = 30, log_queries: bool = False
 ) -> Database:
     db = prisma.Prisma(
         connect_timeout=timeout,

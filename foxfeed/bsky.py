@@ -326,7 +326,7 @@ async def _list_records_from_repo(
                     repo=repo,
                     collection=collection,
                     rkey_start=previous_rkey(rkey),
-                    limit=100,
+                    limit=50,
                     # By default the query goes high-to-low keys (travels backways through time), but we want to go forward
                     reverse=True,
                 ),
