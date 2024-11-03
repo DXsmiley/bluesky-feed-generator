@@ -52,7 +52,7 @@ def create_web_application(
     res: Res, args: Args
 ) -> web.Application:
     app = web.Application(
-        client_max_size=10_000_000
+        client_max_size=100_000_000
     )
     app.add_routes(foxfeed.web.routes.create_route_table(res.db, res.client, res.personal_bsky_client, admin_panel=args.admin_panel, require_login=not args.dont_require_admin_login))
     app.cleanup_ctx.append(webapp_background_tasks(res, args))
