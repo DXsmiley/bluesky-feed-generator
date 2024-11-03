@@ -752,17 +752,17 @@ async def rescan_furry_accounts(res: Res, forever: bool) -> None:
     await create_sentinels(res.db)
     if res.shutdown_event.is_set():
         return
-    with CatchAndReportError("loading unknown things (before loop)"):
-        while await load_unknown_things(res.db, res.client, policy):
-            pass
+    # with CatchAndReportError("loading unknown things (before loop)"):
+    #     while await load_unknown_things(res.db, res.client, policy):
+    #         pass
     if res.shutdown_event.is_set():
         return
     with CatchAndReportError("full scrape"):
         await load(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
     while forever and not res.shutdown_event.is_set():
-        with CatchAndReportError("loading unknown things (within loop)"):
-            while await load_unknown_things(res.db, res.client, policy):
-                pass
+        # with CatchAndReportError("loading unknown things (within loop)"):
+        #     while await load_unknown_things(res.db, res.client, policy):
+        #         pass
         with CatchAndReportError("scan once"):
             await scan_once(res.shutdown_event, res.db, res.client, res.personal_bsky_client, policy)
         await sleep_on(res.shutdown_event, 60 * 30)
