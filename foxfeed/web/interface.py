@@ -406,10 +406,12 @@ def scheduled_posts_page(posts: List[ScheduledPost]) -> Node:
                 ),
                 *[
                     div(
-                        img(src=data_to_small_dataurl(m.data.decode())),
+                        a(href=f'/db/images/{b.id}')
+                            (img(src=image.to_dataurl(image.from_bytes(b.data.decode())))),
                         p(m.alt_text)
                     )
                     for m in (i.media or [])
+                    for b in (m.datablobs or [])
                 ]
             )
             for i in posts

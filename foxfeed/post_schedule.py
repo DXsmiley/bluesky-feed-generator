@@ -44,9 +44,10 @@ async def send_post(client: AsyncClient, post: ScheduledPost) -> models.ComAtpro
             images=[
                 models.AppBskyEmbedImages.Image(
                     alt=image.alt_text,
-                    image=(await client.com.atproto.repo.upload_blob(image.data.decode(), timeout=30)).blob
+                    image=(await client.com.atproto.repo.upload_blob(blob.data.decode(), timeout=30)).blob
                 )
                 for image in post.media
+                for blob in (image.datablobs or [])
             ]
         )
     )
@@ -131,7 +132,7 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
                 'media': {'some': {}},
                 'scheduled_at': {'lt': now - timedelta(hours=1)},
             },
-            include={'media': True},
+            include={'media': {'include': {'datablobs': {'where': {'label': 'full'}}}}}
         )
     if next_post is None:
         print('Gonna see if there\'s a text-only post')

@@ -194,5 +194,13 @@ model ScheduledMedia {
   scheduled_post_id Int
   scheduled_post ScheduledPost @relation(fields: [scheduled_post_id], references: [id], onDelete: Cascade)
   alt_text String
+  datablobs MediaBlob[]
+}
+
+model MediaBlob {
+  id Int @id @default(autoincrement())
+  parent_id Int
+  parent ScheduledMedia @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  label String
   data Bytes
 }

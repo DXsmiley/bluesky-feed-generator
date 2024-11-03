@@ -20,8 +20,15 @@ import aiojobs.aiohttp
 import prisma
 import scripts.find_furry_girls
 import gc
+from foxfeed import image
 
 from typing import Callable, Coroutine, Any, Optional, Set, List, Tuple, Literal, Union
+
+
+def data_to_thumbnail(b: bytes) -> bytes:
+    img = image.from_bytes(b)
+    img = image.scale_down(img, 96)
+    return image.to_bytes(img, 'PNG')
 
 
 def algos_for(did: str, check: Literal['show_on_personal_account', 'show_on_main_account']):
@@ -542,20 +549,21 @@ def create_route_table(
     @routes.get("/schedule")
     @require_admin_login
     async def schedule(request: web.Request) -> web.Response:
+        with_thumbnails: prisma.types.ScheduledPostInclude = {'media': {'include': {'datablobs': {'where': {'label': 'thumbnail'}}}}}
         failed = await db.scheduledpost.find_many(
             order={'id': 'desc'},
             where={'status': {'in': ['failed', 'attempting']}},
-            include={'media': True},
+            include=with_thumbnails,
         )
         scheduled = await db.scheduledpost.find_many(
             order={'id': 'desc'},
             where={'status': 'scheduled'},
-            include={'media': True},
+            include=with_thumbnails,
         )
         cancelled = await db.scheduledpost.find_many(
             order={'id': 'desc'},
             where={'status': 'cancelled'},
-            include={'media': True},
+            include=with_thumbnails,
         )
         page = foxfeed.web.interface.scheduled_posts_page(failed + scheduled + cancelled)
         return web.Response(text=str(page), content_type="text/html")
@@ -578,21 +586,33 @@ def create_route_table(
             image_content = image.file.read()
         # Don't queue empty posts lol
         if text or image_content:
-            await db.scheduledpost.create(
+            scheduledpost = await db.scheduledpost.create(
                 data={
                     'text': text,
                     'label': (None if label == 'none' else label),
-                    'media': ({
-                        'create': [
-                            {
-                                'alt_text': alt_text,
-                                'data': prisma.Base64.encode(image_content)
-                            }
-                        ]
-                    } if image_content is not None else {}
-                    )
                 }
             )
+            if image_content:
+                scheduledmedia = await db.scheduledmedia.create(
+                    data = {
+                        'scheduled_post_id': scheduledpost.id,
+                        'alt_text': alt_text,
+                    }
+                )
+                await db.mediablob.create_many(
+                    data=[
+                        {
+                            'parent_id': scheduledmedia.id,
+                            'label': 'full',
+                            'data': prisma.Base64.encode(image_content)
+                        },
+                        {
+                            'parent_id': scheduledmedia.id,
+                            'label': 'thumbnail',
+                            'data': prisma.Base64.encode(data_to_thumbnail(image_content))
+                        }
+                    ]
+                )
         del data
         del image_content
         del image
@@ -653,5 +673,14 @@ def create_route_table(
             return web.HTTPOk(text='rescheduled post')
         else:
             return web.HTTPNotFound(text='could not reshedule post??')
+        
+    @routes.get("/db/images/{imgid}")
+    @require_admin_login
+    async def db_image(request: web.Request) -> web.Response:
+        imgid = int(request.match_info.get('imgid', '-1'))
+        img = await db.mediablob.find_first(where={'id': imgid})
+        if img is None:
+            return web.HTTPNotFound(text='no image with that id')
+        return web.HTTPOk(body=img.data.decode(), content_type='image')
 
     return routes
