@@ -52,3 +52,11 @@ async function set_post_pinned(uri, pin) {
 async function cancel_post(id) {
     await post('/schedule/cancel', {id: id});
 }
+
+async function post_post_immediately(id) {
+    await post('/schedule/post_immediately', {id: id});
+}
+
+async function post_rechedule(id) {
+    await post('/schedule/rechedule', {id: id});
+}

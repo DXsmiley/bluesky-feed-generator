@@ -3,9 +3,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, AsyncIterator
 from prisma.models import ScheduledPost
 try:
-    from zoneinfo import ZoneInfo
-except:
     from backports.zoneinfo import ZoneInfo
+except:
+    from zoneinfo import ZoneInfo
 
 from foxfeed.bsky import AsyncClient
 from foxfeed.database import Database
@@ -147,6 +147,14 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     if next_post is None:
         print('There are no posts to schedule, sleeping for a bit')
         return timedelta(minutes=10)
+    # This is the part were we post it
+    try:
+        await send_post_and_update_db(db, client, next_post)
+    finally:
+        return timedelta(minutes=10)
+
+
+async def send_post_and_update_db(db: Database, client: AsyncClient, next_post: ScheduledPost) -> Optional[ScheduledPost]:
     await db.scheduledpost.update(where={'id': next_post.id}, data={'status': 'attempting'})
     try:
         print('Posting:', next_post.text)
@@ -156,11 +164,10 @@ async def step_schedule(db: Database, client: AsyncClient) -> Optional[timedelta
     except Exception:
         print('Failed to post the post')
         traceback.print_exc()
-        await db.scheduledpost.update(where={'id': next_post.id}, data={'status': 'failed'})
+        return await db.scheduledpost.update(where={'id': next_post.id}, data={'status': 'failed'})
     else:
-        await db.scheduledpost.update(where={'id': next_post.id}, data={'status': 'posted', 'post_uri': result.uri})
-    finally:
-        return timedelta(minutes=10)
+        return await db.scheduledpost.update(where={'id': next_post.id}, data={'status': 'posted', 'post_uri': result.uri})
+    # TODO: Put the sent post into the local database?
 
 
 async def run_schedule(db: Database, client: AsyncClient, shutdown_event: asyncio.Event, run_forever: bool) -> None:

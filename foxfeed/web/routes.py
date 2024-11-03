@@ -13,6 +13,7 @@ from foxfeed.database import Database, Post
 from foxfeed.bsky import AsyncClient
 from foxfeed.web.ratelimit import Ratelimit
 from foxfeed import config
+from foxfeed.post_schedule import send_post_and_update_db
 import foxfeed.algos.generators
 from termcolor import cprint
 import aiojobs.aiohttp
@@ -46,6 +47,7 @@ algos_by_short_name = {
 def create_route_table(
         db: Database,
         client: AsyncClient,
+        personal_client: AsyncClient,
         *,
         admin_panel: bool = False,
         require_login: bool = True
@@ -606,7 +608,7 @@ def create_route_table(
         updated = await db.scheduledpost.update_many(
             where={
                 'id': id_,
-                'status': 'scheduled',
+                'status': {'in': ['scheduled', 'attempting']},
             },
             data={
                 'status': 'cancelled'
@@ -616,5 +618,40 @@ def create_route_table(
             return web.HTTPOk(text='cancelled post')
         else:
             return web.HTTPNotFound(text='could not cancel post??')
+        
+    @routes.post("/schedule/post_immediately")
+    @require_admin_login
+    async def schedule_post_post_immediately(request: web.Request) -> web.Response:
+        blob = await request.json()
+        id_ = blob['id']
+        assert isinstance(id_, int)
+        post = await db.scheduledpost.find_first(where={'id': id_, 'status': {'not': 'posted'}})
+        if post is None:
+            return web.HTTPNotFound(text='could not find unsent scheduledpost with given id')
+        updated = await send_post_and_update_db(db, personal_client, post)
+        if updated is None or updated.status != 'posted':
+            return web.HTTPServerError(text='something went wrong')
+        return web.HTTPOk(text='sent post!')
+
+    @routes.post("/schedule/rechedule")
+    @require_admin_login
+    async def schedule_post_reschedule(request: web.Request) -> web.Response:
+        blob = await request.json()
+        id_ = blob['id']
+        assert isinstance(id_, int)
+        updated = await db.scheduledpost.update_many(
+            where={
+                'id': id_,
+                'status': {'in': ['cancelled', 'failed']},
+            },
+            data={
+                'status': 'scheduled',
+                'scheduled_at': datetime.now()
+            }
+        )
+        if updated > 0:
+            return web.HTTPOk(text='rescheduled post')
+        else:
+            return web.HTTPNotFound(text='could not reshedule post??')
 
     return routes

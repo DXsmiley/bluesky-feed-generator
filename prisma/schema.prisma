@@ -11,7 +11,7 @@ datasource db {
 
 model SubscriptionState {
   service String @id
-  cursor Int
+  cursor BigInt
 }
 
 model BlueSkyClientSession {

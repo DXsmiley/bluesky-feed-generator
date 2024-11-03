@@ -2,7 +2,7 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union, Dict
+from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union
 from typing_extensions import TypedDict, TypeGuard
 import traceback
 from datetime import datetime
@@ -96,8 +96,9 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             elif check(record, models.AppBskyGraphList):
                 pass
             else:
-                cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
-                print(record)
+                # cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
+                # print(record)
+                pass
 
         elif op.action == "create":
             if op.cid is None:
@@ -144,8 +145,9 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             elif check(record, models.AppBskyFeedGenerator):
                 pass
             else:
-                cprint(f'created something else idk {uri.collection}', 'red', force_color=True)
-                print(record)
+                pass
+                # cprint(f'created something else idk {uri.collection}', 'red', force_color=True)
+                # print(record)
 
         elif op.action == "delete":
             if check_delete(models.AppBskyFeedLike):
@@ -163,7 +165,8 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             elif check_delete(models.AppBskyGraphListblock):
                 pass
             else:
-                cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
+                # cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
+                pass
 
         else:
             cprint(f'Unknown op.action {op.action}', 'red', force_color=True)
@@ -224,19 +227,19 @@ async def _run(
             print('Info', commit.model_dump_json())
         else:
             if isinstance(commit, subscribe_repos.Tombstone):
-                print('Tombstone', commit.model_dump_json())
+                pass # print('Tombstone', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Handle):
-                print('Handle', commit.model_dump_json())
+                pass # print('Handle', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Migrate):
-                print('Migrate', commit.model_dump_json())
+                pass # print('Migrate', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Info):
-                print('Info', commit.model_dump_json())
+                pass # print('Info', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Account):
-                print('Account', commit.model_dump_json())
+                pass # print('Account', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Identity):
-                print('Identity', commit.model_dump_json())
+                pass # print('Identity', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.RepoOp):
-                print('RepoOp', commit.model_dump_json())
+                pass # print('RepoOp', commit.model_dump_json())
             elif isinstance(commit, subscribe_repos.Commit):
                 ops = _get_ops_by_type(commit)
                 await operations_callback(db, ops)

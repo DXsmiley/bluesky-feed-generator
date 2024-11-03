@@ -94,11 +94,15 @@ async def sleep_on(event: Optional[asyncio.Event], timeout: float) -> bool:
         return False
     except asyncio.CancelledError:
         return False
+    
+
+class Joinable(Protocol):
+    async def join(self) -> None: ...
 
 
-async def join_unless(queue: 'asyncio.Queue[Any]', event: asyncio.Event):
+async def join_unless(joinable: Joinable, event: asyncio.Event):
     if not event.is_set():
-        queue_task = asyncio.create_task(queue.join())
+        queue_task = asyncio.create_task(joinable.join())
         wait_task = asyncio.create_task(event.wait())
         _, pending = await asyncio.wait(
             [queue_task, wait_task],

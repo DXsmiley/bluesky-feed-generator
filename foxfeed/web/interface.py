@@ -397,7 +397,9 @@ def scheduled_posts_page(posts: List[ScheduledPost]) -> Node:
         *[
             div(
                 p(
-                    html.button("cancel", onclick=UnescapedString(f'cancel_post({i.id})')),
+                    html.button("cancel", onclick=UnescapedString(f'cancel_post({i.id})')) if i.status in ['scheduled', 'attempting'] else None,
+                    html.button("post immediately", onclick=UnescapedString(f'post_post_immediately({i.id})')) if i.status in ['failed', 'cancelled'] else None,
+                    html.button("rechedule", onclick=UnescapedString(f'post_rechedule({i.id})')) if i.status in ['failed', 'cancelled'] else None,
                     span(i.status, class_="pill"),
                     span(i.label, class_="pill") if i.label is not None else None,
                     ' ' + re.sub(r"\n+", " • ", i.text, re.MULTILINE),

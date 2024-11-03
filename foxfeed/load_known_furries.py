@@ -31,6 +31,9 @@ from typing import (
     Set,
     Union,
     Type,
+    Generic,
+    TypeVar,
+    Protocol,
 )
 
 from types import TracebackType
@@ -56,13 +59,46 @@ import prisma.errors
 
 import foxfeed.algos.generators
 from foxfeed.gen.db import find_unlinks
-from foxfeed.util import parse_datetime, sleep_on, join_unless
+from foxfeed.util import parse_datetime, sleep_on, join_unless, wait_interruptable
 from foxfeed.store import store_like, store_post, store_post3, store_user
 from foxfeed.res import Res
 
 
 # TODO: Remove this somehow
 import foxfeed.data_filter
+
+
+Q = TypeVar('Q')
+T = TypeVar('T')
+
+
+class AnyQueue(Protocol, Generic[T]):
+    async def put(self, item: T) -> None: ...
+    async def get(self) -> Optional[T]: ...
+    def qsize(self) -> int: ...
+    def task_done(self) -> None: ...
+    async def join(self) -> None: ...
+
+
+class CloseableQueue(Generic[T], AnyQueue[T]):
+    def __init__(self, queue: AnyQueue[T], close_event: asyncio.Event):
+        self.close_event = close_event
+        self.queue: AnyQueue[T] = queue
+
+    async def put(self, item: T):
+        await wait_interruptable(self.queue.put(item), self.close_event)
+
+    async def get(self) -> Optional[T]:
+        return await wait_interruptable(self.queue.get(), self.close_event)
+
+    def qsize(self) -> int:
+        return self.queue.qsize()
+    
+    def task_done(self) -> None:
+        self.queue.task_done()
+
+    async def join(self):
+        await self.queue.join()
 
 
 async def get_mutuals(client: AsyncClient, did: str, policy: foxfeed.bsky.PolicyType) -> AsyncIterable[ProfileView]:
@@ -176,7 +212,7 @@ StoreThing = Union[StoreUser, StorePost, StoreLike]
 
 
 async def store_to_db_task(
-    shutdown_event: asyncio.Event, db: Database, q: "asyncio.Queue[StoreThing]"
+    shutdown_event: asyncio.Event, db: Database, q: AnyQueue[StoreThing]
 ):
     while not shutdown_event.is_set():
         await asyncio.sleep(0.001)
@@ -212,9 +248,9 @@ async def load_posts_task(
     client: AsyncClient,
     policy: foxfeed.bsky.Policy,
     only_posts_after: datetime,
-    input_queue: "asyncio.Queue[ProfileViewDetailed]",
-    llq: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]",
-    output_queue: "asyncio.Queue[StoreThing]",
+    input_queue: AnyQueue[ProfileViewDetailed],
+    llq: AnyQueue[Tuple[int, int, FeedViewPost]],
+    output_queue: AnyQueue[StoreThing],
     *,
     actually_do_shit: bool = True,
 ):
@@ -222,6 +258,8 @@ async def load_posts_task(
     unique = 0
     while not shutdown_event.is_set():
         user = await input_queue.get()
+        if user is None:
+            break
         try:
             if actually_do_shit:
                 # cprint(f'Getting posts for {user.handle}', 'blue', force_color=True)
@@ -252,14 +290,17 @@ async def load_likes_task(
     shutdown_event: asyncio.Event,
     client: AsyncClient,
     policy: foxfeed.bsky.Policy,
-    input_queue: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]",
-    output_queue: "asyncio.Queue[StoreThing]",
+    input_queue: AnyQueue[Tuple[int, int, FeedViewPost]],
+    output_queue: AnyQueue[StoreThing],
     *,
     actually_do_shit: bool = True,
 ):
     cprint("Grabbing likes for posts...", "blue", force_color=True)
     while not shutdown_event.is_set():
-        _, _, post = await input_queue.get()
+        x = await input_queue.get()
+        if x is None:
+            break
+        _, _, post = x
         try:
             if actually_do_shit:
                 async for like in get_likes(client, post.post.uri, policy):
@@ -282,9 +323,9 @@ async def load_likes_task(
 
 async def log_queue_size_task(
     shutdown_event: asyncio.Event,
-    storage_queue: "asyncio.Queue[StoreThing]",
-    post_load_queue: "asyncio.Queue[ProfileViewDetailed]",
-    like_load_queue: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]",
+    storage_queue: AnyQueue[StoreThing],
+    post_load_queue: AnyQueue[ProfileViewDetailed],
+    like_load_queue: AnyQueue[Tuple[int, int, FeedViewPost]],
 ) -> None:
     while not shutdown_event.is_set():
         print(
@@ -365,14 +406,19 @@ async def load(
     if shutdown_event.is_set():
         return
 
-    queue_size_limit = 20_000
+    queue_size_limit = 1_000
 
-    storage_queue: "asyncio.Queue[StoreThing]" = asyncio.Queue(maxsize=queue_size_limit)
-    post_load_queue: "asyncio.Queue[ProfileViewDetailed]" = asyncio.Queue(
-        maxsize=queue_size_limit
+    storage_queue: AnyQueue[StoreThing] = CloseableQueue(
+        asyncio.Queue(maxsize=queue_size_limit),
+        shutdown_event
     )
-    like_load_queue: "asyncio.PriorityQueue[Tuple[int, int, FeedViewPost]]" = (
-        asyncio.PriorityQueue(maxsize=queue_size_limit)
+    post_load_queue: AnyQueue[ProfileViewDetailed] = CloseableQueue(
+        asyncio.Queue(maxsize=queue_size_limit),
+        shutdown_event
+    )
+    like_load_queue: AnyQueue[Tuple[int, int, FeedViewPost]] = CloseableQueue(
+        asyncio.PriorityQueue(maxsize=queue_size_limit),
+        shutdown_event
     )
 
     storage_worker = asyncio.create_task(
