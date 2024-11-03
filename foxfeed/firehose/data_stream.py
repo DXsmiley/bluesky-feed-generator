@@ -2,7 +2,7 @@ import sys
 
 import asyncio
 import typing as t
-from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union
+from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union, Optional
 from typing_extensions import TypedDict, TypeGuard
 import traceback
 from datetime import datetime
@@ -24,6 +24,8 @@ from termcolor import cprint
 from foxfeed.util import parse_datetime, Model, HasARecordModel
 from foxfeed.logger import logger
 from foxfeed.database import Database
+
+import time
 
 
 if t.TYPE_CHECKING:
@@ -217,8 +219,11 @@ async def _run(
     print('Starting firehose state:', None if state is None else state.model_dump_json())
     params = subscribe_repos.Params(cursor=state.cursor if state else None)
     client = AFSRCpatched(params)
+    message_count = [0]
+    message_count_time = [time.time()]
+    prev_time: List[Optional[datetime]] = [None]
 
-    messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=20)
+    messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=200)
 
     async def process_message(message: "MessageFrame") -> None:
         commit = parse_subscribe_repos_message(message)
@@ -243,11 +248,17 @@ async def _run(
             elif isinstance(commit, subscribe_repos.Commit):
                 ops = _get_ops_by_type(commit)
                 await operations_callback(db, ops)
+                pass
             else:
                 # Should never reach here
                 assert False
             
-            if commit.seq % 5000 == 0:
+            if commit.seq % 500 == 0:
+                t = time.time()
+                elapsed = t - message_count_time[0]
+                rate = int(500 / elapsed)
+                message_count_time[0] = t
+
                 client.update_params({'cursor': commit.seq})
                 await db.subscriptionstate.upsert(
                     where={'service': name},
@@ -256,10 +267,14 @@ async def _run(
                         'update': {'cursor': commit.seq},
                     }
                 )
-                lag = datetime.utcnow() - parse_datetime(commit.time)
+                stream_time = parse_datetime(commit.time)
+                lag = datetime.utcnow() - stream_time
                 lag_minutes = int(lag.total_seconds()) // 60
+                stream_elapsed = 0 if prev_time[0] is None else (stream_time - prev_time[0]).seconds
+                stream_rate = stream_elapsed / elapsed
+                prev_time[0] = stream_time
                 if lag_minutes != 0:
-                    cprint(f'Firehose is lagging | commit {commit.seq} | {messages_to_process.qsize()} items in queue | {lag_minutes // 60} hours {lag_minutes % 60} minutes behind', 'cyan', force_color=True)
+                    cprint(f'Firehose is lagging | commit {commit.seq} | {messages_to_process.qsize()} items in queue | {rate:4d}/s | {stream_rate:.2f} | {lag_minutes // 60} hours {lag_minutes % 60} minutes behind', 'cyan', force_color=True)
 
     async def process_messages_forever() -> None:
         while True:
@@ -292,10 +307,12 @@ async def _run(
         print('ender() for stream stop event!')
         await client.stop()
 
-    worker = asyncio.create_task(process_messages_forever())
+    num_workers = 4
+    workers = [asyncio.create_task(process_messages_forever()) for _ in range(num_workers)]
     end_w = asyncio.create_task(ender())
     await client.start(on_message_handler, on_error_handler)
     await messages_to_process.join()
-    worker.cancel()
-    await asyncio.gather(worker, end_w, return_exceptions=True)
+    for w in workers:
+        w.cancel()
+    await asyncio.gather(*workers, end_w, return_exceptions=True)
 

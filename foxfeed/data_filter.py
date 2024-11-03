@@ -6,7 +6,7 @@ from foxfeed.util import is_record_type
 from foxfeed.logger import logger
 from foxfeed.firehose.data_stream import OpsByType
 
-from typing import List, Callable, Coroutine, Any, Union, Dict, Tuple, TypeVar, Generic, Literal
+from typing import Optional, List, Callable, Coroutine, Any, Union, Dict, Tuple, TypeVar, Generic, Literal
 from prisma.types import PostCreateWithoutRelationsInput, LikeCreateWithoutRelationsInput
 
 from foxfeed.database import Database, care_about_storing_user_data_preemptively
@@ -160,6 +160,20 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             if not isinstance(record.labels, models.ComAtprotoLabelDefs.SelfLabels)
             else [i.val for i in record.labels.values]
         )
+
+        # async def f(c: Union[Literal[False], Coroutine[Any, Any, T]]) -> Optional[T]:
+        #     if c is not False:
+        #         return await c
+
+        # await asyncio.gather(
+        #     user_exists_cached(db, author_did),
+        #     f(reply_parent is not None and post_exists_cached(db, reply_parent)),
+        #     f(reply_root is not None and post_exists_cached(db, reply_root)),
+        #     f(embed_uri is not None and post_exists_cached(db, embed_uri)),
+        #     f(reply_parent is not None and post_exists_cached(db, reply_parent)),
+        #     f(reply_root is not None and post_exists_cached(db, reply_root)),
+        #     f(embed_uri is not None and post_exists_cached(db, embed_uri)),
+        # )
 
         # we must care about SOMETHING going on
         care_about_something_here = (
