@@ -48,7 +48,7 @@ class CachedQuery(Generic[T]):
             self.misses += 1
             result = await self.function(db, key)
             self.cache[key] = result
-            while len(self.cache) > 5_000:
+            while len(self.cache) > 20_000:
                 self.cache.popitem(False)
             return result
         
