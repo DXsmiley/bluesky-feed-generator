@@ -248,11 +248,13 @@ async def _run(
             # else:
             #     # Should never reach here
             #     assert False
+
+            message_frequency = 2500
             
-            if commit.seq % 500 == 0:
+            if commit.seq % message_frequency == 0:
                 t = time.time()
                 elapsed = t - message_count_time[0]
-                rate = int(500 / elapsed)
+                rate = int(message_frequency / elapsed)
                 message_count_time[0] = t
 
                 client.update_params({'cursor': commit.seq})
