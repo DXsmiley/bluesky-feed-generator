@@ -1,8 +1,10 @@
 import prisma
 from prisma.types import HttpConfig, DatasourceOverride, ActorWhereInput
+# import psycopg.conninfo
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+# import psycopg
 
 
 Database = prisma.Prisma
@@ -22,6 +24,9 @@ async def make_database_connection(
         log_queries=log_queries,
     )
     await db.connect()
+    # assert url is not None
+    # pg = await psycopg.AsyncConnection.connect(url)
+    # print(pg)
     return db
 
 
