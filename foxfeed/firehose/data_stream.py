@@ -91,16 +91,15 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
             return uri.collection == expected_type.Record.model_fields['py_type'].default
 
         if op.action == "update":
-            if check(record, models.AppBskyActorProfile):
-                pass
-            elif check(record, models.AppBskyFeedGenerator):
-                pass
-            elif check(record, models.AppBskyGraphList):
-                pass
-            else:
-                # cprint(f'updated something else idk {uri.collection}', 'red', force_color=True)
-                # print(record)
-                pass
+            # if check(record, models.AppBskyActorProfile):
+            #     pass
+            # elif check(record, models.AppBskyFeedGenerator):
+            #     pass
+            # elif check(record, models.AppBskyGraphList):
+            #     pass
+            # else:
+            #     pass
+            pass
 
         elif op.action == "create":
             if op.cid is None:
@@ -132,24 +131,22 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                         "record": record,
                     }
                 )
-            elif check(record, models.AppBskyFeedRepost):
-                pass
-            elif check(record, models.AppBskyGraphBlock):
-                pass
-            elif check(record, models.AppBskyGraphList):
-                pass
-            elif check(record, models.AppBskyGraphListitem):
-                pass
-            elif check(record, models.AppBskyGraphListblock):
-                pass
-            elif check(record, models.AppBskyActorProfile):
-                pass
-            elif check(record, models.AppBskyFeedGenerator):
-                pass
-            else:
-                pass
-                # cprint(f'created something else idk {uri.collection}', 'red', force_color=True)
-                # print(record)
+            # elif check(record, models.AppBskyFeedRepost):
+            #     pass
+            # elif check(record, models.AppBskyGraphBlock):
+            #     pass
+            # elif check(record, models.AppBskyGraphList):
+            #     pass
+            # elif check(record, models.AppBskyGraphListitem):
+            #     pass
+            # elif check(record, models.AppBskyGraphListblock):
+            #     pass
+            # elif check(record, models.AppBskyActorProfile):
+            #     pass
+            # elif check(record, models.AppBskyFeedGenerator):
+            #     pass
+            # else:
+            #     pass
 
         elif op.action == "delete":
             if check_delete(models.AppBskyFeedLike):
@@ -158,17 +155,17 @@ def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> OpsB
                 operation_by_type["posts"]["deleted"].append({"uri": str(uri)})
             elif check_delete(models.AppBskyGraphFollow):
                 operation_by_type["follows"]["deleted"].append({"uri": str(uri)})
-            elif check_delete(models.AppBskyFeedRepost):
-                pass
-            elif check_delete(models.AppBskyGraphListitem):
-                pass
-            elif check_delete(models.AppBskyGraphBlock):
-                pass
-            elif check_delete(models.AppBskyGraphListblock):
-                pass
-            else:
-                # cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
-                pass
+            # elif check_delete(models.AppBskyFeedRepost):
+            #     pass
+            # elif check_delete(models.AppBskyGraphListitem):
+            #     pass
+            # elif check_delete(models.AppBskyGraphBlock):
+            #     pass
+            # elif check_delete(models.AppBskyGraphListblock):
+            #     pass
+            # else:
+            #     # cprint(f'Deleted something else idk {uri.collection}', 'red', force_color=True)
+            #     pass
 
         else:
             cprint(f'Unknown op.action {op.action}', 'red', force_color=True)
@@ -204,11 +201,6 @@ async def run(
     print("Finished run(...) due to stream stop event")
 
 
-class AFSRCpatched(AsyncFirehoseSubscribeReposClient):
-    def _get_async_client(self):
-        return aconnect(self._websocket_uri, max_size=_MAX_MESSAGE_SIZE_BYTES, close_timeout=0.2)
-
-
 async def _run(
     db: Database,
     name: str,
@@ -218,7 +210,7 @@ async def _run(
     state = await db.subscriptionstate.find_first(where={"service": name})
     print('Starting firehose state:', None if state is None else state.model_dump_json())
     params = subscribe_repos.Params(cursor=state.cursor if state else None)
-    client = AFSRCpatched(params)
+    client = AsyncFirehoseSubscribeReposClient(params)
     message_count = [0]
     message_count_time = [time.time()]
     prev_time: List[Optional[datetime]] = [None]
@@ -231,27 +223,31 @@ async def _run(
         if isinstance(commit, subscribe_repos.Info):
             print('Info', commit.model_dump_json())
         else:
-            if isinstance(commit, subscribe_repos.Tombstone):
-                pass # print('Tombstone', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Handle):
-                pass # print('Handle', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Migrate):
-                pass # print('Migrate', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Info):
-                pass # print('Info', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Account):
-                pass # print('Account', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Identity):
-                pass # print('Identity', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.RepoOp):
-                pass # print('RepoOp', commit.model_dump_json())
-            elif isinstance(commit, subscribe_repos.Commit):
+            if isinstance(commit, subscribe_repos.Commit):
                 ops = _get_ops_by_type(commit)
                 await operations_callback(db, ops)
                 pass
-            else:
-                # Should never reach here
-                assert False
+            # if isinstance(commit, subscribe_repos.Tombstone):
+            #     pass # print('Tombstone', commit.model_dump_json())
+            # elif isinstance(commit, subscribe_repos.Handle):
+            #     pass # print('Handle', commit.model_dump_json())
+            # elif isinstance(commit, subscribe_repos.Migrate):
+            #     pass # print('Migrate', commit.model_dump_json())
+            # elif isinstance(commit, subscribe_repos.Info):
+            #     pass # print('Info', commit.model_dump_json())
+            # elif isinstance(commit, subscribe_repos.Account):
+            #     pass # print('Account', commit.model_dump_json())
+            # elif isinstance(commit, subscribe_repos.Identity):
+            #     pass # print('Identity', commit.model_dump_json())
+            # elif isinstance(commit, subscribe_repos.RepoOp):
+            #     pass # print('RepoOp', commit.model_dump_json())
+            # elif isinstance(commit, subscribe_repos.Commit):
+            #     # ops = _get_ops_by_type(commit)
+            #     # await operations_callback(db, ops)
+            #     pass
+            # else:
+            #     # Should never reach here
+            #     assert False
             
             if commit.seq % 500 == 0:
                 t = time.time()
@@ -307,7 +303,7 @@ async def _run(
         print('ender() for stream stop event!')
         await client.stop()
 
-    num_workers = 4
+    num_workers = 2
     workers = [asyncio.create_task(process_messages_forever()) for _ in range(num_workers)]
     end_w = asyncio.create_task(ender())
     await client.start(on_message_handler, on_error_handler)
