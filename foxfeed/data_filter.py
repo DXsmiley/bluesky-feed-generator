@@ -63,37 +63,68 @@ class CachedQuery(Generic[T]):
         print(f'Cache: {self.name} | {len(self.cache)} | {self.hits} {self.misses} | {ratio:.1f}%')
 
 
+async def get_actor(db: Database, did: str) -> Optional[Dict[str, Any]]:
+    cur = await db.pg.execute('SELECT * FROM "Actor" WHERE did = %s LIMIT 1', (did,))
+    r = await cur.fetchone()
+    if r is None or cur.description is None:
+        return None
+    return dict(zip([i.name for i in cur.description], r))
+
+
+async def get_post(db: Database, uri: str) -> Optional[Dict[str, Any]]:
+    cur = await db.pg.execute('SELECT * FROM "Post" WHERE uri = %s LIMIT 1', (uri,))
+    r = await cur.fetchone()
+    if r is None or cur.description is None:
+        return None
+    return dict(zip([i.name for i in cur.description], r))
+
+
 @CachedQuery
 async def user_exists_cached(db: Database, did: str) -> Literal['not-here', 'do-care', 'dont-care']:
-    user = await db.actor.find_first(
-        where={
-            "did": did,
-            "AND": [care_about_storing_user_data_preemptively],
-        }
-    )
-    if user is None:
+    d = await get_actor(db, did)
+    if d is None:
         return 'not-here'
     if (
-        user.is_muted is False
-        and user.manual_include_in_fox_feed is not False
-        and user.is_external_to_network is False
+        d['is_muted'] is False
+        and d['manual_include_in_fox_feed'] is not False
+        and d['is_external_to_network'] is False
     ):
         return 'do-care'
+
     return 'dont-care'
+    # user = await db.actor.find_first(
+    #     where={
+    #         "did": did,
+    #         "AND": [care_about_storing_user_data_preemptively],
+    #     }
+    # )
+    # if user is None:
+    #     return 'not-here'
+    # if (
+    #     user.is_muted is False
+    #     and user.manual_include_in_fox_feed is not False
+    #     and user.is_external_to_network is False
+    # ):
+    #     return 'do-care'
+    # return 'dont-care'
 
 
 @CachedQuery
 async def post_exists_cached(db: Database, uri: str) -> Literal['not-here', 'do-care', 'dont-care']:
-    post = await db.post.find_first(where={'uri': uri}, include={'author': True})
-    if post is None or post.author is None:
+    p = await get_post(db, uri)
+    if p is None:
         return 'not-here'
-    if (
-        post.author.is_muted is False
-        and post.author.manual_include_in_fox_feed is not False
-        and post.author.is_external_to_network is False
-    ):
-        return 'do-care'
-    return 'dont-care'
+    return await user_exists_cached(db, p['authorId'])
+    # post = await db.post.find_first(where={'uri': uri}, include={'author': True})
+    # if post is None or post.author is None:
+    #     return 'not-here'
+    # if (
+    #     post.author.is_muted is False
+    #     and post.author.manual_include_in_fox_feed is not False
+    #     and post.author.is_external_to_network is False
+    # ):
+    #     return 'do-care'
+    # return 'dont-care'
 
 
 EmbedType = Union[
