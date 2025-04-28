@@ -48,15 +48,21 @@ class CachedQuery(Generic[T]):
             self.misses += 1
             result = await self.function(db, key)
             self.cache[key] = result
-            while len(self.cache) > 20_000:
-                self.cache.popitem(False)
+            self.cleanup()
             return result
+        
+    def cleanup(self) -> None:
+        while len(self.cache) > 100_000:
+            self.cache.popitem(False)
         
     def drop_entry(self, key: str) -> None:
         self.cache.pop(key, None)
 
     def set_value(self, key: str, value: T) -> None:
         self.cache[key] = value
+
+    def get_value(self, key: str) -> Optional[T]:
+        return self.cache.get(key)
     
     def log_stats(self):
         ratio = 100 * (self.hits / (self.hits + self.misses))
@@ -75,6 +81,8 @@ async def get_actor(db: Database, did: str) -> Optional[Dict[str, Any]]:
 
 
 async def get_actors(db: Database, dids: List[str]) -> List[Tuple[str, bool]]:
+    if not dids:
+        return []
     cur = await db.pg.execute('SELECT did, is_muted, manual_include_in_fox_feed, is_external_to_network FROM "Actor" WHERE did = ANY(%s)', [dids])
     return [
         (
@@ -94,6 +102,13 @@ async def get_post(db: Database, uri: str) -> Optional[Dict[str, Any]]:
     if r is None or cur.description is None:
         return None
     return dict(zip([i.name for i in cur.description], r))
+
+
+async def get_posts(db: Database, uris: List[str]) -> List[Tuple[str, str]]:
+    if not uris:
+        return []
+    cur = await db.pg.execute('SELECT uri, "authorId" FROM "Post" WHERE uri = ANY(%s)', [uris])
+    return await cur.fetchall()
 
 
 @CachedQuery
@@ -175,21 +190,76 @@ def get_quoted_skeet(embed: EmbedType) -> Union[Tuple[str, str], Tuple[None, Non
     return (None, None)
 
 
+def get_reply_parent(record: models.AppBskyFeedPost.Record) -> Optional[str]:
+    if record.reply and record.reply.parent.uri:
+        return record.reply.parent.uri
+    
+def get_reply_root(record: models.AppBskyFeedPost.Record) -> Optional[str]:
+    if record.reply and record.reply.root.uri:
+        return record.reply.root.uri
+    
+def get_associated_posts(record: models.AppBskyFeedPost.Record) -> List[str]:
+    embed_uri, _ = get_quoted_skeet(record.embed)
+    reply_parent = None
+    try:
+        reply_parent = get_reply_parent(record)
+    except AttributeError:
+        pass
+    reply_root = None
+    try:
+        reply_root = get_reply_root(record)
+    except AttributeError:
+        pass
+    return [i for i in [embed_uri, reply_parent, reply_root] if i is not None]
+
 async def operations_callback(db: Database, ops: OpsByType) -> None:
+    user_exists_cached.cleanup()
+    post_exists_cached.cleanup()
+
     posts_to_create: List[PostCreateWithoutRelationsInput] = []
 
     unknown_things_to_queue: List[Tuple[str, Literal['post', 'actor', 'like']]] = []
 
-    post_authors = set(i['author'] for i in ops['posts']['created'])
-    like_authors = set(i['author'] for i in ops['likes']['created'])
-    all_authors = {i for i in (post_authors | like_authors) if i not in user_exists_cached}
-    if all_authors:
-        existing_actors = await get_actors(db, list(all_authors))
+    unknown_posts = {
+        associated
+        for post in ops['posts']['created']
+        for associated in get_associated_posts(post['record'])
+        if associated not in post_exists_cached
+    } | {
+        like["record"]["subject"]["uri"]
+        for like in ops['likes']['created']
+        if like["record"]["subject"]["uri"] not in post_exists_cached
+    }
+
+    unknown_posts_in_db = await get_posts(db, list(unknown_posts))
+
+    unknown_authors = {
+        i
+        for i in
+        (
+            {i['author'] for i in ops['posts']['created']}
+            | {i['author'] for i in ops['likes']['created']}
+            | {i for _, i in unknown_posts_in_db}
+        )
+        if i not in user_exists_cached
+    }
+    if unknown_authors:
+        existing_actors = await get_actors(db, list(unknown_authors))
         for key, do_care in existing_actors:
             user_exists_cached.set_value(key, 'do-care' if do_care else 'dont-care')
-        for key in all_authors - {key for (key, _) in existing_actors}:
+        for key in unknown_authors - {key for (key, _) in existing_actors}:
             user_exists_cached.set_value(key, 'not-here')
 
+
+    if unknown_posts:
+        known_set = set(i for i, _ in unknown_posts_in_db)
+        for not_in_db in unknown_posts - known_set:
+            post_exists_cached.set_value(not_in_db, 'not-here')
+    for post, author in unknown_posts_in_db:
+        x = user_exists_cached.get_value(author)
+        if x:
+            post_exists_cached.set_value(post, x)
+            
 
     for created_post in ops["posts"]["created"]:
         author_did = created_post["author"]
@@ -197,17 +267,9 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         embed_uri, embed_cid = get_quoted_skeet(record.embed)
 
-        reply_parent = None
         try:
-            if record.reply and record.reply.parent.uri:
-                reply_parent = record.reply.parent.uri
-        except AttributeError:
-            continue
-
-        reply_root = None
-        try:
-            if record.reply and record.reply.root.uri:
-                reply_root = record.reply.root.uri
+            reply_parent = get_reply_parent(record)
+            reply_root = get_reply_root(record)
         except AttributeError:
             continue
 
