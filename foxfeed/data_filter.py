@@ -326,7 +326,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             })
 
     if unknown_things_to_queue:
-        print('Unknown', len(unknown_things_to_queue))
+        # print('Unknown', len(unknown_things_to_queue))
         # cprint('Unknown things', 'red', force_color=True)
         # print(unknown_things_to_queue)
         await db.unknownthing.create_many(
@@ -338,7 +338,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         )
 
     if likes_to_create:
-        print('Likes', len(likes_to_create))
+        # print('Likes', len(likes_to_create))
         await db.like.create_many(data=likes_to_create, skip_duplicates=True)
 
     # TODO: Handle deleted likes lmao
