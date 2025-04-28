@@ -6,6 +6,7 @@ from typing import Coroutine, Any, Callable, List, TypeVar, Generic, Union, Opti
 from typing_extensions import TypedDict, TypeGuard
 import traceback
 from datetime import datetime
+from datetime import timezone
 
 from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
@@ -266,7 +267,7 @@ async def _run(
                     }
                 )
                 stream_time = parse_datetime(commit.time)
-                lag = datetime.utcnow() - stream_time
+                lag = datetime.now(timezone.utc) - stream_time
                 lag_minutes = int(lag.total_seconds()) // 60
                 stream_elapsed = 0 if prev_time[0] is None else (stream_time - prev_time[0]).seconds
                 stream_rate = stream_elapsed / elapsed

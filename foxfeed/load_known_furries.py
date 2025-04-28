@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import foxfeed.monkeypatch
 
@@ -398,7 +398,7 @@ async def load(
     load_posts: bool = True,
     load_likes: bool = True,
 ) -> None:
-    only_posts_after = datetime.now() - foxfeed.algos.generators.LOOKBACK_HARD_LIMIT
+    only_posts_after = datetime.now(timezone.utc) - foxfeed.algos.generators.LOOKBACK_HARD_LIMIT
 
     cprint("Getting muted accounts", "blue", force_color=True)
     mutes = await get_mutes_across_clients([client, personal_bsky_client], policy=policy)

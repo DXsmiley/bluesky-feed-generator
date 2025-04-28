@@ -1,7 +1,10 @@
 import asyncio
 from datetime import datetime
+from datetime import timezone
+import dateutil
 import types
 from typing import ClassVar, Protocol, Type, List, TypeVar, Union, Callable, Dict, Coroutine, Any, Optional, Iterable, AsyncIterable
+import dateutil.parser
 from typing_extensions import TypeGuard, LiteralString
 from itertools import chain
 from collections import defaultdict
@@ -49,22 +52,23 @@ def mentions_fursuit(text: str) -> bool:
 
 
 def parse_datetime(s: str) -> datetime:
-    formats = [
-        r"%Y-%m-%dT%H:%M:%S.%fZ",
-        r"%Y-%m-%dT%H:%M:%S.%f",
-        r"%Y-%m-%dT%H:%M:%SZ",
-        r"%Y-%m-%dT%H:%M:%S",
-        r"%Y-%m-%dT%H:%M:%S.%f+00:00",
-        r"%Y-%m-%dT%H:%M:%S+00:00",
-        r"%Y-%m-%dT%H:%M:%S.%f+0000",
-        r"%Y-%m-%dT%H:%M:%S+0000",
-    ]
-    for fmt in formats:
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            pass
-    raise ValueError(f'failed to parse datetime string "{s}"')
+    return dateutil.parser.parse(s).astimezone(timezone.utc)
+    # formats = [
+    #     r"%Y-%m-%dT%H:%M:%S.%fZ",
+    #     r"%Y-%m-%dT%H:%M:%S.%f",
+    #     r"%Y-%m-%dT%H:%M:%SZ",
+    #     r"%Y-%m-%dT%H:%M:%S",
+    #     r"%Y-%m-%dT%H:%M:%S.%f+00:00",
+    #     r"%Y-%m-%dT%H:%M:%S+00:00",
+    #     r"%Y-%m-%dT%H:%M:%S.%f+0000",
+    #     r"%Y-%m-%dT%H:%M:%S+0000",
+    # ]
+    # for fmt in formats:
+    #     try:
+    #         return datetime.strptime(s, fmt).astimezone(timezone.utc)
+    #     except ValueError:
+    #         pass
+    # raise ValueError(f'failed to parse datetime string "{s}"')
 
 
 def interleave(sep: T, xs: List[U]) -> List[Union[U, T]]:
