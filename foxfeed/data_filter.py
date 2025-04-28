@@ -52,15 +52,18 @@ class CachedQuery(Generic[T]):
                 self.cache.popitem(False)
             return result
         
-    async def drop_entry(self, key: str) -> None:
-        if self.lock is None:
-            self.lock = asyncio.Lock()
-        async with self.lock:
-            self.cache.pop(key, None)
+    def drop_entry(self, key: str) -> None:
+        self.cache.pop(key, None)
+
+    def set_value(self, key: str, value: T) -> None:
+        self.cache[key] = value
     
     def log_stats(self):
         ratio = 100 * (self.hits / (self.hits + self.misses))
         print(f'Cache: {self.name} | {len(self.cache)} | {self.hits} {self.misses} | {ratio:.1f}%')
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.cache
 
 
 async def get_actor(db: Database, did: str) -> Optional[Dict[str, Any]]:
@@ -69,6 +72,20 @@ async def get_actor(db: Database, did: str) -> Optional[Dict[str, Any]]:
     if r is None or cur.description is None:
         return None
     return dict(zip([i.name for i in cur.description], r))
+
+
+async def get_actors(db: Database, dids: List[str]) -> List[Tuple[str, bool]]:
+    cur = await db.pg.execute('SELECT did, is_muted, manual_include_in_fox_feed, is_external_to_network FROM "Actor" WHERE did = ANY(%s)', [dids])
+    return [
+        (
+            did,
+            is_muted is False
+            and manual_include_in_fox_feed is not False
+            and is_external_to_network is False
+        )
+        for (did, is_muted, manual_include_in_fox_feed, is_external_to_network)
+        in await cur.fetchall()
+    ]
 
 
 async def get_post(db: Database, uri: str) -> Optional[Dict[str, Any]]:
@@ -162,6 +179,17 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
     posts_to_create: List[PostCreateWithoutRelationsInput] = []
 
     unknown_things_to_queue: List[Tuple[str, Literal['post', 'actor', 'like']]] = []
+
+    post_authors = set(i['author'] for i in ops['posts']['created'])
+    like_authors = set(i['author'] for i in ops['likes']['created'])
+    all_authors = {i for i in (post_authors | like_authors) if i not in user_exists_cached}
+    if all_authors:
+        existing_actors = await get_actors(db, list(all_authors))
+        for key, do_care in existing_actors:
+            user_exists_cached.set_value(key, 'do-care' if do_care else 'dont-care')
+        for key in all_authors - {key for (key, _) in existing_actors}:
+            user_exists_cached.set_value(key, 'not-here')
+
 
     for created_post in ops["posts"]["created"]:
         author_did = created_post["author"]
@@ -259,10 +287,11 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
     if posts_to_create:
         await db.post.create_many(posts_to_create, skip_duplicates=True)
         for post in posts_to_create:
-            await post_exists_cached.drop_entry(post['uri'])
+            post_exists_cached.drop_entry(post['uri'])
 
     posts_to_delete = [p["uri"] for p in ops["posts"]["deleted"]]
     if posts_to_delete:
+        # print('delete', len(posts_to_delete))
         deleted_rows = await db.post.update_many(
             where={"uri": {"in": posts_to_delete}},
             data={"is_deleted": True}

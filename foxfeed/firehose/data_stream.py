@@ -202,6 +202,27 @@ async def run(
     print("Finished run(...) due to stream stop event")
 
 
+def fresh_chunk() -> OpsByType:
+    return {
+        "posts": {
+            "created": [],
+            "deleted": [],
+        },
+        "reposts": {
+            "created": [],
+            "deleted": [],
+        },
+        "likes": {
+            "created": [],
+            "deleted": [],
+        },
+        "follows": {
+            "created": [],
+            "deleted": [],
+        }
+    }
+
+
 async def _run(
     db: Database,
     name: str,
@@ -218,7 +239,11 @@ async def _run(
 
     messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=200)
 
+    chunk: OpsByType = fresh_chunk()
+
     async def process_message(message: "MessageFrame") -> None:
+        nonlocal chunk
+
         commit = parse_subscribe_repos_message(message)
 
         if isinstance(commit, subscribe_repos.Info):
@@ -226,7 +251,15 @@ async def _run(
         else:
             if isinstance(commit, subscribe_repos.Commit):
                 ops = _get_ops_by_type(commit)
-                await operations_callback(db, ops)
+                chunk['posts']['created'] += ops['posts']['created']
+                chunk['posts']['deleted'] += ops['posts']['deleted']
+                chunk['reposts']['created'] += ops['reposts']['created']
+                chunk['reposts']['deleted'] += ops['reposts']['deleted']
+                chunk['likes']['created'] += ops['likes']['created']
+                chunk['likes']['deleted'] += ops['likes']['deleted']
+                chunk['follows']['created'] += ops['follows']['created']
+                chunk['follows']['deleted'] += ops['follows']['deleted']
+                # await operations_callback(db, ops)
                 pass
             # if isinstance(commit, subscribe_repos.Tombstone):
             #     pass # print('Tombstone', commit.model_dump_json())
@@ -250,9 +283,13 @@ async def _run(
             #     # Should never reach here
             #     assert False
 
-            message_frequency = 2500
+            message_frequency = 2000
             
             if commit.seq % message_frequency == 0:
+
+                await operations_callback(db, chunk)
+                chunk = fresh_chunk()
+
                 t = time.time()
                 elapsed = t - message_count_time[0]
                 rate = int(message_frequency / elapsed)
