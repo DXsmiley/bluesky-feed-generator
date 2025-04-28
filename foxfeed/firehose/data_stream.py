@@ -226,7 +226,7 @@ async def _run(
         else:
             if isinstance(commit, subscribe_repos.Commit):
                 ops = _get_ops_by_type(commit)
-                # await operations_callback(db, ops)
+                await operations_callback(db, ops)
                 pass
             # if isinstance(commit, subscribe_repos.Tombstone):
             #     pass # print('Tombstone', commit.model_dump_json())
