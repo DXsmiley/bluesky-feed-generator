@@ -306,7 +306,7 @@ async def _run(
         print('ender() for stream stop event!')
         await client.stop()
 
-    num_workers = 2
+    num_workers = 8
     workers = [asyncio.create_task(process_messages_forever()) for _ in range(num_workers)]
     end_w = asyncio.create_task(ender())
     await client.start(on_message_handler, on_error_handler)

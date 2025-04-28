@@ -29,8 +29,8 @@ NO_MORE_POSTS_CURSOR = ""
 PLACEHOLDER_FEED: List[FeedItem] = [
     # https://bsky.app/profile/amaryllis.no/post/3k5hl44adih2z
     {"post": "at://did:plc:ilmue7bf43hluzpuuevcb6cw/app.bsky.feed.post/3k5hl44adih2z"},
-    # https://bsky.app/profile/puppyfox.bsky.social/post/3k3uyn6gkym24
-    {"post": "at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.post/3k3uyn6gkym24"},
+    # https://bsky.app/profile/puppyfox.bsky.social/post/3lnjqbjpiqc2g
+    {"post": "at://did:plc:j7jc2j2htz5gxuxi2ilhbqka/app.bsky.feed.post/3lnjqbjpiqc2g"}
 ]
 
 

@@ -167,9 +167,6 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         author_did = created_post["author"]
         record = created_post["record"]
 
-        inlined_text = record.text.replace("\n", " ")
-        
-        num_with_alt_text, image_urls = get_images(author_did, record.embed)
         embed_uri, embed_cid = get_quoted_skeet(record.embed)
 
         reply_parent = None
@@ -191,20 +188,6 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             if not isinstance(record.labels, models.ComAtprotoLabelDefs.SelfLabels)
             else [i.val for i in record.labels.values]
         )
-
-        # async def f(c: Union[Literal[False], Coroutine[Any, Any, T]]) -> Optional[T]:
-        #     if c is not False:
-        #         return await c
-
-        # await asyncio.gather(
-        #     user_exists_cached(db, author_did),
-        #     f(reply_parent is not None and post_exists_cached(db, reply_parent)),
-        #     f(reply_root is not None and post_exists_cached(db, reply_root)),
-        #     f(embed_uri is not None and post_exists_cached(db, embed_uri)),
-        #     f(reply_parent is not None and post_exists_cached(db, reply_parent)),
-        #     f(reply_root is not None and post_exists_cached(db, reply_root)),
-        #     f(embed_uri is not None and post_exists_cached(db, embed_uri)),
-        # )
 
         # we must care about SOMETHING going on
         care_about_something_here = (
@@ -248,6 +231,8 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         if not can_store_immediately:
             unknown_things_to_queue.append((created_post['uri'], 'post'))
         else:
+            inlined_text = record.text.replace("\n", " ")
+            num_with_alt_text, image_urls = get_images(author_did, record.embed)
             logger.info(
                 f"New furry post (is: {embed_uri is not None}, reply: {reply_root is not None}, images: {len(image_urls)}, labels: {labels}): {inlined_text}"
             )
@@ -273,6 +258,8 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
     if posts_to_create:
         await db.post.create_many(posts_to_create, skip_duplicates=True)
+        for post in posts_to_create:
+            await post_exists_cached.drop_entry(post['uri'])
 
     posts_to_delete = [p["uri"] for p in ops["posts"]["deleted"]]
     if posts_to_delete:
@@ -339,6 +326,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
             })
 
     if unknown_things_to_queue:
+        print('Unknown', len(unknown_things_to_queue))
         # cprint('Unknown things', 'red', force_color=True)
         # print(unknown_things_to_queue)
         await db.unknownthing.create_many(
@@ -350,6 +338,7 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
         )
 
     if likes_to_create:
+        print('Likes', len(likes_to_create))
         await db.like.create_many(data=likes_to_create, skip_duplicates=True)
 
     # TODO: Handle deleted likes lmao
