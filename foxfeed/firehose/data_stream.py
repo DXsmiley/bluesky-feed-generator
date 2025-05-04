@@ -12,7 +12,6 @@ from atproto import CAR, AtUri, models
 from atproto.exceptions import FirehoseError
 # from atproto.firehose.client import AsyncFirehoseClient as AsyncFirehoseR
 from atproto_firehose import parse_subscribe_repos_message, AsyncFirehoseSubscribeReposClient
-from atproto_firehose.client import aconnect, _MAX_MESSAGE_SIZE_BYTES
 from atproto_client.models.utils import get_or_create
 from atproto_client.models.common import XrpcError
 from atproto_client.models.base import ModelBase
@@ -27,6 +26,15 @@ from foxfeed.logger import logger
 from foxfeed.database import Database
 
 import time
+
+
+SubscribeReposMessageWithoutInfo = t.Union[
+    models.ComAtprotoSyncSubscribeRepos.Commit,
+    models.ComAtprotoSyncSubscribeRepos.Handle,
+    models.ComAtprotoSyncSubscribeRepos.Migrate,
+    models.ComAtprotoSyncSubscribeRepos.Tombstone,
+    models.ComAtprotoSyncSubscribeRepos.Identity,
+]
 
 
 if t.TYPE_CHECKING:
@@ -195,7 +203,7 @@ async def run(
                     isinstance(xrpc_error, XrpcError)
                     and xrpc_error.error == "ConsumerTooSlow"
                 ):
-                    logger.warn("Reconnecting to Firehose due to ConsumerTooSlow...")
+                    logger.warning("Reconnecting to Firehose due to ConsumerTooSlow...")
                     continue
 
             raise e
@@ -223,6 +231,27 @@ def fresh_chunk() -> OpsByType:
     }
 
 
+def combine_chunks(chunks: List[OpsByType]) -> OpsByType:
+    return {
+        "posts": {
+            "created": [i for c in chunks for i in c['posts']['created']],
+            "deleted": [i for c in chunks for i in c['posts']['deleted']],
+        },
+        "reposts": {
+            "created": [i for c in chunks for i in c['reposts']['created']],
+            "deleted": [i for c in chunks for i in c['reposts']['deleted']],
+        },
+        "likes": {
+            "created": [i for c in chunks for i in c['likes']['created']],
+            "deleted": [i for c in chunks for i in c['likes']['deleted']],
+        },
+        "follows": {
+            "created": [i for c in chunks for i in c['follows']['created']],
+            "deleted": [i for c in chunks for i in c['follows']['deleted']],
+        }
+    }
+
+
 async def _run(
     db: Database,
     name: str,
@@ -233,91 +262,107 @@ async def _run(
     print('Starting firehose state:', None if state is None else state.model_dump_json())
     params = subscribe_repos.Params(cursor=state.cursor if state else None)
     client = AsyncFirehoseSubscribeReposClient(params)
-    message_count = [0]
     message_count_time = [time.time()]
     prev_time: List[Optional[datetime]] = [None]
 
-    messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=200)
+    messages_to_process: 'asyncio.Queue[MessageFrame]' = asyncio.Queue(maxsize=5000)
 
-    chunk: OpsByType = fresh_chunk()
+    # chunk: OpsByType = fresh_chunk()
 
-    async def process_message(message: "MessageFrame") -> None:
-        nonlocal chunk
+    # async def process_message(message: "MessageFrame") -> None:
+    #     nonlocal chunk
 
-        commit = parse_subscribe_repos_message(message)
+    #     commit = parse_subscribe_repos_message(message)
 
-        if isinstance(commit, subscribe_repos.Info):
-            print('Info', commit.model_dump_json())
-        else:
-            if isinstance(commit, subscribe_repos.Commit):
-                ops = _get_ops_by_type(commit)
-                chunk['posts']['created'] += ops['posts']['created']
-                chunk['posts']['deleted'] += ops['posts']['deleted']
-                chunk['reposts']['created'] += ops['reposts']['created']
-                chunk['reposts']['deleted'] += ops['reposts']['deleted']
-                chunk['likes']['created'] += ops['likes']['created']
-                chunk['likes']['deleted'] += ops['likes']['deleted']
-                chunk['follows']['created'] += ops['follows']['created']
-                chunk['follows']['deleted'] += ops['follows']['deleted']
-                # await operations_callback(db, ops)
-                pass
-            # if isinstance(commit, subscribe_repos.Tombstone):
-            #     pass # print('Tombstone', commit.model_dump_json())
-            # elif isinstance(commit, subscribe_repos.Handle):
-            #     pass # print('Handle', commit.model_dump_json())
-            # elif isinstance(commit, subscribe_repos.Migrate):
-            #     pass # print('Migrate', commit.model_dump_json())
-            # elif isinstance(commit, subscribe_repos.Info):
-            #     pass # print('Info', commit.model_dump_json())
-            # elif isinstance(commit, subscribe_repos.Account):
-            #     pass # print('Account', commit.model_dump_json())
-            # elif isinstance(commit, subscribe_repos.Identity):
-            #     pass # print('Identity', commit.model_dump_json())
-            # elif isinstance(commit, subscribe_repos.RepoOp):
-            #     pass # print('RepoOp', commit.model_dump_json())
-            # elif isinstance(commit, subscribe_repos.Commit):
-            #     # ops = _get_ops_by_type(commit)
-            #     # await operations_callback(db, ops)
-            #     pass
-            # else:
-            #     # Should never reach here
-            #     assert False
+    #     if isinstance(commit, subscribe_repos.Info):
+    #         print('Info', commit.model_dump_json())
+    #     else:
+    #         if isinstance(commit, subscribe_repos.Commit):
+    #             ops = _get_ops_by_type(commit)
+    #             chunk['posts']['created'] += ops['posts']['created']
+    #             chunk['posts']['deleted'] += ops['posts']['deleted']
+    #             chunk['reposts']['created'] += ops['reposts']['created']
+    #             chunk['reposts']['deleted'] += ops['reposts']['deleted']
+    #             chunk['likes']['created'] += ops['likes']['created']
+    #             chunk['likes']['deleted'] += ops['likes']['deleted']
+    #             chunk['follows']['created'] += ops['follows']['created']
+    #             chunk['follows']['deleted'] += ops['follows']['deleted']
+    #             # await operations_callback(db, ops)
+    #             pass
+    #         # if isinstance(commit, subscribe_repos.Tombstone):
+    #         #     pass # print('Tombstone', commit.model_dump_json())
+    #         # elif isinstance(commit, subscribe_repos.Handle):
+    #         #     pass # print('Handle', commit.model_dump_json())
+    #         # elif isinstance(commit, subscribe_repos.Migrate):
+    #         #     pass # print('Migrate', commit.model_dump_json())
+    #         # elif isinstance(commit, subscribe_repos.Info):
+    #         #     pass # print('Info', commit.model_dump_json())
+    #         # elif isinstance(commit, subscribe_repos.Account):
+    #         #     pass # print('Account', commit.model_dump_json())
+    #         # elif isinstance(commit, subscribe_repos.Identity):
+    #         #     pass # print('Identity', commit.model_dump_json())
+    #         # elif isinstance(commit, subscribe_repos.RepoOp):
+    #         #     pass # print('RepoOp', commit.model_dump_json())
+    #         # elif isinstance(commit, subscribe_repos.Commit):
+    #         #     # ops = _get_ops_by_type(commit)
+    #         #     # await operations_callback(db, ops)
+    #         #     pass
+    #         # else:
+    #         #     # Should never reach here
+    #         #     assert False
 
-            message_frequency = 2000
+    #         # message_frequency = 2000
             
-            if commit.seq % message_frequency == 0:
+    #         # if commit.seq % message_frequency == 0:
 
-                await operations_callback(db, chunk)
-                chunk = fresh_chunk()
+    
+    MESSAGE_FREQUENCY = 2000
 
-                t = time.time()
-                elapsed = t - message_count_time[0]
-                rate = int(message_frequency / elapsed)
-                message_count_time[0] = t
 
-                client.update_params({'cursor': commit.seq})
-                await db.subscriptionstate.upsert(
-                    where={'service': name},
-                    data={
-                        'create': {'service': name, 'cursor': commit.seq},
-                        'update': {'cursor': commit.seq},
-                    }
-                )
-                stream_time = parse_datetime(commit.time)
-                lag = datetime.now(timezone.utc) - stream_time
-                lag_minutes = int(lag.total_seconds()) // 60
-                stream_elapsed = 0 if prev_time[0] is None else (stream_time - prev_time[0]).seconds
-                stream_rate = stream_elapsed / elapsed
-                prev_time[0] = stream_time
-                if lag_minutes != 0:
-                    cprint(f'Firehose is lagging | commit {commit.seq} | {messages_to_process.qsize()} items in queue | {rate:4d}/s | {stream_rate:.2f} | {lag_minutes // 60} hours {lag_minutes % 60} minutes behind', 'cyan', force_color=True)
+    async def process_chunk_and_advance_pointer(commit: SubscribeReposMessageWithoutInfo, chunk: OpsByType):
+        await operations_callback(db, chunk)
+        chunk = fresh_chunk()
+
+        t = time.time()
+        elapsed = t - message_count_time[0]
+        rate = int(MESSAGE_FREQUENCY / elapsed)
+        message_count_time[0] = t
+
+        client.update_params({'cursor': commit.seq})
+        await db.subscriptionstate.upsert(
+            where={'service': name},
+            data={
+                'create': {'service': name, 'cursor': commit.seq},
+                'update': {'cursor': commit.seq},
+            }
+        )
+        stream_time = parse_datetime(commit.time)
+        lag = datetime.now(timezone.utc) - stream_time
+        lag_minutes = int(lag.total_seconds()) // 60
+        stream_elapsed = 0 if prev_time[0] is None else (stream_time - prev_time[0]).seconds
+        stream_rate = stream_elapsed / elapsed
+        prev_time[0] = stream_time
+        if lag_minutes != 0:
+            cprint(f'Firehose is lagging | commit {commit.seq} | {messages_to_process.qsize()} items in queue | {rate:4d}/s | {stream_rate:.2f} | {lag_minutes // 60} hours {lag_minutes % 60} minutes behind', 'cyan', force_color=True)
+
 
     async def process_messages_forever() -> None:
+        chunks: List[OpsByType] = []
         while True:
             message = await messages_to_process.get()
             try:
                 if not stream_stop_event.is_set():
-                    await process_message(message)
+                    # await process_message(message)
+                    commit = parse_subscribe_repos_message(message)
+                    if isinstance(commit, subscribe_repos.Info):
+                        print('Info', commit.model_dump_json())
+                    else:
+                        if isinstance(commit, subscribe_repos.Commit):
+                            chunks.append(_get_ops_by_type(commit))
+                        if commit.seq % MESSAGE_FREQUENCY == 0:
+                            combined = combine_chunks(chunks)
+                            await process_chunk_and_advance_pointer(commit, combined)
+                            chunks = []
             except Exception as e:
                 await on_error_handler(e)
             finally:
@@ -343,12 +388,10 @@ async def _run(
         print('ender() for stream stop event!')
         await client.stop()
 
-    num_workers = 1
-    workers = [asyncio.create_task(process_messages_forever()) for _ in range(num_workers)]
+    worker = asyncio.create_task(process_messages_forever())
     end_w = asyncio.create_task(ender())
     await client.start(on_message_handler, on_error_handler)
     await messages_to_process.join()
-    for w in workers:
-        w.cancel()
-    await asyncio.gather(*workers, end_w, return_exceptions=True)
+    worker.cancel()
+    await asyncio.gather(worker, end_w, return_exceptions=True)
 

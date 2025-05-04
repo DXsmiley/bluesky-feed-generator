@@ -15,61 +15,61 @@ from foxfeed.util import mentions_fursuit, parse_datetime
 
 from datetime import datetime, timedelta
 
-from collections import OrderedDict
+# from collections import OrderedDict
 
-import time
+# import time
 
 
 T = TypeVar('T')
 
 
-class CachedQuery(Generic[T]):
+# class CachedQuery(Generic[T]):
 
-    def __init__(self, function: Callable[[Database, str], Coroutine[Any, Any, T]]):
-        self.function = function
-        self.hits = 1
-        self.misses = 1
-        self.name = function.__name__
-        self.cache: 'OrderedDict[str, T]' = OrderedDict()
-        self.last_log = time.time()
-        self.lock = None
+#     def __init__(self, function: Callable[[Database, str], Coroutine[Any, Any, T]]):
+#         self.function = function
+#         self.hits = 1
+#         self.misses = 1
+#         self.name = function.__name__
+#         self.cache: 'OrderedDict[str, T]' = OrderedDict()
+#         self.last_log = time.time()
+#         self.lock = None
 
-    async def __call__(self, db: Database, key: str) -> T:
-        if self.lock is None:
-            self.lock = asyncio.Lock()
-        async with self.lock:
-            curtime = time.time()
-            if curtime - self.last_log > 60:
-                self.log_stats()
-                self.last_log = curtime
-            if key in self.cache:
-                self.hits += 1
-                return self.cache[key]
-            self.misses += 1
-            result = await self.function(db, key)
-            self.cache[key] = result
-            self.cleanup()
-            return result
+#     async def __call__(self, db: Database, key: str) -> T:
+#         if self.lock is None:
+#             self.lock = asyncio.Lock()
+#         async with self.lock:
+#             curtime = time.time()
+#             if curtime - self.last_log > 60:
+#                 self.log_stats()
+#                 self.last_log = curtime
+#             if key in self.cache:
+#                 self.hits += 1
+#                 return self.cache[key]
+#             self.misses += 1
+#             result = await self.function(db, key)
+#             self.cache[key] = result
+#             self.cleanup()
+#             return result
         
-    def cleanup(self) -> None:
-        while len(self.cache) > 100_000:
-            self.cache.popitem(False)
+#     def cleanup(self) -> None:
+#         while len(self.cache) > 100_000:
+#             self.cache.popitem(False)
         
-    def drop_entry(self, key: str) -> None:
-        self.cache.pop(key, None)
+#     def drop_entry(self, key: str) -> None:
+#         self.cache.pop(key, None)
 
-    def set_value(self, key: str, value: T) -> None:
-        self.cache[key] = value
+#     def set_value(self, key: str, value: T) -> None:
+#         self.cache[key] = value
 
-    def get_value(self, key: str) -> Optional[T]:
-        return self.cache.get(key)
+#     def get_value(self, key: str) -> Optional[T]:
+#         return self.cache.get(key)
     
-    def log_stats(self):
-        ratio = 100 * (self.hits / (self.hits + self.misses))
-        print(f'Cache: {self.name} | {len(self.cache)} | {self.hits} {self.misses} | {ratio:.1f}%')
+#     def log_stats(self):
+#         ratio = 100 * (self.hits / (self.hits + self.misses))
+#         print(f'Cache: {self.name} | {len(self.cache)} | {self.hits} {self.misses} | {ratio:.1f}%')
 
-    def __contains__(self, key: str) -> bool:
-        return key in self.cache
+#     def __contains__(self, key: str) -> bool:
+#         return key in self.cache
 
 
 async def get_actor(db: Database, did: str) -> Optional[Dict[str, Any]]:
@@ -111,52 +111,27 @@ async def get_posts(db: Database, uris: List[str]) -> List[Tuple[str, str]]:
     return await cur.fetchall()
 
 
-@CachedQuery
-async def user_exists_cached(db: Database, did: str) -> Literal['not-here', 'do-care', 'dont-care']:
-    d = await get_actor(db, did)
-    if d is None:
-        return 'not-here'
-    if (
-        d['is_muted'] is False
-        and d['manual_include_in_fox_feed'] is not False
-        and d['is_external_to_network'] is False
-    ):
-        return 'do-care'
+# @CachedQuery
+# async def user_exists_cached(db: Database, did: str) -> Literal['not-here', 'do-care', 'dont-care']:
+#     d = await get_actor(db, did)
+#     if d is None:
+#         return 'not-here'
+#     if (
+#         d['is_muted'] is False
+#         and d['manual_include_in_fox_feed'] is not False
+#         and d['is_external_to_network'] is False
+#     ):
+#         return 'do-care'
 
-    return 'dont-care'
-    # user = await db.actor.find_first(
-    #     where={
-    #         "did": did,
-    #         "AND": [care_about_storing_user_data_preemptively],
-    #     }
-    # )
-    # if user is None:
-    #     return 'not-here'
-    # if (
-    #     user.is_muted is False
-    #     and user.manual_include_in_fox_feed is not False
-    #     and user.is_external_to_network is False
-    # ):
-    #     return 'do-care'
-    # return 'dont-care'
+#     return 'dont-care'
 
 
-@CachedQuery
-async def post_exists_cached(db: Database, uri: str) -> Literal['not-here', 'do-care', 'dont-care']:
-    p = await get_post(db, uri)
-    if p is None:
-        return 'not-here'
-    return await user_exists_cached(db, p['authorId'])
-    # post = await db.post.find_first(where={'uri': uri}, include={'author': True})
-    # if post is None or post.author is None:
-    #     return 'not-here'
-    # if (
-    #     post.author.is_muted is False
-    #     and post.author.manual_include_in_fox_feed is not False
-    #     and post.author.is_external_to_network is False
-    # ):
-    #     return 'do-care'
-    # return 'dont-care'
+# @CachedQuery
+# async def post_exists_cached(db: Database, uri: str) -> Literal['not-here', 'do-care', 'dont-care']:
+#     p = await get_post(db, uri)
+#     if p is None:
+#         return 'not-here'
+#     return user_exists(p['authorId'])
 
 
 EmbedType = Union[
@@ -213,53 +188,51 @@ def get_associated_posts(record: models.AppBskyFeedPost.Record) -> List[str]:
     return [i for i in [embed_uri, reply_parent, reply_root] if i is not None]
 
 async def operations_callback(db: Database, ops: OpsByType) -> None:
-    user_exists_cached.cleanup()
-    post_exists_cached.cleanup()
 
     posts_to_create: List[PostCreateWithoutRelationsInput] = []
 
     unknown_things_to_queue: List[Tuple[str, Literal['post', 'actor', 'like']]] = []
 
-    unknown_posts = {
+    relevant_posts = {
         associated
         for post in ops['posts']['created']
         for associated in get_associated_posts(post['record'])
-        if associated not in post_exists_cached
     } | {
         like["record"]["subject"]["uri"]
         for like in ops['likes']['created']
-        if like["record"]["subject"]["uri"] not in post_exists_cached
+        if like["record"]["subject"]["uri"]
     }
 
-    unknown_posts_in_db = await get_posts(db, list(unknown_posts))
-
-    unknown_authors = {
+    posts = await get_posts(db, list(relevant_posts))
+    posts_as_dict = dict(posts)
+    
+    relevant_actors = {
         i
         for i in
         (
             {i['author'] for i in ops['posts']['created']}
             | {i['author'] for i in ops['likes']['created']}
-            | {i for _, i in unknown_posts_in_db}
+            | {i for _, i in posts}
         )
-        if i not in user_exists_cached
     }
-    if unknown_authors:
-        existing_actors = await get_actors(db, list(unknown_authors))
-        for key, do_care in existing_actors:
-            user_exists_cached.set_value(key, 'do-care' if do_care else 'dont-care')
-        for key in unknown_authors - {key for (key, _) in existing_actors}:
-            user_exists_cached.set_value(key, 'not-here')
 
+    actors = dict(await get_actors(db, list(relevant_actors)))
 
-    if unknown_posts:
-        known_set = set(i for i, _ in unknown_posts_in_db)
-        for not_in_db in unknown_posts - known_set:
-            post_exists_cached.set_value(not_in_db, 'not-here')
-    for post, author in unknown_posts_in_db:
-        x = user_exists_cached.get_value(author)
-        if x:
-            post_exists_cached.set_value(post, x)
-            
+    def user_exists(did: str) -> Literal['do-care', 'dont-care', 'not-here']:
+        r = actors.get(did)
+        if r is None:
+            return 'not-here'
+        elif r is True:
+            return 'do-care'
+        elif r is False:
+            return 'dont-care'
+        return r # never
+        
+    def post_exists(did: str):
+        author = posts_as_dict.get(did)
+        if author is None:
+            return 'not-here'
+        return user_exists(author)
 
     for created_post in ops["posts"]["created"]:
         author_did = created_post["author"]
@@ -281,19 +254,19 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         # we must care about SOMETHING going on
         care_about_something_here = (
-            await user_exists_cached(db, author_did) == 'do-care'
-            or (reply_parent and await post_exists_cached(db, reply_parent) == 'do-care')
-            or (reply_root and await post_exists_cached(db, reply_root) == 'do-care')
-            or (embed_uri and await post_exists_cached(db, embed_uri) == 'do-care')
+            user_exists(author_did) == 'do-care'
+            or (reply_parent and post_exists(reply_parent) == 'do-care')
+            or (reply_root and post_exists(reply_root) == 'do-care')
+            or (embed_uri and post_exists(embed_uri) == 'do-care')
         )
 
         # all posts referenced must exist in the database
         # ideally we should branch out from here, however Prisma has some limitations about non-existent
         # references and we need to drop old posts to keep the DB under the row limit, so unfortunately these need to go
         post_links_exist = (
-            (reply_parent and await post_exists_cached(db, reply_parent) != 'not-here')
-            and (reply_root and await post_exists_cached(db, reply_root) != 'not-here')
-            and (embed_uri and await post_exists_cached(db, embed_uri) != 'not-here')
+            (reply_parent and post_exists(reply_parent) != 'not-here')
+            and (reply_root and post_exists(reply_root) != 'not-here')
+            and (embed_uri and post_exists(embed_uri) != 'not-here')
         )
 
         if (not care_about_something_here) or (not post_links_exist):
@@ -301,19 +274,19 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         can_store_immediately = True
 
-        if await user_exists_cached(db, author_did) == 'not-here':
+        if user_exists(author_did) == 'not-here':
             unknown_things_to_queue.append((author_did, 'actor'))
             can_store_immediately = False
 
-        if reply_root and await post_exists_cached(db, reply_root) == 'not-here':
+        if reply_root and post_exists(reply_root) == 'not-here':
             unknown_things_to_queue.append((reply_root, 'post'))
             can_store_immediately = False
 
-        if reply_parent and await post_exists_cached(db, reply_parent) == 'not-here':
+        if reply_parent and post_exists(reply_parent) == 'not-here':
             unknown_things_to_queue.append((reply_parent, 'post'))
             can_store_immediately = False
 
-        if embed_uri and await post_exists_cached(db, embed_uri) == 'not-here':
+        if embed_uri and post_exists(embed_uri) == 'not-here':
             unknown_things_to_queue.append((embed_uri, 'post'))
             can_store_immediately = False
 
@@ -348,8 +321,6 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
     if posts_to_create:
         await db.post.create_many(posts_to_create, skip_duplicates=True)
-        for post in posts_to_create:
-            post_exists_cached.drop_entry(post['uri'])
 
     posts_to_delete = [p["uri"] for p in ops["posts"]["deleted"]]
     if posts_to_delete:
@@ -370,23 +341,23 @@ async def operations_callback(db: Database, ops: OpsByType) -> None:
 
         care_about_something_here = (
             # Placing user before post here results in a much better cache hit rate
-            await user_exists_cached(db, like['author']) == 'do-care'
-            or await post_exists_cached(db, uri) == 'do-care'
+            user_exists(like['author']) == 'do-care'
+            or post_exists(uri) == 'do-care'
         )
 
         if not care_about_something_here:
             continue
 
-        if await post_exists_cached(db, uri) == 'not-here':
+        if post_exists(uri) == 'not-here':
             continue
 
         can_store_immediately = True
 
-        if await user_exists_cached(db, like['author']) == 'not-here':
+        if user_exists(like['author']) == 'not-here':
             unknown_things_to_queue.append((like['author'], 'actor'))
             can_store_immediately = False
 
-        if await post_exists_cached(db, uri) == 'not-here':
+        if post_exists(uri) == 'not-here':
             unknown_things_to_queue.append((uri, 'post'))
             can_store_immediately = False
 
